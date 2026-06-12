@@ -131,6 +131,19 @@ export async function addMessage(input: Omit<TablesInsert<"messages">, "tenant_i
   return unwrap(result, "addMessage");
 }
 
+/** Loop guard: AI replies on a ticket within the last N hours. */
+export async function countRecentAiMessages(ticketId: string, hours: number): Promise<number> {
+  const since = new Date(Date.now() - hours * 3_600_000).toISOString();
+  const { count, error } = await db()
+    .from("messages")
+    .select("id", { count: "exact", head: true })
+    .eq("ticket_id", ticketId)
+    .eq("role", "ai")
+    .gte("created_at", since);
+  if (error) throw new Error(`countRecentAiMessages: ${error.message}`);
+  return count ?? 0;
+}
+
 // ── Knowledge base ───────────────────────────────────────────────────────────
 
 export async function listKbArticles(status?: KbStatus): Promise<KbArticle[]> {

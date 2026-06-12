@@ -8,7 +8,13 @@ import { buildReplyMime, sendMessage } from "./gmail";
 
 // Email channel: Gmail message → ticket/message rows, and ticket reply → email.
 
-export type IngestResult = { ticket: Ticket; message: Message; createdTicket: boolean };
+export type IngestResult = {
+  ticket: Ticket;
+  message: Message;
+  createdTicket: boolean;
+  /** Loop guard: auto-replies/bounces are stored but never AI-answered. */
+  suppressAi: boolean;
+};
 
 export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<IngestResult | null> {
   const parsed = parseGmailMessage(gmailMessage);
@@ -25,6 +31,7 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
     // not act on it. Fail closed by escalating straight away.
     const unverified = parsed.senderVerified === "fail";
     if (unverified) tags.push("unverified-sender");
+    if (parsed.isAutoReply) tags.push("auto-notification");
 
     ticket = await createTicket({
       requester_email: parsed.fromEmail,
@@ -41,9 +48,11 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
     await audit("system", "email-channel", "ticket.created", { type: "ticket", id: ticket.id }, {
       channel: "email",
       sender_verified: parsed.senderVerified,
+      auto_reply: parsed.isAutoReply,
     });
-  } else if (ticket.status === "resolved" || ticket.status === "closed") {
-    // Customer replied after resolution — reopen.
+  } else if (!parsed.isAutoReply && (ticket.status === "resolved" || ticket.status === "closed")) {
+    // Customer replied after resolution — reopen. (An OOO bouncing back off
+    // our own resolution reply must NOT reopen the ticket.)
     ticket = await updateTicket(ticket.id, {
       status: "new",
       ai_resolved: false,
@@ -66,10 +75,11 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
       in_reply_to: parsed.inReplyTo,
       references: parsed.references,
       sender_verified: parsed.senderVerified,
+      auto_reply: parsed.isAutoReply,
     },
   });
 
-  return { ticket, message, createdTicket };
+  return { ticket, message, createdTicket, suppressAi: parsed.isAutoReply };
 }
 
 async function latestCustomerThreadMeta(ticketId: string): Promise<{ messageId: string | null; references: string[] }> {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  detectAutoReply,
   normaliseSubject,
   parseAddress,
   parseGmailMessage,
@@ -45,6 +46,32 @@ describe("parseAddress", () => {
 describe("normaliseSubject", () => {
   it("strips reply/forward prefixes", () => {
     expect(normaliseSubject("RE: Re: Fwd: Widget broken")).toBe("widget broken");
+  });
+});
+
+describe("detectAutoReply (loop guard)", () => {
+  const from = "Sarah Mills <sarah@sunshine.example.com>";
+
+  it("flags Auto-Submitted headers", () => {
+    expect(detectAutoReply([{ name: "Auto-Submitted", value: "auto-replied" }], "Re: Widget", from)).toBe(true);
+    expect(detectAutoReply([{ name: "Auto-Submitted", value: "no" }], "Re: Widget", from)).toBe(false);
+  });
+
+  it("flags bulk precedence and suppress headers", () => {
+    expect(detectAutoReply([{ name: "Precedence", value: "bulk" }], "Newsletter", from)).toBe(true);
+    expect(detectAutoReply([{ name: "X-Auto-Response-Suppress", value: "All" }], "Alert", from)).toBe(true);
+  });
+
+  it("flags daemon/no-reply senders and bounce subjects", () => {
+    expect(detectAutoReply([], "Returned mail", "Mail Delivery System <mailer-daemon@googlemail.com>")).toBe(true);
+    expect(detectAutoReply([], "Your booking", "no-reply@somesupplier.example.com")).toBe(true);
+    expect(detectAutoReply([], "Undeliverable: Re: Widget question", from)).toBe(true);
+  });
+
+  it("flags out-of-office subjects but not normal mail", () => {
+    expect(detectAutoReply([], "Automatic reply: Widget question", from)).toBe(true);
+    expect(detectAutoReply([], "Out of Office — back Monday", from)).toBe(true);
+    expect(detectAutoReply([], "Widget question", from)).toBe(false);
   });
 });
 

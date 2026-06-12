@@ -33,6 +33,8 @@ export type ParsedEmail = {
   attachments: AttachmentMeta[];
   /** Result of the receiving server's SPF/DKIM/DMARC checks. */
   senderVerified: "pass" | "fail" | "unknown";
+  /** OOO/auto-responder/bounce — the AI must never reply to these (loop guard). */
+  isAutoReply: boolean;
 };
 
 export function decodeBase64Url(data: string): string {
@@ -156,6 +158,27 @@ export function normaliseSubject(subject: string): string {
     .toLowerCase();
 }
 
+const AUTO_REPLY_SUBJECTS = [
+  /^(automatic reply|auto.?reply|autosvar|automatische antwort|r[ée]ponse automatique)/i,
+  /^out of office/i,
+  /^(undeliverable|undelivered mail|delivery status notification|mail delivery (failed|subsystem))/i,
+];
+
+const AUTO_SENDER = /(^|<)(mailer-daemon|postmaster|no-?reply|do-?not-?reply|noreply)[@.]/i;
+
+export function detectAutoReply(headers: GmailHeader[], subject: string, fromRaw: string): boolean {
+  const autoSubmitted = header(headers, "Auto-Submitted");
+  if (autoSubmitted && autoSubmitted.toLowerCase().trim() !== "no") return true;
+  if (header(headers, "X-Autoreply") || header(headers, "X-Autorespond") || header(headers, "X-Auto-Response-Suppress")) {
+    return true;
+  }
+  if (header(headers, "X-Failed-Recipients")) return true;
+  const precedence = header(headers, "Precedence");
+  if (precedence && /^(bulk|junk|auto_reply|list)$/i.test(precedence.trim())) return true;
+  if (AUTO_SENDER.test(fromRaw)) return true;
+  return AUTO_REPLY_SUBJECTS.some((re) => re.test(subject.trim()));
+}
+
 function parseAuthenticationResults(headers: GmailHeader[]): "pass" | "fail" | "unknown" {
   const value = header(headers, "Authentication-Results");
   if (!value) return "unknown";
@@ -168,7 +191,9 @@ function parseAuthenticationResults(headers: GmailHeader[]): "pass" | "fail" | "
 
 export function parseGmailMessage(message: GmailMessage): ParsedEmail {
   const headers = message.payload?.headers ?? [];
-  const from = parseAddress(header(headers, "From") ?? "");
+  const fromRaw = header(headers, "From") ?? "";
+  const from = parseAddress(fromRaw);
+  const subject = header(headers, "Subject")?.trim() || "(no subject)";
 
   const textPart = findPart(message.payload, "text/plain");
   const htmlPart = findPart(message.payload, "text/html");
@@ -182,7 +207,7 @@ export function parseGmailMessage(message: GmailMessage): ParsedEmail {
   return {
     fromName: from.name,
     fromEmail: from.email,
-    subject: header(headers, "Subject")?.trim() || "(no subject)",
+    subject,
     messageId: header(headers, "Message-ID") ?? header(headers, "Message-Id"),
     inReplyTo: header(headers, "In-Reply-To"),
     references: referencesRaw.split(/\s+/).filter(Boolean),
@@ -190,5 +215,6 @@ export function parseGmailMessage(message: GmailMessage): ParsedEmail {
     html: rawHtml ? sanitizeEmailHtml(rawHtml) : null,
     attachments: collectAttachments(message.payload),
     senderVerified: parseAuthenticationResults(headers),
+    isAutoReply: detectAutoReply(headers, subject, fromRaw),
   };
 }

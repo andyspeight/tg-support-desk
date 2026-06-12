@@ -1,5 +1,5 @@
 import "server-only";
-import { getSyncState, setSyncState } from "@/lib/db/queries";
+import { audit, getSyncState, setSyncState } from "@/lib/db/queries";
 import { env } from "@/lib/env";
 import { resolveTicket } from "@/lib/ai/resolve";
 import { ingestGmailMessage } from "./email";
@@ -35,6 +35,14 @@ export async function pollGmailInbox(): Promise<PollSummary> {
       processed.add(id);
       if (!result) continue;
       summary.ingested += 1;
+
+      if (result.suppressAi) {
+        await audit("system", "email-channel", "ai.suppressed_auto_reply", {
+          type: "ticket",
+          id: result.ticket.id,
+        });
+        continue;
+      }
 
       try {
         await resolveTicket(result.ticket.id, { trigger: "email" });

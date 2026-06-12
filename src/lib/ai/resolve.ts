@@ -6,6 +6,7 @@ import type { AgentOutcome, AgentRunResult, TicketContext, ToolExecutors } from 
 import {
   addMessage,
   audit,
+  countRecentAiMessages,
   getTicketWithMessages,
   insertAiEvent,
   matchKbArticles,
@@ -36,6 +37,26 @@ export async function resolveTicket(
 
   const latestCustomer = [...messages].reverse().find((m) => m.role === "customer");
   if (!latestCustomer) return null;
+
+  // Loop guard: an address replying to every reply (misconfigured
+  // auto-responder that slipped header detection) must not ping-pong with
+  // the AI. Cap outbound AI replies per ticket per 24h, then hand to a human.
+  if (opts.trigger === "email" && (await countRecentAiMessages(ticket.id, 24)) >= 5) {
+    await addMessage({
+      ticket_id: ticket.id,
+      role: "internal_note",
+      author: AI_ACTOR,
+      body_text:
+        "AI HANDOVER\nCategory: other\n\nLoop guard tripped: 5+ AI replies on this ticket in 24 hours. This looks like an email loop or an unusually long exchange — a human needs to take over.",
+      channel_meta: { kind: "handover", category: "other", reason: "loop_suspected" },
+    });
+    await updateTicket(ticket.id, {
+      status: "escalated",
+      escalation_reason: "loop_suspected: 5+ AI replies in 24h",
+    });
+    await audit("system", AI_ACTOR, "ai.loop_guard_tripped", { type: "ticket", id: ticket.id });
+    return null;
+  }
 
   await audit("ai", AI_ACTOR, "ai.resolution_started", { type: "ticket", id: ticket.id }, { trigger: opts.trigger });
   ticket = await updateTicket(ticket.id, { status: "ai_working" });
