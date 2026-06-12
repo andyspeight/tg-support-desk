@@ -523,7 +523,7 @@ export type Database = {
     Enums: {
       actor_type: "ai" | "human" | "system"
       ai_outcome: "answered" | "action_taken" | "escalated" | "clarified"
-      kb_source: "manual" | "scan" | "ticket_mined" | "zendesk_import"
+      kb_source: "manual" | "scan" | "ticket_mined" | "zendesk_import" | "knowledge_bot"
       kb_status: "draft" | "review" | "published" | "archived"
       message_role: "customer" | "ai" | "human" | "internal_note" | "system"
       ticket_channel: "email" | "widget" | "portal" | "whatsapp"
@@ -664,7 +664,7 @@ export const Constants = {
     Enums: {
       actor_type: ["ai", "human", "system"],
       ai_outcome: ["answered", "action_taken", "escalated", "clarified"],
-      kb_source: ["manual", "scan", "ticket_mined", "zendesk_import"],
+      kb_source: ["manual", "scan", "ticket_mined", "zendesk_import", "knowledge_bot"],
       kb_status: ["draft", "review", "published", "archived"],
       message_role: ["customer", "ai", "human", "internal_note", "system"],
       ticket_channel: ["email", "widget", "portal", "whatsapp"],
