@@ -1,0 +1,172 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { getTicketWithMessages, listCannedResponses } from "@/lib/db/queries";
+import { getClientById, summariseClient } from "@/lib/integrations/airtable-clients";
+import { env } from "@/lib/env";
+import type { Message } from "@/lib/db/types";
+import { PriorityBadge, StatusBadge } from "@/components/status-badge";
+import { RefreshPoller } from "@/components/refresh-poller";
+import { ReplyBox } from "@/components/reply-box";
+import { addNoteAction, runAiAction, sendReplyAction, updateTicketAction } from "../actions";
+
+const ROLE_STYLES: Record<Message["role"], { label: string; className: string }> = {
+  customer: { label: "Customer", className: "border-zinc-200 bg-white" },
+  ai: { label: "AI", className: "border-violet-200 bg-violet-50" },
+  human: { label: "Agent", className: "border-emerald-200 bg-emerald-50" },
+  internal_note: { label: "Internal note", className: "border-amber-200 bg-amber-50" },
+  system: { label: "System", className: "border-zinc-200 bg-zinc-50" },
+};
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+}
+
+export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const loaded = await getTicketWithMessages(id).catch(() => null);
+  if (!loaded) notFound();
+  const { ticket, messages } = loaded;
+
+  const [canned, clientRecord] = await Promise.all([
+    listCannedResponses().catch(() => []),
+    ticket.client_id ? getClientById(ticket.client_id) : Promise.resolve(null),
+  ]);
+
+  const handover = [...messages]
+    .reverse()
+    .find((m) => m.role === "internal_note" && (m.channel_meta as { kind?: string })?.kind === "handover");
+
+  return (
+    <div className="flex h-full">
+      <RefreshPoller />
+
+      {/* Conversation column */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="border-b border-zinc-200 bg-white px-6 py-4">
+          <div className="flex items-center gap-3">
+            <Link href="/inbox" className="text-sm text-zinc-400 hover:text-zinc-700">
+              ← Inbox
+            </Link>
+            <span className="text-sm text-zinc-400">#{ticket.reference}</span>
+            <StatusBadge status={ticket.status} />
+            <PriorityBadge priority={ticket.priority} />
+          </div>
+          <h1 className="mt-1 truncate text-base font-semibold">{ticket.subject}</h1>
+          <p className="text-xs text-zinc-500">
+            {ticket.requester_name ? `${ticket.requester_name} · ` : ""}
+            {ticket.requester_email} · opened {formatDateTime(ticket.created_at)}
+          </p>
+        </div>
+
+        <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
+          {ticket.status === "escalated" && handover && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-700">AI handover</p>
+              <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-zinc-800">{handover.body_text}</pre>
+            </div>
+          )}
+
+          {messages.map((message) => {
+            const style = ROLE_STYLES[message.role];
+            return (
+              <div key={message.id} className={`rounded-lg border p-3 ${style.className}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-xs font-semibold text-zinc-700">
+                    {style.label}
+                    {message.author && message.author !== "resolution-agent" ? ` · ${message.author}` : ""}
+                  </span>
+                  <span className="text-xs text-zinc-400">{formatDateTime(message.created_at)}</span>
+                </div>
+                <pre className="mt-1.5 whitespace-pre-wrap font-sans text-sm text-zinc-800">{message.body_text}</pre>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="border-t border-zinc-200 bg-zinc-50 p-4">
+          <ReplyBox ticketId={ticket.id} canned={canned} sendReply={sendReplyAction} addNote={addNoteAction} />
+        </div>
+      </div>
+
+      {/* Controls column (Customer 360 panel lands here in Phase 2) */}
+      <aside className="w-72 shrink-0 space-y-4 overflow-y-auto border-l border-zinc-200 bg-white p-4">
+        <form action={runAiAction}>
+          <input type="hidden" name="ticketId" value={ticket.id} />
+          <button className="w-full rounded-md bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500">
+            Run AI on this ticket
+          </button>
+        </form>
+
+        <form action={updateTicketAction} className="space-y-3 text-sm">
+          <input type="hidden" name="ticketId" value={ticket.id} />
+          <div>
+            <label className="text-xs font-medium text-zinc-500">Status</label>
+            <select name="status" defaultValue={ticket.status} className="mt-1 w-full rounded-md border border-zinc-200 px-2 py-1.5">
+              <option value="new">New</option>
+              <option value="ai_working">AI working</option>
+              <option value="waiting_on_customer">Waiting on customer</option>
+              <option value="escalated">Escalated</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-zinc-500">Priority</label>
+            <select name="priority" defaultValue={ticket.priority} className="mt-1 w-full rounded-md border border-zinc-200 px-2 py-1.5">
+              <option value="p1">P1 — Urgent</option>
+              <option value="p2">P2 — Standard</option>
+              <option value="p3">P3 — Low</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-zinc-500">Assignee</label>
+            <select name="assignee" defaultValue={ticket.assignee ?? ""} className="mt-1 w-full rounded-md border border-zinc-200 px-2 py-1.5">
+              <option value="">Unassigned</option>
+              {env.agentEmails.map((email) => (
+                <option key={email} value={email}>
+                  {email}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-zinc-500">Tags (comma-separated)</label>
+            <input
+              name="tags"
+              defaultValue={ticket.tags.join(", ")}
+              className="mt-1 w-full rounded-md border border-zinc-200 px-2 py-1.5"
+            />
+          </div>
+          <button className="w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 font-medium text-zinc-700 hover:bg-zinc-50">
+            Update ticket
+          </button>
+        </form>
+
+        {ticket.escalation_reason && (
+          <div className="rounded-md border border-red-100 bg-red-50 p-3 text-xs text-red-700">
+            <span className="font-semibold">Escalation:</span> {ticket.escalation_reason}
+          </div>
+        )}
+
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Client</h2>
+          {clientRecord ? (
+            <pre className="mt-2 whitespace-pre-wrap rounded-md border border-zinc-100 bg-zinc-50 p-2 font-sans text-xs text-zinc-600">
+              {summariseClient(clientRecord).split("\n").slice(0, 12).join("\n")}
+            </pre>
+          ) : (
+            <p className="mt-2 text-xs text-zinc-400">
+              {ticket.client_id ? "Client record unavailable." : "No client record matched."}
+            </p>
+          )}
+        </div>
+
+        <div className="text-xs text-zinc-400">
+          <p>Language: {ticket.language ?? "—"}</p>
+          <p>AI resolved: {ticket.ai_resolved ? "yes" : "no"}</p>
+          <p>First response: {ticket.first_response_at ? formatDateTime(ticket.first_response_at) : "—"}</p>
+        </div>
+      </aside>
+    </div>
+  );
+}

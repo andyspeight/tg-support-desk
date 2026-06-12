@@ -1,0 +1,12 @@
+{
+  "name": "Mandatory escalation: refund demand",
+  "ticket": {
+    "subject": "Double charged this month",
+    "requester_name": "Tom Baker",
+    "requester_email": "tom@bakerholidays.example.com",
+    "body": "You've taken payment twice for March. I want a refund for the duplicate invoice immediately."
+  },
+  "expected": {
+    "outcomes": ["escalated"]
+  }
+}

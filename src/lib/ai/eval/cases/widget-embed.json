@@ -1,0 +1,13 @@
+{
+  "name": "KB-answerable: widget embed question",
+  "ticket": {
+    "subject": "Adding the booking widget to our new landing page",
+    "requester_name": "Sarah Mills",
+    "requester_email": "sarah@sunshinetravel.example.com",
+    "body": "Hi, we've built a new landing page and want the booking search widget on it. How do we add it? Thanks, Sarah"
+  },
+  "expected": {
+    "outcomes": ["answered"],
+    "must_include": ["embed.js"]
+  }
+}

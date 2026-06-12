@@ -1,0 +1,12 @@
+{
+  "name": "Underspecified: search not working",
+  "ticket": {
+    "subject": "Search broken",
+    "requester_name": "Priya Shah",
+    "requester_email": "priya@wanderluxe.example.com",
+    "body": "Search on our site isn't working properly. Can you fix it?"
+  },
+  "expected": {
+    "outcomes": ["clarified", "escalated"]
+  }
+}

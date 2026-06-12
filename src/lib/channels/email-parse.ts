@@ -1,0 +1,194 @@
+import sanitizeHtmlLib from "sanitize-html";
+
+// Pure email-parsing helpers (no env / no network) so they stay unit-testable.
+
+export type GmailHeader = { name: string; value: string };
+
+export type GmailMessagePart = {
+  mimeType?: string;
+  filename?: string;
+  headers?: GmailHeader[];
+  body?: { size?: number; data?: string; attachmentId?: string };
+  parts?: GmailMessagePart[];
+};
+
+export type GmailMessage = {
+  id: string;
+  threadId: string;
+  internalDate?: string;
+  payload?: GmailMessagePart;
+};
+
+export type AttachmentMeta = { filename: string; mimeType: string; size: number; attachmentId?: string };
+
+export type ParsedEmail = {
+  fromName: string | null;
+  fromEmail: string | null;
+  subject: string;
+  messageId: string | null;
+  inReplyTo: string | null;
+  references: string[];
+  text: string;
+  html: string | null;
+  attachments: AttachmentMeta[];
+  /** Result of the receiving server's SPF/DKIM/DMARC checks. */
+  senderVerified: "pass" | "fail" | "unknown";
+};
+
+export function decodeBase64Url(data: string): string {
+  return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8");
+}
+
+export function parseAddress(raw: string): { name: string | null; email: string | null } {
+  const angled = raw.match(/^\s*"?([^"<]*)"?\s*<([^>]+)>\s*$/);
+  if (angled) {
+    const name = angled[1].trim();
+    return { name: name || null, email: angled[2].trim().toLowerCase() };
+  }
+  const bare = raw.match(/[^\s@<>,;]+@[^\s@<>,;]+/);
+  return { name: null, email: bare ? bare[0].toLowerCase() : null };
+}
+
+function header(headers: GmailHeader[], name: string): string | null {
+  const found = headers.find((h) => h.name.toLowerCase() === name.toLowerCase());
+  return found?.value ?? null;
+}
+
+function findPart(part: GmailMessagePart | undefined, mimeType: string): GmailMessagePart | null {
+  if (!part) return null;
+  if (part.mimeType === mimeType && part.body?.data) return part;
+  for (const child of part.parts ?? []) {
+    const found = findPart(child, mimeType);
+    if (found) return found;
+  }
+  return null;
+}
+
+function collectAttachments(part: GmailMessagePart | undefined, out: AttachmentMeta[] = []): AttachmentMeta[] {
+  if (!part) return out;
+  if (part.filename && part.body?.attachmentId) {
+    out.push({
+      filename: part.filename,
+      mimeType: part.mimeType ?? "application/octet-stream",
+      size: part.body.size ?? 0,
+      attachmentId: part.body.attachmentId,
+    });
+  }
+  for (const child of part.parts ?? []) collectAttachments(child, out);
+  return out;
+}
+
+/** Ticket bodies are hostile input — strip everything but basic formatting. */
+export function sanitizeEmailHtml(html: string): string {
+  return sanitizeHtmlLib(html, {
+    allowedTags: ["p", "br", "a", "strong", "b", "em", "i", "u", "ul", "ol", "li", "blockquote", "pre", "code", "div", "span"],
+    allowedAttributes: { a: ["href"] },
+    allowedSchemes: ["http", "https", "mailto"],
+    transformTags: {
+      a: sanitizeHtmlLib.simpleTransform("a", { rel: "noopener noreferrer", target: "_blank" }),
+    },
+  });
+}
+
+export function htmlToText(html: string): string {
+  const stripped = sanitizeHtmlLib(html, { allowedTags: [], allowedAttributes: {} });
+  return stripped
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+const QUOTE_MARKERS = [
+  /^On .{5,200} wrote:\s*$/,
+  /^-{2,}\s*Original Message\s*-{2,}/i,
+  /^-{2,}\s*Forwarded message\s*-{2,}/i,
+  /^_{6,}\s*$/,
+  /^From:\s.+$/,
+  /^Le .{5,200} a écrit\s?:\s*$/,
+  /^Am .{5,200} schrieb .+:\s*$/,
+];
+
+/**
+ * Remove quoted history and trailing signatures before the body reaches the
+ * AI. Conservative: if stripping would leave nothing, the original is kept.
+ */
+export function stripQuotedReply(text: string): string {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  let cut = lines.length;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (QUOTE_MARKERS.some((re) => re.test(line))) {
+      cut = i;
+      break;
+    }
+    // A run of quoted lines that continues to the end is history, not content.
+    if (/^>/.test(line)) {
+      const rest = lines.slice(i);
+      const quoted = rest.filter((l) => /^\s*>/.test(l) || l.trim() === "").length;
+      if (quoted === rest.length) {
+        cut = i;
+        break;
+      }
+    }
+  }
+
+  let kept = lines.slice(0, cut);
+
+  // Trailing "-- " signature delimiter.
+  const sigIndex = kept.findIndex((l) => /^--\s*$/.test(l));
+  if (sigIndex > 0) kept = kept.slice(0, sigIndex);
+
+  const result = kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return result.length > 0 ? result : text.trim();
+}
+
+export function normaliseSubject(subject: string): string {
+  return subject
+    .replace(/^(\s*(re|fwd?|aw|sv)\s*:\s*)+/i, "")
+    .trim()
+    .toLowerCase();
+}
+
+function parseAuthenticationResults(headers: GmailHeader[]): "pass" | "fail" | "unknown" {
+  const value = header(headers, "Authentication-Results");
+  if (!value) return "unknown";
+  const spfPass = /spf=pass/i.test(value);
+  const dkimPass = /dkim=pass/i.test(value);
+  const dmarcFail = /dmarc=fail/i.test(value);
+  if (dmarcFail || (!spfPass && !dkimPass)) return "fail";
+  return spfPass || dkimPass ? "pass" : "unknown";
+}
+
+export function parseGmailMessage(message: GmailMessage): ParsedEmail {
+  const headers = message.payload?.headers ?? [];
+  const from = parseAddress(header(headers, "From") ?? "");
+
+  const textPart = findPart(message.payload, "text/plain");
+  const htmlPart = findPart(message.payload, "text/html");
+  const rawHtml = htmlPart?.body?.data ? decodeBase64Url(htmlPart.body.data) : null;
+
+  let text = textPart?.body?.data ? decodeBase64Url(textPart.body.data) : "";
+  if (!text && rawHtml) text = htmlToText(rawHtml);
+
+  const referencesRaw = header(headers, "References") ?? "";
+
+  return {
+    fromName: from.name,
+    fromEmail: from.email,
+    subject: header(headers, "Subject")?.trim() || "(no subject)",
+    messageId: header(headers, "Message-ID") ?? header(headers, "Message-Id"),
+    inReplyTo: header(headers, "In-Reply-To"),
+    references: referencesRaw.split(/\s+/).filter(Boolean),
+    text: stripQuotedReply(text),
+    html: rawHtml ? sanitizeEmailHtml(rawHtml) : null,
+    attachments: collectAttachments(message.payload),
+    senderVerified: parseAuthenticationResults(headers),
+  };
+}

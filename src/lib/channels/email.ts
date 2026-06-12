@@ -1,0 +1,128 @@
+import "server-only";
+import { db } from "@/lib/db/client";
+import { addMessage, audit, createTicket, findTicketByThreadKey, updateTicket } from "@/lib/db/queries";
+import type { Message, Ticket } from "@/lib/db/types";
+import { env } from "@/lib/env";
+import { parseGmailMessage, type GmailMessage } from "./email-parse";
+import { buildReplyMime, sendMessage } from "./gmail";
+
+// Email channel: Gmail message → ticket/message rows, and ticket reply → email.
+
+export type IngestResult = { ticket: Ticket; message: Message; createdTicket: boolean };
+
+export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<IngestResult | null> {
+  const parsed = parseGmailMessage(gmailMessage);
+
+  // Skip our own outbound mail and anything without a usable sender.
+  if (!parsed.fromEmail || parsed.fromEmail === env.supportEmail) return null;
+
+  let ticket = await findTicketByThreadKey(gmailMessage.threadId);
+  let createdTicket = false;
+
+  if (!ticket) {
+    const tags: string[] = [];
+    // Sender verification failed → the ticket still exists, but the AI must
+    // not act on it. Fail closed by escalating straight away.
+    const unverified = parsed.senderVerified === "fail";
+    if (unverified) tags.push("unverified-sender");
+
+    ticket = await createTicket({
+      requester_email: parsed.fromEmail,
+      requester_name: parsed.fromName,
+      channel: "email",
+      subject: parsed.subject,
+      email_thread_key: gmailMessage.threadId,
+      tags,
+      ...(unverified
+        ? { status: "escalated" as const, escalation_reason: "sender_verification_failed" }
+        : {}),
+    });
+    createdTicket = true;
+    await audit("system", "email-channel", "ticket.created", { type: "ticket", id: ticket.id }, {
+      channel: "email",
+      sender_verified: parsed.senderVerified,
+    });
+  } else if (ticket.status === "resolved" || ticket.status === "closed") {
+    // Customer replied after resolution — reopen.
+    ticket = await updateTicket(ticket.id, {
+      status: "new",
+      ai_resolved: false,
+      resolved_at: null,
+    });
+    await audit("system", "email-channel", "ticket.reopened", { type: "ticket", id: ticket.id });
+  }
+
+  const message = await addMessage({
+    ticket_id: ticket.id,
+    role: "customer",
+    author: parsed.fromEmail,
+    body_text: parsed.text,
+    body_html: parsed.html,
+    attachments: parsed.attachments.map((a) => ({ ...a })),
+    channel_meta: {
+      gmail_message_id: gmailMessage.id,
+      gmail_thread_id: gmailMessage.threadId,
+      message_id: parsed.messageId,
+      in_reply_to: parsed.inReplyTo,
+      references: parsed.references,
+      sender_verified: parsed.senderVerified,
+    },
+  });
+
+  return { ticket, message, createdTicket };
+}
+
+async function latestCustomerThreadMeta(ticketId: string): Promise<{ messageId: string | null; references: string[] }> {
+  const { data } = await db()
+    .from("messages")
+    .select("channel_meta")
+    .eq("ticket_id", ticketId)
+    .eq("role", "customer")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const meta = (data?.channel_meta ?? {}) as { message_id?: string | null; references?: string[] };
+  return { messageId: meta.message_id ?? null, references: meta.references ?? [] };
+}
+
+export async function sendTicketReply(
+  ticket: Ticket,
+  body: string,
+  opts: { role: "ai" | "human"; author: string },
+): Promise<Message> {
+  if (ticket.channel !== "email") throw new Error(`sendTicketReply: unsupported channel ${ticket.channel}`);
+
+  const { messageId, references } = await latestCustomerThreadMeta(ticket.id);
+  const subject = /^re:/i.test(ticket.subject) ? ticket.subject : `Re: ${ticket.subject}`;
+  const refs = [...references, ...(messageId ? [messageId] : [])];
+
+  const sent = await sendMessage(
+    buildReplyMime({
+      to: ticket.requester_email,
+      subject,
+      text: body,
+      inReplyTo: messageId,
+      references: refs,
+    }),
+    ticket.email_thread_key,
+  );
+
+  const message = await addMessage({
+    ticket_id: ticket.id,
+    role: opts.role,
+    author: opts.author,
+    body_text: body,
+    channel_meta: { gmail_message_id: sent.id, gmail_thread_id: sent.threadId, outbound: true },
+  });
+
+  if (!ticket.first_response_at) {
+    await updateTicket(ticket.id, { first_response_at: new Date().toISOString() });
+  }
+
+  await audit(opts.role === "ai" ? "ai" : "human", opts.author, "message.sent", {
+    type: "ticket",
+    id: ticket.id,
+  });
+
+  return message;
+}
