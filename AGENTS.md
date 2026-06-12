@@ -1,9 +1,9 @@
 # TG Support Desk — Build Brief for Claude Code
 
-**Project:** AI-first support desk replacing Freshdesk (working repo name: `tg-support-desk`)
+**Project:** AI-first support desk replacing Zendesk (working repo name: `tg-support-desk`)
 **Owner:** Andy Speight, CEO, Travelgenix
 **Date:** 11 June 2026
-**Status:** Brief approved → scaffold Phase 1
+**Status:** Phase 1 blocking decisions locked (12 Jun 2026) → scaffold Phase 1
 **Projects Airtable row:** `recXzOgLccwxylool` in base `appj9tksreHOwkhYg` / table `tblpyhPNhiQg3XkkT`
 
 ---
@@ -23,7 +23,7 @@ This repo follows the `tg-onboarding` / `tg-b2b-crm` pattern:
 
 ## 1. What this is and why it exists
 
-Travelgenix currently runs client support on Freshdesk. This project replaces it with a purpose-built, **AI-first support desk** where every incoming query is handled end-to-end by an AI agent wherever possible, and humans only ever see a ticket after the AI has tried, diagnosed, and prepared a handover.
+Travelgenix currently runs client support on Zendesk. This project replaces it with a purpose-built, **AI-first support desk** where every incoming query is handled end-to-end by an AI agent wherever possible, and humans only ever see a ticket after the AI has tried, diagnosed, and prepared a handover.
 
 Two facts shape the design:
 
@@ -41,17 +41,17 @@ Two facts shape the design:
 1. **≥50% true AI resolution within 60 days of Phase 1 live** (KB-answerable tickets), rising to ≥65% after Phase 3 diagnostics. "True resolution" = closed with no human reply, not reopened within 72h, and CSAT not negative.
 2. **First response < 60 seconds** on every channel, 24/7, in the client's language.
 3. **Escalated tickets become 2-minute jobs** — every handover includes diagnosis, steps tried, and a drafted reply.
-4. **Kill the Freshdesk subscription** once parallel-run confidence is established.
+4. **Kill the Zendesk subscription** once parallel-run confidence is established.
 5. **Support becomes a churn early-warning system** — ticket volume/sentiment surfaces on the customer record in the TG B2B CRM care programme.
 
 ## 3. Non-goals (v1)
 
 - **No voice/phone channel.** Email + widget first; WhatsApp is Phase 4.
-- **No ITIL/ITSM service management** (assets, change management, approvals). Freshdesk bloat we don't use.
+- **No ITIL/ITSM service management** (assets, change management, approvals). Zendesk bloat we don't use.
 - **No traveller-facing support.** B2B clients only until multi-tenant launch.
 - **No AI-handled billing or contractual commitments.** The AI never promises refunds, discounts, or contract changes — these escalate by policy.
 - **No marketplace/app ecosystem.** Integrations are first-party seams.
-- **No historic-ticket migration in Phase 1.** Export Freshdesk history for KB mining, but the desk starts clean (see Open Questions).
+- **No historic-ticket migration in Phase 1.** The desk starts clean — no Zendesk import; whether to import history/solutions is reassessed against the live support queue once the desk is built (decided 12 Jun 2026).
 
 ---
 
@@ -87,7 +87,7 @@ All tables carry `tenant_id` (default: travelgenix).
 
 - **tickets** — id, tenant_id, client_id (Airtable rec id), requester_name/email, channel (email|widget|portal|whatsapp), subject, status (new|ai_working|waiting_on_customer|escalated|resolved|closed), priority, assignee, tags[], sla_policy_id, first_response_at, resolved_at, ai_resolved (bool), escalation_reason, csat_score, csat_comment, language.
 - **messages** — ticket_id, role (customer|ai|human|internal_note|system), body (raw + sanitised html), channel metadata, attachments[], created_at.
-- **kb_articles** — title, body, source (manual|scan|ticket_mined|freshdesk_import), status (draft|review|published), embedding (pgvector), tenant_id, updated_at.
+- **kb_articles** — title, body, source (manual|scan|ticket_mined|zendesk_import), status (draft|review|published), embedding (pgvector), tenant_id, updated_at.
 - **ai_events** — ticket_id, turn, tools_called (jsonb), confidence, outcome (answered|action_taken|escalated|clarified), latency, tokens. This table powers analytics and the improvement loop.
 - **canned_responses**, **sla_policies**, **tags**, **audit_log** (every AI action and every human admin action).
 
@@ -95,7 +95,7 @@ All tables carry `tenant_id` (default: travelgenix).
 
 ## 5. Channels (phased)
 
-1. **Email-to-ticket (P0).** `support@` inbound → ticket created/threaded → AI resolution loop runs → reply sent from the same address. Threading by Message-ID/References headers + subject hash fallback. **Decision for Andy:** Gmail API polling on the existing Workspace mailbox (fastest, reuses the connection already powering the integration-error pipeline) vs a dedicated inbound-parse provider. Recommend Gmail polling for Phase 1, upgrade later if volume demands. Verify sender, strip signatures/quoted history before feeding the AI.
+1. **Email-to-ticket (P0).** `support@` inbound → ticket created/threaded → AI resolution loop runs → reply sent from the same address. Threading by Message-ID/References headers + subject hash fallback. **Decided (12 Jun 2026):** Gmail API polling on the existing Google Workspace mailbox (fastest, reuses the connection already powering the integration-error pipeline); upgrade to a dedicated inbound-parse provider later if volume demands. Verify sender, strip signatures/quoted history before feeding the AI.
 2. **In-dashboard support widget (P0/P2).** Embedded in the client dashboard behind SSO — the AI knows exactly who is asking before the first message. Fork the Luna Chat `widget-core` architecture (IIFE, shadow-rooted, session persistence) rather than building new; strip concierge features, keep translation.
 3. **Public KB portal (P3).** `support.travelify.io` — searchable published KB + ticket submission for logged-out contacts.
 4. **WhatsApp (P4).** Reuse the 360dialog Phase 1 inbound work from the Luna Chat omnichannel project.
@@ -155,7 +155,7 @@ A server-side agentic loop. Every inbound customer message triggers it. The agen
 2. **Review queue** in the app: Andy/agents approve, edit, or bin. Published articles are embedded immediately and start answering the next ticket.
 3. **Weekly gap digest** (email or in-app): AI resolution rate trend, top escalation reasons, intents with repeated failures, KB candidates waiting for review.
 
-KB seeding at launch: Freshdesk solutions export + existing Knowledge Bot Airtable KB + scan of the current support site + mined Q&A from historic ticket export (anonymised). Embed everything; mark provenance in `source`.
+KB seeding at launch: existing Knowledge Bot Airtable KB + scan of the current support site. No Zendesk import in Phase 1 (decided 12 Jun 2026) — revisit importing solutions/historic tickets once the desk is live and the queue is visible. Embed everything; mark provenance in `source`.
 
 ## 9. Analytics
 
@@ -178,13 +178,13 @@ Dashboard at `/analytics`: true AI resolution rate (definition in Goals), resolu
 
 ## 11. Phasing
 
-**Phase 1 — Core loop (the trial slice).** Supabase schema + RLS; email-to-ticket; AI resolution loop with the three Phase 1 tools; agent inbox + ticket view (no 360 panel yet); KB ingest + review queue (seeded); send replies by email. **Exit test:** real tickets to `support@` are answered by the AI, escalations are worked entirely inside the app, Freshdesk untouched for new tickets during a parallel run.
+**Phase 1 — Core loop (the trial slice).** Supabase schema + RLS; email-to-ticket; AI resolution loop with the three Phase 1 tools; agent inbox + ticket view (no 360 panel yet); KB ingest + review queue (seeded); send replies by email. **Exit test:** real tickets to `support@` are answered by the AI, escalations are worked entirely inside the app, Zendesk untouched for new tickets during a parallel run.
 
 **Phase 2 — Channels + 360.** In-dashboard widget channel (SSO identity); Customer 360 panel with Airtable live + CRM/Luna seams stubbed; copilot; CSAT; SLA policies + breach view; analytics v1.
 
 **Phase 3 — The differentiator.** Diagnostic tools (integration error feed, deeplink validation, endpoint health); gated action tools + audit; self-improvement loop automated; weekly digest; public KB portal.
 
-**Phase 4 — Expansion.** WhatsApp via 360dialog; CRM two-way sync live (signals out, care status in); multi-tenant settings surface; Freshdesk cancelled.
+**Phase 4 — Expansion.** WhatsApp via 360dialog; CRM two-way sync live (signals out, care status in); multi-tenant settings surface; Zendesk cancelled.
 
 Each phase ends with: security checklist pass, eval harness pass, Projects Airtable row updated.
 
@@ -192,13 +192,13 @@ Each phase ends with: security checklist pass, eval harness pass, Projects Airta
 
 ## 12. Open questions for Andy
 
-**Blocking Phase 1:**
-1. Product name? (Working: TG Support Desk. "Luna Desk" is reserved as a CRM name candidate.)
-2. `support@` address + mailbox host — Google Workspace? Confirms the Gmail-polling recommendation.
-3. What does Freshdesk hold today — can we export solutions/KB and historic tickets for seeding?
-4. Who are the human agents (names/count) for seats and assignment?
+**Answered 12 Jun 2026 (Phase 1 unblocked):**
+1. **Product name:** TG Support Desk confirmed. ("Luna Desk" stays reserved as a CRM name candidate.)
+2. **Mailbox:** `support@` on Google Workspace — confirms Gmail API polling for Phase 1.
+3. **Incumbent platform:** Zendesk, not Freshdesk (brief corrected throughout). No export — the desk starts clean; importing solutions/historic tickets is reassessed against the live support queue once the desk is built.
+4. **Agents:** 3+ seats; names/emails to follow before the parallel run.
 
-**Non-blocking:**
+**Non-blocking, still open:**
 5. SLA targets per priority (proposed defaults: P1 first response 1h / resolve 8h; P2 4h/24h; P3 8h/72h — business hours, AI responds instantly regardless).
-6. Parallel-run length before Freshdesk is cancelled (proposed: 4 weeks or 200 tickets, whichever is later).
-7. Default ticket categories/tags to start with (propose mining the Freshdesk export).
+6. Parallel-run length before Zendesk is cancelled (proposed: 4 weeks or 200 tickets, whichever is later).
+7. Default ticket categories/tags (no export to mine — propose starting minimal and letting the weekly gap digest surface categories).
