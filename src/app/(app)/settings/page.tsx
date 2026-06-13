@@ -1,11 +1,21 @@
-import { listSlaPolicies } from "@/lib/db/queries";
+import { listCannedResponses, listSlaPolicies, listTags } from "@/lib/db/queries";
+import {
+  createCannedAction,
+  createTagAction,
+  deleteCannedAction,
+  deleteTagAction,
+} from "./actions";
 
 function show(value: string | undefined): string {
   return value && value.length > 0 ? value : "not configured";
 }
 
 export default async function SettingsPage() {
-  const slaPolicies = await listSlaPolicies().catch(() => []);
+  const [slaPolicies, canned, tags] = await Promise.all([
+    listSlaPolicies().catch(() => []),
+    listCannedResponses().catch(() => []),
+    listTags().catch(() => []),
+  ]);
   const agents = (process.env.AGENT_EMAILS ?? "")
     .split(",")
     .map((e) => e.trim())
@@ -15,9 +25,80 @@ export default async function SettingsPage() {
     <div className="mx-auto max-w-2xl p-6">
       <h1 className="text-lg font-semibold">Settings</h1>
       <p className="mt-1 text-sm text-zinc-500">
-        Read-only in Phase 1 — values come from environment configuration. Editable settings arrive in
-        Phase 2 alongside the multi-tenant surface.
+        Channel, AI and SLA values come from environment configuration. Canned responses and tags are
+        editable here.
       </p>
+
+      <section className="mt-6 rounded-lg border border-zinc-200 bg-white p-4">
+        <h2 className="text-sm font-semibold">Canned responses</h2>
+        <div className="mt-2 space-y-2">
+          {canned.length === 0 && <p className="text-sm text-zinc-400">None yet.</p>}
+          {canned.map((c) => (
+            <div key={c.id} className="flex items-start gap-2 rounded-md border border-zinc-100 p-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-zinc-800">{c.title}</p>
+                <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{c.body}</p>
+              </div>
+              <form action={deleteCannedAction}>
+                <input type="hidden" name="id" value={c.id} />
+                <button className="text-xs text-zinc-400 hover:text-red-600">Delete</button>
+              </form>
+            </div>
+          ))}
+        </div>
+        <form action={createCannedAction} className="mt-3 space-y-2 border-t border-zinc-100 pt-3">
+          <input
+            name="title"
+            required
+            placeholder="Title"
+            className="w-full rounded-md border border-zinc-200 px-2 py-1.5 text-sm focus:border-zinc-400 focus:outline-none"
+          />
+          <textarea
+            name="body"
+            required
+            rows={3}
+            placeholder="Response text…"
+            className="w-full resize-y rounded-md border border-zinc-200 p-2 text-sm focus:border-zinc-400 focus:outline-none"
+          />
+          <button className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700">
+            Add canned response
+          </button>
+        </form>
+      </section>
+
+      <section className="mt-4 rounded-lg border border-zinc-200 bg-white p-4">
+        <h2 className="text-sm font-semibold">Tags</h2>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {tags.length === 0 && <p className="text-sm text-zinc-400">None yet.</p>}
+          {tags.map((t) => (
+            <span key={t.id} className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-700">
+              {t.name}
+              <form action={deleteTagAction} className="inline">
+                <input type="hidden" name="id" value={t.id} />
+                <button className="text-zinc-400 hover:text-red-600" aria-label={`Delete tag ${t.name}`}>
+                  ×
+                </button>
+              </form>
+            </span>
+          ))}
+        </div>
+        <form action={createTagAction} className="mt-3 flex gap-2 border-t border-zinc-100 pt-3">
+          <input
+            name="name"
+            required
+            placeholder="new-tag-name"
+            className="flex-1 rounded-md border border-zinc-200 px-2 py-1.5 text-sm focus:border-zinc-400 focus:outline-none"
+          />
+          <input
+            name="color"
+            placeholder="colour (optional)"
+            className="w-32 rounded-md border border-zinc-200 px-2 py-1.5 text-sm focus:border-zinc-400 focus:outline-none"
+          />
+          <button className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700">
+            Add
+          </button>
+        </form>
+      </section>
 
       <section className="mt-6 rounded-lg border border-zinc-200 bg-white p-4">
         <h2 className="text-sm font-semibold">Agents</h2>

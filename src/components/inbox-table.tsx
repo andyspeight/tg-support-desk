@@ -1,0 +1,194 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import type { Ticket } from "@/lib/db/types";
+import { PriorityBadge, StatusBadge } from "@/components/status-badge";
+
+function timeAgo(iso: string): string {
+  const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+type Props = {
+  tickets: Ticket[];
+  bulkUpdate: (formData: FormData) => Promise<void>;
+};
+
+export function InboxTable({ tickets, bulkUpdate }: Props) {
+  const router = useRouter();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [focus, setFocus] = useState(0);
+  const [isPending, startTransition] = useTransition();
+  const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
+
+  const toggle = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const runBulk = useCallback(
+    (op: string, value?: string) => {
+      const ids = selected.size > 0 ? [...selected] : tickets[focus] ? [tickets[focus].id] : [];
+      if (!ids.length) return;
+      const fd = new FormData();
+      fd.set("ids", ids.join(","));
+      fd.set("op", op);
+      if (value) fd.set("value", value);
+      startTransition(async () => {
+        await bulkUpdate(fd);
+        setSelected(new Set());
+      });
+    },
+    [selected, tickets, focus, bulkUpdate],
+  );
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT") return;
+      if (!tickets.length) return;
+
+      switch (e.key) {
+        case "j":
+          e.preventDefault();
+          setFocus((f) => Math.min(f + 1, tickets.length - 1));
+          break;
+        case "k":
+          e.preventDefault();
+          setFocus((f) => Math.max(f - 1, 0));
+          break;
+        case "x":
+          e.preventDefault();
+          if (tickets[focus]) toggle(tickets[focus].id);
+          break;
+        case "Enter":
+          e.preventDefault();
+          if (tickets[focus]) router.push(`/ticket/${tickets[focus].id}`);
+          break;
+        case "a":
+          e.preventDefault();
+          runBulk("assign_me");
+          break;
+        case "r":
+          e.preventDefault();
+          runBulk("status", "resolved");
+          break;
+        case "e":
+          e.preventDefault();
+          runBulk("status", "escalated");
+          break;
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tickets, focus, toggle, runBulk, router]);
+
+  useEffect(() => {
+    rowRefs.current[focus]?.scrollIntoView({ block: "nearest" });
+  }, [focus]);
+
+  if (tickets.length === 0) {
+    return <p className="mt-10 text-center text-sm text-zinc-400">No tickets in this view.</p>;
+  }
+
+  const count = selected.size;
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center gap-2 border-b border-zinc-100 py-2 text-xs text-zinc-500">
+        {count > 0 ? (
+          <>
+            <span className="font-medium text-zinc-700">{count} selected</span>
+            <button onClick={() => runBulk("assign_me")} disabled={isPending} className="rounded border border-zinc-300 bg-white px-2 py-1 hover:bg-zinc-50">
+              Assign to me
+            </button>
+            <button onClick={() => runBulk("status", "resolved")} disabled={isPending} className="rounded border border-zinc-300 bg-white px-2 py-1 hover:bg-zinc-50">
+              Resolve
+            </button>
+            <button onClick={() => runBulk("status", "escalated")} disabled={isPending} className="rounded border border-zinc-300 bg-white px-2 py-1 hover:bg-zinc-50">
+              Escalate
+            </button>
+            <button onClick={() => runBulk("status", "closed")} disabled={isPending} className="rounded border border-zinc-300 bg-white px-2 py-1 hover:bg-zinc-50">
+              Close
+            </button>
+            <button onClick={() => setSelected(new Set())} className="ml-auto text-zinc-400 hover:text-zinc-700">
+              Clear
+            </button>
+          </>
+        ) : (
+          <span className="text-zinc-400">
+            Keyboard: <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>x</kbd> select · <kbd>↵</kbd> open · <kbd>a</kbd> assign me ·{" "}
+            <kbd>r</kbd> resolve · <kbd>e</kbd> escalate
+          </span>
+        )}
+      </div>
+
+      <table className="w-full table-fixed text-sm">
+        <thead>
+          <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
+            <th className="w-8 py-2"></th>
+            <th className="w-14 py-2 font-medium">#</th>
+            <th className="py-2 font-medium">Subject</th>
+            <th className="w-44 py-2 font-medium">Requester</th>
+            <th className="w-36 py-2 font-medium">Status</th>
+            <th className="w-12 py-2 font-medium">Pri</th>
+            <th className="w-32 py-2 font-medium">Assignee</th>
+            <th className="w-20 py-2 font-medium">Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tickets.map((ticket, i) => (
+            <tr
+              key={ticket.id}
+              ref={(el) => {
+                rowRefs.current[i] = el;
+              }}
+              onClick={() => setFocus(i)}
+              className={`border-t border-zinc-100 ${i === focus ? "bg-violet-50/60" : "hover:bg-white"} ${
+                selected.has(ticket.id) ? "bg-violet-50" : ""
+              }`}
+            >
+              <td className="py-2.5 pl-1">
+                <input
+                  type="checkbox"
+                  checked={selected.has(ticket.id)}
+                  onChange={() => toggle(ticket.id)}
+                  aria-label={`Select ticket ${ticket.reference}`}
+                />
+              </td>
+              <td className="py-2.5 text-zinc-400">#{ticket.reference}</td>
+              <td className="truncate py-2.5 pr-4">
+                <Link href={`/ticket/${ticket.id}`} className="font-medium text-zinc-900 hover:underline">
+                  {ticket.subject}
+                </Link>
+                {ticket.ai_resolved && (
+                  <span className="ml-2 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-600">AI</span>
+                )}
+              </td>
+              <td className="truncate py-2.5 text-zinc-500">{ticket.requester_name ?? ticket.requester_email}</td>
+              <td className="py-2.5">
+                <StatusBadge status={ticket.status} />
+              </td>
+              <td className="py-2.5">
+                <PriorityBadge priority={ticket.priority} />
+              </td>
+              <td className="truncate py-2.5 text-zinc-500">{ticket.assignee ?? "—"}</td>
+              <td className="py-2.5 text-zinc-400">{timeAgo(ticket.updated_at)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

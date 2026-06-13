@@ -131,6 +131,36 @@ export async function inboxCounts(agentEmail: string): Promise<Record<InboxView,
   };
 }
 
+export type BulkPatch = Omit<TablesUpdate<"tickets">, "tags"> & { addTag?: string };
+
+/** Apply one change to many tickets (tenant-scoped). addTag unions per-row. */
+export async function bulkUpdateTickets(ids: string[], patch: BulkPatch): Promise<void> {
+  if (!ids.length) return;
+  const client = db();
+  const { addTag, ...rest } = patch;
+
+  if (Object.keys(rest).length > 0) {
+    const { error } = await client.from("tickets").update(rest).eq("tenant_id", env.tenantId).in("id", ids);
+    if (error) throw new Error(`bulkUpdateTickets: ${error.message}`);
+  }
+
+  if (addTag) {
+    const { data, error } = await client
+      .from("tickets")
+      .select("id, tags")
+      .eq("tenant_id", env.tenantId)
+      .in("id", ids);
+    if (error) throw new Error(`bulkUpdateTickets(tags): ${error.message}`);
+    await Promise.all(
+      (data ?? [])
+        .filter((row) => !row.tags.includes(addTag))
+        .map((row) =>
+          client.from("tickets").update({ tags: [...row.tags, addTag] }).eq("id", row.id),
+        ),
+    );
+  }
+}
+
 export async function mergeTickets(sourceId: string, targetId: string, actor: string): Promise<Ticket> {
   if (sourceId === targetId) throw new Error("mergeTickets: cannot merge a ticket into itself");
   const client = db();
@@ -411,6 +441,37 @@ export async function listCannedResponses(): Promise<CannedResponse[]> {
     .eq("tenant_id", env.tenantId)
     .order("title");
   return unwrap(result, "listCannedResponses");
+}
+
+export async function createCannedResponse(title: string, body: string, createdBy: string): Promise<void> {
+  const { error } = await db()
+    .from("canned_responses")
+    .insert({ tenant_id: env.tenantId, title, body, created_by: createdBy });
+  if (error) throw new Error(`createCannedResponse: ${error.message}`);
+}
+
+export async function deleteCannedResponse(id: string): Promise<void> {
+  const { error } = await db().from("canned_responses").delete().eq("tenant_id", env.tenantId).eq("id", id);
+  if (error) throw new Error(`deleteCannedResponse: ${error.message}`);
+}
+
+export async function listTags(): Promise<{ id: string; name: string; color: string | null }[]> {
+  const result = await db().from("tags").select("id, name, color").eq("tenant_id", env.tenantId).order("name");
+  return unwrap(result, "listTags");
+}
+
+export async function createTag(name: string, color: string | null): Promise<void> {
+  const { error } = await db()
+    .from("tags")
+    .insert({ tenant_id: env.tenantId, name, color })
+    .select()
+    .single();
+  if (error) throw new Error(`createTag: ${error.message}`);
+}
+
+export async function deleteTag(id: string): Promise<void> {
+  const { error } = await db().from("tags").delete().eq("tenant_id", env.tenantId).eq("id", id);
+  if (error) throw new Error(`deleteTag: ${error.message}`);
 }
 
 export async function listSlaPolicies(): Promise<SlaPolicy[]> {
