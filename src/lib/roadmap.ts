@@ -70,7 +70,7 @@ export const ROADMAP: RoadmapStage[] = [
       { label: "Spam controls", status: "done" },
       { label: "Collision detection + realtime inbox", status: "todo" },
       { label: "Agent notifications", status: "todo" },
-      { label: "Ops alerting + runbook", status: "todo" },
+      { label: "Ops runbook (alerting needs a live channel)", status: "in_progress" },
     ],
   },
   {
