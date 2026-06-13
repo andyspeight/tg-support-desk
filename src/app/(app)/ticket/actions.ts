@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { redirect } from "next/navigation";
 import { requireAgent } from "@/lib/auth";
-import { addMessage, audit, getTicket, updateTicket } from "@/lib/db/queries";
+import { addMessage, audit, getTicket, getTicketByReference, mergeTickets, updateTicket } from "@/lib/db/queries";
 import { sendTicketReply } from "@/lib/channels/email";
 import { resolveTicket } from "@/lib/ai/resolve";
 
@@ -77,6 +78,24 @@ export async function updateTicketAction(formData: FormData): Promise<void> {
     await audit("human", session.email, "ticket.updated", { type: "ticket", id: input.ticketId }, patch);
   }
   refresh(input.ticketId);
+}
+
+const mergeSchema = z.object({
+  ticketId: z.string().uuid(),
+  targetRef: z.coerce.number().int().positive(),
+});
+
+export async function mergeTicketAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const { ticketId, targetRef } = mergeSchema.parse(Object.fromEntries(formData));
+
+  const target = await getTicketByReference(targetRef);
+  if (!target) throw new Error(`No ticket #${targetRef} found`);
+  if (target.id === ticketId) throw new Error("Cannot merge a ticket into itself");
+
+  await mergeTickets(ticketId, target.id, session.email);
+  revalidatePath("/inbox");
+  redirect(`/ticket/${target.id}`);
 }
 
 export async function runAiAction(formData: FormData): Promise<void> {

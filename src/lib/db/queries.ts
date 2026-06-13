@@ -51,6 +51,17 @@ export async function getTicketWithMessages(id: string): Promise<{ ticket: Ticke
   return { ticket, messages: unwrap(result, "getTicketWithMessages") };
 }
 
+export async function getTicketByReference(reference: number): Promise<Ticket | null> {
+  const { data, error } = await db()
+    .from("tickets")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .eq("reference", reference)
+    .maybeSingle();
+  if (error) throw new Error(`getTicketByReference: ${error.message}`);
+  return data;
+}
+
 export async function findTicketByThreadKey(threadKey: string): Promise<Ticket | null> {
   const { data, error } = await db()
     .from("tickets")
@@ -117,6 +128,102 @@ export async function inboxCounts(agentEmail: string): Promise<Record<InboxView,
     waiting: waiting.count ?? 0,
     open: open.count ?? 0,
     all: all.count ?? 0,
+  };
+}
+
+export async function mergeTickets(sourceId: string, targetId: string, actor: string): Promise<Ticket> {
+  if (sourceId === targetId) throw new Error("mergeTickets: cannot merge a ticket into itself");
+  const client = db();
+  const [source, target] = await Promise.all([getTicket(sourceId), getTicket(targetId)]);
+  if (!source || !target) throw new Error("mergeTickets: source or target not found");
+
+  // Move every message across, then carry tags + cc, then close the source.
+  const moved = await client.from("messages").update({ ticket_id: targetId }).eq("ticket_id", sourceId);
+  if (moved.error) throw new Error(`mergeTickets(move): ${moved.error.message}`);
+
+  const tags = [...new Set([...target.tags, ...source.tags])];
+  const cc = [...new Set([...target.cc_emails, ...source.cc_emails])];
+  const merged = await updateTicket(targetId, { tags, cc_emails: cc });
+
+  await addMessage({
+    ticket_id: targetId,
+    role: "internal_note",
+    author: actor,
+    body_text: `Merged in ticket #${source.reference} (${source.subject}).`,
+  });
+  await updateTicket(sourceId, {
+    status: "closed",
+    resolved_at: source.resolved_at ?? new Date().toISOString(),
+    escalation_reason: null,
+  });
+  await addMessage({
+    ticket_id: sourceId,
+    role: "internal_note",
+    author: actor,
+    body_text: `Merged into ticket #${target.reference}. Conversation continues there.`,
+  });
+  await audit("human", actor, "ticket.merged", { type: "ticket", id: sourceId }, { into: targetId });
+  return merged;
+}
+
+export type SearchResults = {
+  tickets: Ticket[];
+  messages: { ticketId: string; reference: number; subject: string; snippet: string; created_at: string }[];
+  kb: { id: string; title: string; status: KbStatus }[];
+};
+
+export async function searchAll(query: string): Promise<SearchResults> {
+  const trimmed = query.trim();
+  if (!trimmed) return { tickets: [], messages: [], kb: [] };
+  const client = db();
+  const tenant = env.tenantId;
+  const refMatch = trimmed.match(/^#?(\d+)$/);
+
+  let ticketQuery = client.from("tickets").select().eq("tenant_id", tenant).limit(25);
+  ticketQuery = refMatch
+    ? ticketQuery.eq("reference", Number(refMatch[1]))
+    : ticketQuery.or(`subject.ilike.%${trimmed}%,requester_email.ilike.%${trimmed}%,requester_name.ilike.%${trimmed}%`);
+
+  const [tickets, messages, kb] = await Promise.all([
+    ticketQuery,
+    client
+      .from("messages")
+      .select("ticket_id, body_text, created_at, tickets!inner(reference, subject, tenant_id)")
+      .eq("tickets.tenant_id", tenant)
+      .textSearch("body_fts", trimmed, { type: "websearch" })
+      .order("created_at", { ascending: false })
+      .limit(25),
+    client
+      .from("kb_articles")
+      .select("id, title, status")
+      .eq("tenant_id", tenant)
+      .textSearch("body_fts", trimmed, { type: "websearch" })
+      .limit(25),
+  ]);
+
+  if (tickets.error) throw new Error(`searchAll(tickets): ${tickets.error.message}`);
+
+  type MessageHit = {
+    ticket_id: string;
+    body_text: string;
+    created_at: string;
+    tickets: { reference: number; subject: string } | { reference: number; subject: string }[] | null;
+  };
+  const messageHits = ((messages.data as MessageHit[] | null) ?? []).map((m) => {
+    const t = Array.isArray(m.tickets) ? m.tickets[0] : m.tickets;
+    return {
+      ticketId: m.ticket_id,
+      reference: t?.reference ?? 0,
+      subject: t?.subject ?? "",
+      snippet: m.body_text.slice(0, 200),
+      created_at: m.created_at,
+    };
+  });
+
+  return {
+    tickets: tickets.data ?? [],
+    messages: messageHits,
+    kb: kb.data ?? [],
   };
 }
 

@@ -30,6 +30,7 @@ export type ParsedEmail = {
   references: string[];
   text: string;
   html: string | null;
+  cc: string[];
   attachments: AttachmentMeta[];
   /** Result of the receiving server's SPF/DKIM/DMARC checks. */
   senderVerified: "pass" | "fail" | "unknown";
@@ -39,6 +40,17 @@ export type ParsedEmail = {
 
 export function decodeBase64Url(data: string): string {
   return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8");
+}
+
+/** Parse a comma-separated address-list header (To/Cc) into unique emails. */
+export function parseAddressList(raw: string | null): string[] {
+  if (!raw) return [];
+  const seen = new Set<string>();
+  for (const part of raw.split(",")) {
+    const { email } = parseAddress(part);
+    if (email) seen.add(email);
+  }
+  return [...seen];
 }
 
 export function parseAddress(raw: string): { name: string | null; email: string | null } {
@@ -213,6 +225,7 @@ export function parseGmailMessage(message: GmailMessage): ParsedEmail {
     references: referencesRaw.split(/\s+/).filter(Boolean),
     text: stripQuotedReply(text),
     html: rawHtml ? sanitizeEmailHtml(rawHtml) : null,
+    cc: parseAddressList(header(headers, "Cc")).filter((e) => e !== from.email),
     attachments: collectAttachments(message.payload),
     senderVerified: parseAuthenticationResults(headers),
     isAutoReply: detectAutoReply(headers, subject, fromRaw),

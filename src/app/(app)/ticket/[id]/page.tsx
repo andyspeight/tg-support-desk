@@ -7,7 +7,7 @@ import type { Message } from "@/lib/db/types";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
-import { addNoteAction, runAiAction, sendReplyAction, updateTicketAction } from "../actions";
+import { addNoteAction, mergeTicketAction, runAiAction, sendReplyAction, updateTicketAction } from "../actions";
 
 const ROLE_STYLES: Record<Message["role"], { label: string; className: string }> = {
   customer: { label: "Customer", className: "border-zinc-200 bg-white" },
@@ -161,10 +161,29 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           )}
         </div>
 
+        <form action={mergeTicketAction} className="border-t border-zinc-100 pt-3">
+          <label className="text-xs font-medium text-zinc-500">Merge into ticket #</label>
+          <div className="mt-1 flex gap-2">
+            <input
+              name="targetRef"
+              inputMode="numeric"
+              placeholder="ref"
+              className="w-20 rounded-md border border-zinc-200 px-2 py-1.5 text-sm"
+            />
+            <input type="hidden" name="ticketId" value={ticket.id} />
+            <button className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50">
+              Merge
+            </button>
+          </div>
+          <p className="mt-1 text-[11px] text-zinc-400">Moves this conversation into the target and closes this one.</p>
+        </form>
+
         <div className="text-xs text-zinc-400">
+          <p>Intent: {ticket.intent ?? "—"}</p>
           <p>Language: {ticket.language ?? "—"}</p>
           <p>AI resolved: {ticket.ai_resolved ? "yes" : "no"}</p>
           <p>First response: {ticket.first_response_at ? formatDateTime(ticket.first_response_at) : "—"}</p>
+          {ticket.cc_emails.length > 0 && <p>CC: {ticket.cc_emails.join(", ")}</p>}
         </div>
       </aside>
     </div>

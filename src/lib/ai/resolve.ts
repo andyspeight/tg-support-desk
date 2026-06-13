@@ -1,6 +1,7 @@
 import "server-only";
 import { runResolutionAgent } from "./agent";
 import { mandatoryEscalation } from "./guardrails";
+import { classifyTicket } from "./triage";
 import { embedQuery } from "./embeddings";
 import type { AgentOutcome, AgentRunResult, TicketContext, ToolExecutors } from "./types";
 import {
@@ -63,6 +64,7 @@ export async function resolveTicket(
 
   try {
     ticket = await ensureClientMatch(ticket);
+    ticket = await applyTriage(ticket, latestCustomer.body_text);
 
     // Deterministic pre-check: commercial/legal/human-request topics never
     // reach the model — straight to escalation with a holding reply.
@@ -95,6 +97,30 @@ export async function resolveTicket(
     await failSafeEscalate(ticket, error);
     throw error;
   }
+}
+
+// Triage runs once per ticket (guarded on intent === null). Sets intent + tag,
+// fills language if unknown, and raises priority off the p3 default — never
+// downgrades a priority an agent set.
+async function applyTriage(ticket: Ticket, body: string): Promise<Ticket> {
+  if (ticket.intent) return ticket;
+
+  const triage = await classifyTicket({
+    subject: ticket.subject,
+    body,
+    apiKey: env.anthropicApiKey,
+    model: env.utilityModel,
+  });
+  if (!triage) return ticket;
+
+  const intentTag = `intent:${triage.intent}`;
+  const patch: Parameters<typeof updateTicket>[1] = { intent: triage.intent };
+  if (!ticket.tags.includes(intentTag)) patch.tags = [...ticket.tags, intentTag];
+  if (!ticket.language) patch.language = triage.language;
+  if (ticket.priority === "p3" && triage.priority !== "p3") patch.priority = triage.priority;
+
+  await audit("ai", AI_ACTOR, "ai.triaged", { type: "ticket", id: ticket.id }, { ...triage });
+  return updateTicket(ticket.id, patch);
 }
 
 async function ensureClientMatch(ticket: Ticket): Promise<Ticket> {

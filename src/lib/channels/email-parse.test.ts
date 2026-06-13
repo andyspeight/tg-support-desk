@@ -3,6 +3,7 @@ import {
   detectAutoReply,
   normaliseSubject,
   parseAddress,
+  parseAddressList,
   parseGmailMessage,
   stripQuotedReply,
   type GmailMessage,
@@ -40,6 +41,18 @@ describe("parseAddress", () => {
 
   it("parses bare addresses", () => {
     expect(parseAddress("tom@baker.example.com")).toEqual({ name: null, email: "tom@baker.example.com" });
+  });
+});
+
+describe("parseAddressList", () => {
+  it("parses a mixed Cc header into unique lowercased emails", () => {
+    expect(
+      parseAddressList('"Booking Team" <team@sunshine.example.com>, ops@sunshine.example.com, team@sunshine.example.com'),
+    ).toEqual(["team@sunshine.example.com", "ops@sunshine.example.com"]);
+  });
+
+  it("returns empty for a null header", () => {
+    expect(parseAddressList(null)).toEqual([]);
   });
 });
 

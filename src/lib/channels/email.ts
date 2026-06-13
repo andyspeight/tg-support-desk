@@ -39,6 +39,7 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
       channel: "email",
       subject: parsed.subject,
       email_thread_key: gmailMessage.threadId,
+      cc_emails: parsed.cc.filter((e) => e !== env.supportEmail),
       tags,
       ...(unverified
         ? { status: "escalated" as const, escalation_reason: "sender_verification_failed" }
@@ -59,6 +60,14 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
       resolved_at: null,
     });
     await audit("system", "email-channel", "ticket.reopened", { type: "ticket", id: ticket.id });
+  }
+
+  // Union any newly-seen CC recipients onto an existing ticket.
+  if (!createdTicket && parsed.cc.length) {
+    const merged = [...new Set([...ticket.cc_emails, ...parsed.cc])].filter((e) => e !== env.supportEmail);
+    if (merged.length !== ticket.cc_emails.length) {
+      ticket = await updateTicket(ticket.id, { cc_emails: merged });
+    }
   }
 
   const message = await addMessage({
@@ -109,6 +118,7 @@ export async function sendTicketReply(
   const sent = await sendMessage(
     buildReplyMime({
       to: ticket.requester_email,
+      cc: ticket.cc_emails.filter((e) => e !== ticket.requester_email && e !== env.supportEmail),
       subject,
       text: body,
       inReplyTo: messageId,

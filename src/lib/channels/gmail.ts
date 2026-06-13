@@ -61,6 +61,7 @@ function encodeHeaderWord(value: string): string {
 
 export function buildReplyMime(input: {
   to: string;
+  cc?: string[];
   subject: string;
   text: string;
   inReplyTo?: string | null;
@@ -75,6 +76,7 @@ export function buildReplyMime(input: {
     'Content-Type: text/plain; charset="UTF-8"',
     "Content-Transfer-Encoding: base64",
   ];
+  if (input.cc && input.cc.length) headers.splice(2, 0, `Cc: ${input.cc.join(", ")}`);
   if (input.inReplyTo) headers.push(`In-Reply-To: ${input.inReplyTo}`);
   if (input.references?.length) headers.push(`References: ${input.references.join(" ")}`);
 
