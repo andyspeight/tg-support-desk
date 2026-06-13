@@ -9,6 +9,12 @@ import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
 import { addNoteAction, mergeTicketAction, runAiAction, sendReplyAction, updateTicketAction } from "../actions";
+import {
+  copilotDraftAction,
+  copilotRephraseAction,
+  copilotSummariseAction,
+  copilotTranslateAction,
+} from "../copilot-actions";
 
 const ROLE_STYLES: Record<Message["role"], { label: string; className: string }> = {
   customer: { label: "Customer", className: "border-zinc-200 bg-white" },
@@ -139,7 +145,18 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         </div>
 
         <div className="border-t border-zinc-200 bg-zinc-50 p-4">
-          <ReplyBox ticketId={ticket.id} canned={canned} sendReply={sendReplyAction} addNote={addNoteAction} />
+          <ReplyBox
+            ticketId={ticket.id}
+            canned={canned}
+            sendReply={sendReplyAction}
+            addNote={addNoteAction}
+            copilot={{
+              draft: copilotDraftAction,
+              summarise: copilotSummariseAction,
+              rephrase: copilotRephraseAction,
+              translate: copilotTranslateAction,
+            }}
+          />
         </div>
       </div>
 

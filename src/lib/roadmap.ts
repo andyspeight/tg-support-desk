@@ -83,7 +83,7 @@ export const ROADMAP: RoadmapStage[] = [
       { label: "SLA engine + business hours + breach view", status: "done" },
       { label: "In-dashboard widget channel (SSO, widget-core fork)", status: "todo" },
       { label: "Customer 360 panel (Airtable + CRM + Luna + history)", status: "todo" },
-      { label: "Agent copilot (draft / rephrase / summarise / translate)", status: "todo" },
+      { label: "Agent copilot (draft / rephrase / summarise / translate)", status: "done" },
     ],
   },
   {
