@@ -163,6 +163,27 @@ export function stripQuotedReply(text: string): string {
   return result.length > 0 ? result : text.trim();
 }
 
+/**
+ * Match an email against blocklist patterns. A pattern is either an exact
+ * address (case-insensitive) or a domain rule beginning with "@" that matches
+ * any address at (or under a subdomain of) that domain.
+ */
+export function matchesBlocklist(email: string, patterns: string[]): boolean {
+  const lower = email.toLowerCase().trim();
+  const domain = lower.split("@")[1] ?? "";
+  for (const raw of patterns) {
+    const pattern = raw.toLowerCase().trim();
+    if (!pattern) continue;
+    if (pattern.startsWith("@")) {
+      const d = pattern.slice(1);
+      if (domain === d || domain.endsWith(`.${d}`)) return true;
+    } else if (pattern === lower) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function normaliseSubject(subject: string): string {
   return subject
     .replace(/^(\s*(re|fwd?|aw|sv)\s*:\s*)+/i, "")

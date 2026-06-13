@@ -121,6 +121,38 @@ export type Database = {
           },
         ]
       }
+      blocked_senders: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          pattern: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          pattern: string
+          tenant_id?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          pattern?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blocked_senders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       canned_responses: {
         Row: {
           body: string

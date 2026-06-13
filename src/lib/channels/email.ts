@@ -5,13 +5,14 @@ import {
   audit,
   createTicket,
   findTicketByThreadKey,
+  getBlockedPatterns,
   setMessageAttachments,
   updateTicket,
 } from "@/lib/db/queries";
 import type { Message, Ticket } from "@/lib/db/types";
 import type { Json } from "@/lib/db/database.types";
 import { env } from "@/lib/env";
-import { parseGmailMessage, type GmailMessage } from "./email-parse";
+import { matchesBlocklist, parseGmailMessage, type GmailMessage } from "./email-parse";
 import { buildReplyMime, getAttachmentBytes, sendMessage } from "./gmail";
 import { storeAttachments } from "./attachments";
 
@@ -30,6 +31,13 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
 
   // Skip our own outbound mail and anything without a usable sender.
   if (!parsed.fromEmail || parsed.fromEmail === env.supportEmail) return null;
+
+  // Spam control: drop blocklisted senders before a ticket is ever created.
+  const blocked = await getBlockedPatterns();
+  if (matchesBlocklist(parsed.fromEmail, blocked)) {
+    await audit("system", "email-channel", "spam.blocked", undefined, { from: parsed.fromEmail });
+    return null;
+  }
 
   let ticket = await findTicketByThreadKey(gmailMessage.threadId);
   let createdTicket = false;

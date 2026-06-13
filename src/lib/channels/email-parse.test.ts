@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   detectAutoReply,
+  matchesBlocklist,
   normaliseSubject,
   parseAddress,
   parseAddressList,
@@ -53,6 +54,25 @@ describe("parseAddressList", () => {
 
   it("returns empty for a null header", () => {
     expect(parseAddressList(null)).toEqual([]);
+  });
+});
+
+describe("matchesBlocklist", () => {
+  const patterns = ["spammer@bad.example.com", "@junk.example.com"];
+
+  it("matches exact addresses case-insensitively", () => {
+    expect(matchesBlocklist("Spammer@Bad.Example.com", patterns)).toBe(true);
+    expect(matchesBlocklist("someone@bad.example.com", patterns)).toBe(false);
+  });
+
+  it("matches a whole domain and its subdomains", () => {
+    expect(matchesBlocklist("anyone@junk.example.com", patterns)).toBe(true);
+    expect(matchesBlocklist("anyone@mail.junk.example.com", patterns)).toBe(true);
+    expect(matchesBlocklist("anyone@notjunk.example.com", patterns)).toBe(false);
+  });
+
+  it("does not match when blocklist is empty", () => {
+    expect(matchesBlocklist("anyone@anywhere.com", [])).toBe(false);
   });
 });
 

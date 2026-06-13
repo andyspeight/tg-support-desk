@@ -4,11 +4,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAgent } from "@/lib/auth";
 import {
+  addBlockedSender,
   audit,
   createCannedResponse,
   createTag,
   deleteCannedResponse,
   deleteTag,
+  removeBlockedSender,
 } from "@/lib/db/queries";
 
 const cannedSchema = z.object({
@@ -50,5 +52,31 @@ export async function deleteTagAction(formData: FormData): Promise<void> {
   const id = z.string().uuid().parse(formData.get("id"));
   await deleteTag(id);
   await audit("human", session.email, "tag.deleted", undefined, { id });
+  revalidatePath("/settings");
+}
+
+const blockSchema = z.object({
+  // exact address, or a "@domain.com" rule
+  pattern: z
+    .string()
+    .trim()
+    .min(3)
+    .max(120)
+    .regex(/^@?[^@\s]+(\.[^@\s]+)+$|^[^@\s]+@[^@\s]+\.[^@\s]+$/, "Enter an email or @domain"),
+});
+
+export async function addBlockedAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const { pattern } = blockSchema.parse(Object.fromEntries(formData));
+  await addBlockedSender(pattern, session.email);
+  await audit("human", session.email, "spam.sender_blocked", undefined, { pattern });
+  revalidatePath("/settings");
+}
+
+export async function removeBlockedAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const id = z.string().uuid().parse(formData.get("id"));
+  await removeBlockedSender(id);
+  await audit("human", session.email, "spam.sender_unblocked", undefined, { id });
   revalidatePath("/settings");
 }

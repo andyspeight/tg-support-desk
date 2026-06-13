@@ -1,9 +1,11 @@
-import { listCannedResponses, listSlaPolicies, listTags } from "@/lib/db/queries";
+import { listBlockedSenders, listCannedResponses, listSlaPolicies, listTags } from "@/lib/db/queries";
 import {
+  addBlockedAction,
   createCannedAction,
   createTagAction,
   deleteCannedAction,
   deleteTagAction,
+  removeBlockedAction,
 } from "./actions";
 
 function show(value: string | undefined): string {
@@ -11,10 +13,11 @@ function show(value: string | undefined): string {
 }
 
 export default async function SettingsPage() {
-  const [slaPolicies, canned, tags] = await Promise.all([
+  const [slaPolicies, canned, tags, blocked] = await Promise.all([
     listSlaPolicies().catch(() => []),
     listCannedResponses().catch(() => []),
     listTags().catch(() => []),
+    listBlockedSenders().catch(() => []),
   ]);
   const agents = (process.env.AGENT_EMAILS ?? "")
     .split(",")
@@ -111,6 +114,39 @@ export default async function SettingsPage() {
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="mt-4 rounded-lg border border-zinc-200 bg-white p-4">
+        <h2 className="text-sm font-semibold">Blocked senders</h2>
+        <p className="mt-1 text-xs text-zinc-400">
+          Mail from these is dropped before a ticket is created. Use an exact address or{" "}
+          <code className="rounded bg-zinc-100 px-1">@domain.com</code> to block a whole domain.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {blocked.length === 0 && <p className="text-sm text-zinc-400">None.</p>}
+          {blocked.map((b) => (
+            <span key={b.id} className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-700">
+              {b.pattern}
+              <form action={removeBlockedAction} className="inline">
+                <input type="hidden" name="id" value={b.id} />
+                <button className="text-zinc-400 hover:text-red-600" aria-label={`Unblock ${b.pattern}`}>
+                  ×
+                </button>
+              </form>
+            </span>
+          ))}
+        </div>
+        <form action={addBlockedAction} className="mt-3 flex gap-2 border-t border-zinc-100 pt-3">
+          <input
+            name="pattern"
+            required
+            placeholder="spammer@example.com or @example.com"
+            className="flex-1 rounded-md border border-zinc-200 px-2 py-1.5 text-sm focus:border-zinc-400 focus:outline-none"
+          />
+          <button className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700">
+            Block
+          </button>
+        </form>
       </section>
 
       <section className="mt-4 rounded-lg border border-zinc-200 bg-white p-4">

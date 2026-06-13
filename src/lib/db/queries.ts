@@ -485,6 +485,29 @@ export async function deleteTag(id: string): Promise<void> {
   if (error) throw new Error(`deleteTag: ${error.message}`);
 }
 
+export async function listBlockedSenders(): Promise<{ id: string; pattern: string }[]> {
+  const result = await db().from("blocked_senders").select("id, pattern").eq("tenant_id", env.tenantId).order("pattern");
+  return unwrap(result, "listBlockedSenders");
+}
+
+export async function getBlockedPatterns(): Promise<string[]> {
+  const { data, error } = await db().from("blocked_senders").select("pattern").eq("tenant_id", env.tenantId);
+  if (error) throw new Error(`getBlockedPatterns: ${error.message}`);
+  return (data ?? []).map((r) => r.pattern);
+}
+
+export async function addBlockedSender(pattern: string, createdBy: string): Promise<void> {
+  const { error } = await db()
+    .from("blocked_senders")
+    .insert({ tenant_id: env.tenantId, pattern: pattern.toLowerCase().trim(), created_by: createdBy });
+  if (error) throw new Error(`addBlockedSender: ${error.message}`);
+}
+
+export async function removeBlockedSender(id: string): Promise<void> {
+  const { error } = await db().from("blocked_senders").delete().eq("tenant_id", env.tenantId).eq("id", id);
+  if (error) throw new Error(`removeBlockedSender: ${error.message}`);
+}
+
 export async function listSlaPolicies(): Promise<SlaPolicy[]> {
   const result = await db().from("sla_policies").select().eq("tenant_id", env.tenantId).order("priority");
   return unwrap(result, "listSlaPolicies");
