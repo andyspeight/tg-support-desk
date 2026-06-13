@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/inbox", label: "Inbox" },
   { href: "/search", label: "Search" },
   { href: "/kb", label: "Knowledge base" },
+  { href: "/analytics", label: "Analytics" },
   { href: "/settings", label: "Settings" },
 ];
 

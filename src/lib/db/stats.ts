@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "./client";
+import { listBreachingTickets } from "./queries";
 import { env } from "@/lib/env";
 
 export type DashboardStats = {
@@ -7,6 +8,7 @@ export type DashboardStats = {
   open: number;
   escalated: number;
   waiting: number;
+  breaching: number;
   resolvedToday: number;
   resolvedAll: number;
   aiResolved: number;
@@ -22,6 +24,7 @@ const EMPTY: DashboardStats = {
   open: 0,
   escalated: 0,
   waiting: 0,
+  breaching: 0,
   resolvedToday: 0,
   resolvedAll: 0,
   aiResolved: 0,
@@ -42,11 +45,12 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     const kb = (status: "published" | "review") =>
       client.from("kb_articles").select("id", { count: "exact", head: true }).eq("tenant_id", tenant).eq("status", status);
 
-    const [open, escalated, waiting, resolvedToday, resolvedAll, aiResolved, kbPublished, kbReview, reasons, firstResponses] =
+    const [open, escalated, waiting, breaching, resolvedToday, resolvedAll, aiResolved, kbPublished, kbReview, reasons, firstResponses] =
       await Promise.all([
         tickets().in("status", ["new", "ai_working", "waiting_on_customer", "escalated"]),
         tickets().eq("status", "escalated"),
         tickets().eq("status", "waiting_on_customer"),
+        listBreachingTickets(),
         tickets().in("status", ["resolved", "closed"]).gte("resolved_at", startOfDay.toISOString()),
         tickets().in("status", ["resolved", "closed"]),
         tickets().in("status", ["resolved", "closed"]).eq("ai_resolved", true),
@@ -93,6 +97,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       open: open.count ?? 0,
       escalated: escalated.count ?? 0,
       waiting: waiting.count ?? 0,
+      breaching: breaching.length,
       resolvedToday: resolvedToday.count ?? 0,
       resolvedAll: resolved,
       aiResolved: ai,

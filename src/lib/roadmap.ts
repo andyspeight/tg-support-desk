@@ -79,7 +79,7 @@ export const ROADMAP: RoadmapStage[] = [
     target: "Widget live · CSAT ≥4.5 · analytics trusted",
     items: [
       { label: "CSAT one-tap surveys (gates the headline metric)", status: "done" },
-      { label: "Analytics v1 — true resolution rate, intent, SLA, Pareto", status: "in_progress" },
+      { label: "Analytics v1 — true resolution rate, intent, SLA, Pareto", status: "done" },
       { label: "SLA engine + business hours + breach view", status: "done" },
       { label: "In-dashboard widget channel (SSO, widget-core fork)", status: "todo" },
       { label: "Customer 360 panel (Airtable + CRM + Luna + history)", status: "todo" },

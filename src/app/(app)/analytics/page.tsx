@@ -1,0 +1,155 @@
+import { getAnalytics } from "@/lib/db/analytics";
+import { RESOLUTION_MILESTONES } from "@/lib/roadmap";
+
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-lg border border-zinc-200 bg-white p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-zinc-900">{value}</p>
+      {sub && <p className="mt-0.5 text-xs text-zinc-400">{sub}</p>}
+    </div>
+  );
+}
+
+function Bar({ value, max, className = "bg-violet-500" }: { value: number; max: number; className?: string }) {
+  return (
+    <span className="block h-1.5 w-full rounded-full bg-zinc-100">
+      <span className={`block h-1.5 rounded-full ${className}`} style={{ width: `${max > 0 ? (value / max) * 100 : 0}%` }} />
+    </span>
+  );
+}
+
+export default async function AnalyticsPage() {
+  const a = await getAnalytics();
+  const target = 70;
+
+  return (
+    <div className="mx-auto max-w-4xl p-6">
+      <h1 className="text-lg font-semibold">Analytics</h1>
+      <p className="mt-1 text-sm text-zinc-500">
+        True AI resolution = resolved with no human reply, not reopened, CSAT not negative.
+      </p>
+
+      {!a.connected && (
+        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          No data yet — metrics populate once tickets start flowing (Stage 1 go-live).
+        </div>
+      )}
+
+      {/* Headline: AI resolution rate vs the 70% target */}
+      <div className="mt-5 rounded-lg border border-zinc-200 bg-white p-4">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold">True AI resolution rate</h2>
+          <span className="text-xs text-zinc-400">target {target}%</span>
+        </div>
+        <p className="mt-2 text-4xl font-semibold text-violet-700">
+          {a.aiResolutionRateStrict === null ? "—" : `${a.aiResolutionRateStrict}%`}
+        </p>
+        <div className="relative mt-4 h-3 rounded-full bg-zinc-100">
+          <div
+            className="absolute h-3 rounded-full bg-violet-500"
+            style={{ width: `${Math.min(a.aiResolutionRateStrict ?? 0, 100)}%` }}
+          />
+          {RESOLUTION_MILESTONES.map((m) => (
+            <div key={m.pct} className="absolute -top-1" style={{ left: `${m.pct}%` }}>
+              <div className={`h-5 w-0.5 ${(a.aiResolutionRateStrict ?? 0) >= m.pct ? "bg-emerald-500" : "bg-zinc-300"}`} />
+            </div>
+          ))}
+        </div>
+        <p className="mt-5 text-xs text-zinc-400">
+          {a.totals.aiResolved} AI-resolved of {a.totals.resolved} resolved
+          {a.aiResolutionRate !== null && a.aiResolutionRate !== a.aiResolutionRateStrict
+            ? ` · ${a.aiResolutionRate}% before excluding negative CSAT`
+            : ""}
+        </p>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Tickets" value={String(a.totals.tickets)} />
+        <Stat label="Resolved" value={String(a.totals.resolved)} />
+        <Stat label="Escalated (open)" value={String(a.totals.escalated)} />
+        <Stat
+          label="SLA compliance"
+          value={a.sla ? `${a.sla.metPct}%` : "—"}
+          sub={a.sla ? `${a.sla.measured} measured` : undefined}
+        />
+        <Stat
+          label="First response"
+          value={a.firstResponseMins ? `${a.firstResponseMins.median}m` : "—"}
+          sub={a.firstResponseMins ? `avg ${a.firstResponseMins.avg}m` : undefined}
+        />
+        <Stat
+          label="Full resolution"
+          value={a.resolutionHours ? `${a.resolutionHours.median}h` : "—"}
+          sub={a.resolutionHours ? `avg ${a.resolutionHours.avg}h` : undefined}
+        />
+        <Stat
+          label="CSAT (AI)"
+          value={a.csat?.aiAvg != null ? `${a.csat.aiAvg}/5` : "—"}
+          sub={a.csat?.humanAvg != null ? `human ${a.csat.humanAvg}/5` : a.csat ? `${a.csat.count} rated` : undefined}
+        />
+        <Stat label="CSAT responses" value={a.csat ? String(a.csat.count) : "—"} />
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Resolution by intent */}
+        <section>
+          <h2 className="text-sm font-semibold">Resolution by intent</h2>
+          <div className="mt-2 space-y-2">
+            {a.byIntent.length === 0 && <p className="text-sm text-zinc-400">No resolved tickets yet.</p>}
+            {a.byIntent.map((row) => (
+              <div key={row.intent} className="text-sm">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-zinc-700">{row.intent}</span>
+                  <span className="text-xs text-zinc-400">
+                    {row.rate}% AI · {row.total}
+                  </span>
+                </div>
+                <div className="mt-1">
+                  <Bar value={row.rate} max={100} className={row.rate >= target ? "bg-emerald-500" : "bg-violet-500"} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Escalation reasons */}
+        <section>
+          <h2 className="text-sm font-semibold">Top escalation reasons</h2>
+          <div className="mt-2 space-y-2">
+            {a.escalationReasons.length === 0 && <p className="text-sm text-zinc-400">No escalations yet.</p>}
+            {a.escalationReasons.map((row) => {
+              const max = a.escalationReasons[0]?.count ?? 1;
+              return (
+                <div key={row.reason} className="text-sm">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-zinc-700">{row.reason}</span>
+                    <span className="text-xs text-zinc-400">{row.count}</span>
+                  </div>
+                  <div className="mt-1">
+                    <Bar value={row.count} max={max} className="bg-amber-500" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+
+      {/* Volume by client */}
+      <section className="mt-6">
+        <h2 className="text-sm font-semibold">Ticket volume by client (top 10)</h2>
+        <p className="text-xs text-zinc-400">Feeds the CRM care conversation. Names resolve via the 360 panel.</p>
+        <div className="mt-2 space-y-1">
+          {a.topClients.length === 0 && <p className="text-sm text-zinc-400">No client-matched tickets yet.</p>}
+          {a.topClients.map((c) => (
+            <div key={c.clientId} className="flex items-center justify-between rounded-md border border-zinc-100 bg-white px-3 py-1.5 text-sm">
+              <span className="font-mono text-xs text-zinc-500">{c.clientId}</span>
+              <span className="text-zinc-700">{c.count}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}

@@ -54,6 +54,7 @@ export default async function DashboardPage() {
         <StatCard label="Open tickets" value={String(stats.open)} href="/inbox?view=open" />
         <StatCard label="Needs a human" value={String(stats.escalated)} href="/inbox?view=escalated" />
         <StatCard label="Waiting on customer" value={String(stats.waiting)} href="/inbox?view=waiting" />
+        <StatCard label="Breaching SLA" value={String(stats.breaching)} href="/inbox?view=breaching" />
         <StatCard label="Resolved today" value={String(stats.resolvedToday)} />
         <StatCard
           label="AI resolution to date"
