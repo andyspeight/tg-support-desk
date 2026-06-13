@@ -17,6 +17,7 @@ import {
 import type { Message, Ticket } from "@/lib/db/types";
 import { getClientById, matchClientByEmail, summariseClient } from "@/lib/integrations/airtable-clients";
 import { sendTicketReply } from "@/lib/channels/email";
+import { csatSurveyUrl } from "@/lib/csat";
 import { env } from "@/lib/env";
 
 // The resolution pipeline: every inbound customer message ends in exactly one
@@ -190,7 +191,13 @@ function buildExecutors(ticket: Ticket): ToolExecutors {
 
 async function applyOutcome(ticket: Ticket, outcome: AgentOutcome, result: AgentRunResult | null): Promise<void> {
   if (outcome.kind === "answered" || outcome.kind === "clarified") {
-    await sendTicketReply(ticket, outcome.reply, { role: "ai", author: AI_ACTOR });
+    // On a resolving answer, invite a one-tap CSAT rating (when a public base
+    // URL + signing secret are configured). Clarifying replies get no survey.
+    let body = outcome.reply;
+    if (outcome.kind === "answered" && env.appBaseUrl && env.csatSecret) {
+      body += `\n\nHow did we do? Rate this support in one tap: ${csatSurveyUrl(env.appBaseUrl, ticket.id, env.csatSecret)}`;
+    }
+    await sendTicketReply(ticket, body, { role: "ai", author: AI_ACTOR });
     await updateTicket(ticket.id, {
       ...(outcome.language ? { language: outcome.language } : {}),
       ...(outcome.kind === "answered"

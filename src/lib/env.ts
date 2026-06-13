@@ -79,6 +79,15 @@ export const env = {
   get cronSecret() {
     return required("CRON_SECRET");
   },
+  // Public base URL for links emailed to customers (e.g. CSAT surveys).
+  get appBaseUrl() {
+    return optional("APP_BASE_URL");
+  },
+  // Signing key for CSAT survey links; falls back to CRON_SECRET. Empty when
+  // neither is set (survey links are simply not generated).
+  get csatSecret() {
+    return optional("CSAT_SECRET") || optional("CRON_SECRET");
+  },
   get tenantId() {
     return optional("DEFAULT_TENANT_ID", "travelgenix");
   },

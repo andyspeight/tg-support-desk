@@ -53,6 +53,20 @@ export async function getTicketWithMessages(id: string): Promise<{ ticket: Ticke
   return { ticket, messages: unwrap(result, "getTicketWithMessages") };
 }
 
+/** Record a CSAT rating — only on resolved/closed tickets. Safe to call
+ * from the public survey route (the caller verifies the signed token). */
+export async function recordCsat(ticketId: string, score: number, comment: string | null): Promise<boolean> {
+  const ticket = await getTicket(ticketId);
+  if (!ticket || (ticket.status !== "resolved" && ticket.status !== "closed")) return false;
+  const { error } = await db()
+    .from("tickets")
+    .update({ csat_score: score, csat_comment: comment })
+    .eq("id", ticketId);
+  if (error) throw new Error(`recordCsat: ${error.message}`);
+  await audit("system", "csat", "csat.recorded", { type: "ticket", id: ticketId }, { score });
+  return true;
+}
+
 export async function getTicketByReference(reference: number): Promise<Ticket | null> {
   const { data, error } = await db()
     .from("tickets")
