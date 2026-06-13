@@ -54,6 +54,13 @@ export async function getMessage(id: string): Promise<GmailMessage> {
   return (await gmailFetch(`/messages/${id}?format=full`)) as GmailMessage;
 }
 
+/** Fetch a single attachment's bytes (Gmail returns base64url-encoded data). */
+export async function getAttachmentBytes(messageId: string, attachmentId: string): Promise<Buffer> {
+  const data = (await gmailFetch(`/messages/${messageId}/attachments/${attachmentId}`)) as { data?: string };
+  if (!data.data) throw new Error("attachment has no data");
+  return Buffer.from(data.data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+}
+
 function encodeHeaderWord(value: string): string {
   // RFC 2047 encoding for non-ASCII header content.
   return /^[\x20-\x7e]*$/.test(value) ? value : `=?UTF-8?B?${Buffer.from(value, "utf-8").toString("base64")}?=`;

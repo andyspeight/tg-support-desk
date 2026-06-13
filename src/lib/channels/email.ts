@@ -1,10 +1,19 @@
 import "server-only";
 import { db } from "@/lib/db/client";
-import { addMessage, audit, createTicket, findTicketByThreadKey, updateTicket } from "@/lib/db/queries";
+import {
+  addMessage,
+  audit,
+  createTicket,
+  findTicketByThreadKey,
+  setMessageAttachments,
+  updateTicket,
+} from "@/lib/db/queries";
 import type { Message, Ticket } from "@/lib/db/types";
+import type { Json } from "@/lib/db/database.types";
 import { env } from "@/lib/env";
 import { parseGmailMessage, type GmailMessage } from "./email-parse";
-import { buildReplyMime, sendMessage } from "./gmail";
+import { buildReplyMime, getAttachmentBytes, sendMessage } from "./gmail";
+import { storeAttachments } from "./attachments";
 
 // Email channel: Gmail message → ticket/message rows, and ticket reply → email.
 
@@ -87,6 +96,20 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
       auto_reply: parsed.isAutoReply,
     },
   });
+
+  // Fetch + store allowlisted attachments, then enrich the message metadata.
+  // Best-effort: failures are recorded per-attachment, never block ingest.
+  if (parsed.attachments.length > 0) {
+    try {
+      const stored = await storeAttachments(ticket.id, message.id, parsed.attachments, (attachmentId) =>
+        getAttachmentBytes(gmailMessage.id, attachmentId),
+      );
+      await setMessageAttachments(message.id, stored as unknown as Json);
+      message.attachments = stored as unknown as Json;
+    } catch (error) {
+      console.error("storeAttachments failed:", error);
+    }
+  }
 
   return { ticket, message, createdTicket, suppressAi: parsed.isAutoReply };
 }

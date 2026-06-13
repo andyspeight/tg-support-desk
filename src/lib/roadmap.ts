@@ -66,7 +66,7 @@ export const ROADMAP: RoadmapStage[] = [
       { label: "Merge tickets", status: "done" },
       { label: "Bulk actions + keyboard triage", status: "done" },
       { label: "Canned-response + tag management UI", status: "done" },
-      { label: "Attachments (allowlist, caps, signed URLs)", status: "todo" },
+      { label: "Attachments (allowlist, caps, signed URLs)", status: "done" },
       { label: "Spam controls", status: "todo" },
       { label: "Collision detection + realtime inbox", status: "todo" },
       { label: "Agent notifications", status: "todo" },

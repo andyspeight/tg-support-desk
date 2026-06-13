@@ -21,6 +21,51 @@ function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
 }
 
+type MessageAttachment = {
+  filename: string;
+  size: number;
+  stored: boolean;
+  rejected?: string;
+};
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+function MessageAttachments({ messageId, attachments }: { messageId: string; attachments: unknown }) {
+  const list = (Array.isArray(attachments) ? attachments : []) as MessageAttachment[];
+  if (list.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-2 border-t border-black/5 pt-2">
+      {list.map((a, i) =>
+        a.stored ? (
+          <a
+            key={i}
+            href={`/api/attachments/${messageId}/${i}`}
+            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 hover:border-zinc-400"
+          >
+            <span aria-hidden>📎</span>
+            <span className="max-w-[200px] truncate">{a.filename}</span>
+            <span className="text-zinc-400">{formatBytes(a.size)}</span>
+          </a>
+        ) : (
+          <span
+            key={i}
+            title={a.rejected}
+            className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-zinc-200 px-2 py-1 text-xs text-zinc-400"
+          >
+            <span aria-hidden>⚠</span>
+            <span className="max-w-[200px] truncate line-through">{a.filename}</span>
+            <span>blocked</span>
+          </span>
+        ),
+      )}
+    </div>
+  );
+}
+
 export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const loaded = await getTicketWithMessages(id).catch(() => null);
@@ -78,6 +123,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   <span className="text-xs text-zinc-400">{formatDateTime(message.created_at)}</span>
                 </div>
                 <pre className="mt-1.5 whitespace-pre-wrap font-sans text-sm text-zinc-800">{message.body_text}</pre>
+                <MessageAttachments messageId={message.id} attachments={message.attachments} />
               </div>
             );
           })}

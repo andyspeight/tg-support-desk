@@ -268,6 +268,17 @@ export async function addMessage(input: Omit<TablesInsert<"messages">, "tenant_i
   return unwrap(result, "addMessage");
 }
 
+export async function getMessageById(id: string): Promise<Message | null> {
+  const { data, error } = await db().from("messages").select().eq("id", id).maybeSingle();
+  if (error) throw new Error(`getMessageById: ${error.message}`);
+  return data;
+}
+
+export async function setMessageAttachments(id: string, attachments: Json): Promise<void> {
+  const { error } = await db().from("messages").update({ attachments }).eq("id", id);
+  if (error) throw new Error(`setMessageAttachments: ${error.message}`);
+}
+
 /** Loop guard: AI replies on a ticket within the last N hours. */
 export async function countRecentAiMessages(ticketId: string, hours: number): Promise<number> {
   const since = new Date(Date.now() - hours * 3_600_000).toISOString();
