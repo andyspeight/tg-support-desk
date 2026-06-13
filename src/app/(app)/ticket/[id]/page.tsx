@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getTicketWithMessages, listCannedResponses } from "@/lib/db/queries";
+import { getTicketSla, getTicketWithMessages, listCannedResponses } from "@/lib/db/queries";
+import type { ClockState } from "@/lib/sla";
 import { getClientById, summariseClient } from "@/lib/integrations/airtable-clients";
 import { env } from "@/lib/env";
 import type { Message } from "@/lib/db/types";
@@ -33,6 +34,13 @@ function formatBytes(bytes: number): string {
   if (bytes < 1048576) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
+
+const CLOCK_LABEL: Record<ClockState, { text: string; cls: string }> = {
+  met: { text: "met", cls: "text-emerald-600" },
+  late: { text: "met late", cls: "text-amber-600" },
+  pending: { text: "due", cls: "text-zinc-600" },
+  breached: { text: "breached", cls: "font-semibold text-red-600" },
+};
 
 function MessageAttachments({ messageId, attachments }: { messageId: string; attachments: unknown }) {
   const list = (Array.isArray(attachments) ? attachments : []) as MessageAttachment[];
@@ -72,9 +80,10 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   if (!loaded) notFound();
   const { ticket, messages } = loaded;
 
-  const [canned, clientRecord] = await Promise.all([
+  const [canned, clientRecord, sla] = await Promise.all([
     listCannedResponses().catch(() => []),
     ticket.client_id ? getClientById(ticket.client_id) : Promise.resolve(null),
+    getTicketSla(ticket).catch(() => null),
   ]);
 
   const handover = [...messages]
@@ -223,6 +232,21 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </div>
           <p className="mt-1 text-[11px] text-zinc-400">Moves this conversation into the target and closes this one.</p>
         </form>
+
+        {sla && (
+          <div className="rounded-md border border-zinc-100 bg-zinc-50 p-2 text-xs text-zinc-500">
+            <p className="font-medium text-zinc-600">SLA</p>
+            <p className="mt-1">
+              First response{" "}
+              <span className={CLOCK_LABEL[sla.firstResponse.state].cls}>{CLOCK_LABEL[sla.firstResponse.state].text}</span>{" "}
+              · {formatDateTime(new Date(sla.firstResponse.dueMs).toISOString())}
+            </p>
+            <p>
+              Resolve <span className={CLOCK_LABEL[sla.resolve.state].cls}>{CLOCK_LABEL[sla.resolve.state].text}</span> ·{" "}
+              {formatDateTime(new Date(sla.resolve.dueMs).toISOString())}
+            </p>
+          </div>
+        )}
 
         <div className="text-xs text-zinc-400">
           <p>Intent: {ticket.intent ?? "—"}</p>

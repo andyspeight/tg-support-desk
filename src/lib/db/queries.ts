@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "./client";
 import { env } from "@/lib/env";
 import type { Json, TablesInsert, TablesUpdate } from "./database.types";
+import { ticketSla, type TicketSla } from "@/lib/sla";
 import type {
   AiOutcome,
   CannedResponse,
@@ -11,6 +12,7 @@ import type {
   SlaPolicy,
   Ticket,
   TicketChannel,
+  TicketPriority,
 } from "./types";
 
 function unwrap<T>(result: { data: T | null; error: { message: string } | null }, context: string): T {
@@ -21,7 +23,7 @@ function unwrap<T>(result: { data: T | null; error: { message: string } | null }
 
 // ── Tickets ──────────────────────────────────────────────────────────────────
 
-export type InboxView = "mine" | "unassigned" | "escalated" | "waiting" | "open" | "all";
+export type InboxView = "mine" | "unassigned" | "escalated" | "waiting" | "breaching" | "open" | "all";
 
 const OPEN_STATUSES = ["new", "ai_working", "waiting_on_customer", "escalated"] as const;
 
@@ -81,6 +83,8 @@ export async function updateTicket(id: string, patch: TablesUpdate<"tickets">): 
 }
 
 export async function listTickets(view: InboxView, agentEmail: string): Promise<Ticket[]> {
+  if (view === "breaching") return listBreachingTickets();
+
   let query = db()
     .from("tickets")
     .select()
@@ -113,19 +117,21 @@ export async function listTickets(view: InboxView, agentEmail: string): Promise<
 
 export async function inboxCounts(agentEmail: string): Promise<Record<InboxView, number>> {
   const base = () => db().from("tickets").select("id", { count: "exact", head: true }).eq("tenant_id", env.tenantId);
-  const [mine, unassigned, escalated, waiting, open, all] = await Promise.all([
+  const [mine, unassigned, escalated, waiting, open, all, breaching] = await Promise.all([
     base().eq("assignee", agentEmail).in("status", [...OPEN_STATUSES]),
     base().is("assignee", null).in("status", [...OPEN_STATUSES]),
     base().eq("status", "escalated"),
     base().eq("status", "waiting_on_customer"),
     base().in("status", [...OPEN_STATUSES]),
     base(),
+    listBreachingTickets(),
   ]);
   return {
     mine: mine.count ?? 0,
     unassigned: unassigned.count ?? 0,
     escalated: escalated.count ?? 0,
     waiting: waiting.count ?? 0,
+    breaching: breaching.length,
     open: open.count ?? 0,
     all: all.count ?? 0,
   };
@@ -511,4 +517,48 @@ export async function removeBlockedSender(id: string): Promise<void> {
 export async function listSlaPolicies(): Promise<SlaPolicy[]> {
   const result = await db().from("sla_policies").select().eq("tenant_id", env.tenantId).order("priority");
   return unwrap(result, "listSlaPolicies");
+}
+
+async function policyByPriority(): Promise<Map<TicketPriority, SlaPolicy>> {
+  const policies = await listSlaPolicies();
+  return new Map(policies.map((p) => [p.priority, p]));
+}
+
+function slaArgs(ticket: Ticket, policy: SlaPolicy) {
+  return {
+    createdAt: ticket.created_at,
+    firstResponseAt: ticket.first_response_at,
+    resolvedAt: ticket.resolved_at,
+    firstResponseMinutes: policy.first_response_minutes,
+    resolveMinutes: policy.resolve_minutes,
+    businessHours: policy.business_hours,
+  };
+}
+
+/** SLA status for a single ticket (policy chosen by priority). */
+export async function getTicketSla(ticket: Ticket): Promise<TicketSla | null> {
+  const policy = (await policyByPriority()).get(ticket.priority);
+  if (!policy) return null;
+  return ticketSla(slaArgs(ticket, policy));
+}
+
+/** Open tickets currently breaching their SLA (computed app-side for business hours). */
+export async function listBreachingTickets(): Promise<Ticket[]> {
+  const [tickets, policies] = await Promise.all([
+    (async () => {
+      const result = await db()
+        .from("tickets")
+        .select()
+        .eq("tenant_id", env.tenantId)
+        .in("status", [...OPEN_STATUSES])
+        .order("created_at", { ascending: true })
+        .limit(500);
+      return unwrap(result, "listBreachingTickets");
+    })(),
+    policyByPriority(),
+  ]);
+  return tickets.filter((t) => {
+    const policy = policies.get(t.priority);
+    return policy ? ticketSla(slaArgs(t, policy)).breaching : false;
+  });
 }
