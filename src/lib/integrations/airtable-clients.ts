@@ -97,23 +97,9 @@ export async function matchClientByEmail(email: string): Promise<ClientRecord | 
   return null;
 }
 
-/** Compact, prompt-safe summary of a client record (attachments and long blobs dropped). */
-export function summariseClient(record: ClientRecord): string {
-  const lines: string[] = [`Airtable client record: ${record.id}`];
-  for (const [key, value] of Object.entries(record.fields)) {
-    if (value === null || value === undefined || value === "") continue;
-    let rendered: string;
-    if (Array.isArray(value)) {
-      const flat = value.filter((v) => typeof v === "string" || typeof v === "number");
-      if (!flat.length) continue; // attachment/linked-record objects — skip
-      rendered = flat.join(", ");
-    } else if (typeof value === "object") {
-      continue;
-    } else {
-      rendered = String(value);
-    }
-    if (rendered.length > 300) rendered = `${rendered.slice(0, 300)}…`;
-    lines.push(`${key}: ${rendered}`);
-  }
-  return lines.join("\n");
-}
+/**
+ * Compact, prompt-safe summary of a client record. Allowlist-based and pure —
+ * implemented in ./client-summary so it stays unit-testable and so credential
+ * fields (ClientCode, API Key) can never reach the AI prompt (brief §10).
+ */
+export { summariseClientFields as summariseClient } from "./client-summary";
