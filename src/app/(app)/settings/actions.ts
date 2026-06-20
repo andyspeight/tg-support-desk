@@ -11,6 +11,7 @@ import {
   deleteCannedResponse,
   deleteTag,
   removeBlockedSender,
+  updateCannedResponse,
 } from "@/lib/db/queries";
 
 const cannedSchema = z.object({
@@ -23,6 +24,16 @@ export async function createCannedAction(formData: FormData): Promise<void> {
   const { title, body } = cannedSchema.parse(Object.fromEntries(formData));
   await createCannedResponse(title, body, session.email);
   await audit("human", session.email, "canned.created", undefined, { title });
+  revalidatePath("/settings");
+}
+
+const cannedUpdateSchema = cannedSchema.extend({ id: z.string().uuid() });
+
+export async function updateCannedAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const { id, title, body } = cannedUpdateSchema.parse(Object.fromEntries(formData));
+  await updateCannedResponse(id, title, body);
+  await audit("human", session.email, "canned.updated", undefined, { id });
   revalidatePath("/settings");
 }
 

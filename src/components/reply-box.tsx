@@ -18,20 +18,26 @@ import {
   Loader2,
   Sparkles,
 } from "lucide-react";
+import { applyCannedVars, type CannedVars } from "@/lib/canned";
 
 type CannedOption = { id: string; title: string; body: string };
 type CopilotResult = { ok: true; text: string } | { ok: false; error: string };
+type ReviewResult =
+  | { ok: true; verdict: "ok" | "revise"; issues: string[]; rewrite: string }
+  | { ok: false; error: string };
 
 type Props = {
   ticketId: string;
   canned: CannedOption[];
   sendReply: (formData: FormData) => Promise<void>;
   addNote: (formData: FormData) => Promise<void>;
+  vars?: CannedVars;
   copilot?: {
     draft: (ticketId: string) => Promise<CopilotResult>;
     summarise: (ticketId: string) => Promise<CopilotResult>;
     rephrase: (text: string) => Promise<CopilotResult>;
     translate: (text: string, language: string) => Promise<CopilotResult>;
+    review: (ticketId: string, text: string) => Promise<ReviewResult>;
   };
 };
 
@@ -86,11 +92,12 @@ function ToolbarButton({
   );
 }
 
-export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Props) {
+export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [isPending, startTransition] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  const [review, setReview] = useState<{ issues: string[]; rewrite: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
@@ -121,18 +128,47 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
 
   const isEmpty = !editor || editor.getText().trim() === "";
 
-  function submit(action: (formData: FormData) => Promise<void>) {
-    if (!editor || isPending) return;
-    if (isEmpty && files.length === 0) return;
+  async function buildAndSend(action: (formData: FormData) => Promise<void>) {
+    if (!editor) return;
     const fd = new FormData();
     fd.set("ticketId", ticketId);
     fd.set("html", editor.getHTML());
     for (const f of files) fd.append("files", f);
+    await action(fd);
+    editor.commands.clearContent();
+    setFiles([]);
+    setSummary(null);
+    setReview(null);
+  }
+
+  function submit(action: (formData: FormData) => Promise<void>) {
+    if (!editor || isPending) return;
+    if (isEmpty && files.length === 0) return;
+    startTransition(() => buildAndSend(action));
+  }
+
+  // Pre-send quality gate: check tone/content first, then send — or surface a
+  // suggested rewrite the agent can accept, override, or keep editing. Notes
+  // skip this (they're internal). Fail-open: any AI hiccup just sends.
+  function reviewThenSend() {
+    if (!editor || isPending || (isEmpty && files.length === 0)) return;
+    const text = editor.getText().trim();
+    if (!copilot?.review || text === "") {
+      submit(sendReply);
+      return;
+    }
+    const reviewFn = copilot.review;
+    setBusy("review");
+    setError(null);
+    setReview(null);
     startTransition(async () => {
-      await action(fd);
-      editor.commands.clearContent();
-      setFiles([]);
-      setSummary(null);
+      const res = await reviewFn(ticketId, text);
+      if (!res.ok || res.verdict === "ok") {
+        await buildAndSend(sendReply);
+      } else {
+        setReview({ issues: res.issues, rewrite: res.rewrite });
+      }
+      setBusy(null);
     });
   }
 
@@ -263,15 +299,65 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
 
       {error && <div className="mx-2.5 mb-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
 
+      {/* Pre-send quality check */}
+      {review && (
+        <div className="mx-2.5 mb-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs dark:border-amber-500/25 dark:bg-amber-500/10">
+          <div className="mb-1.5 flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-200">
+            <Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} /> Before you send — this could read warmer
+          </div>
+          {review.issues.length > 0 && (
+            <ul className="mb-2 list-disc space-y-0.5 pl-4 text-amber-800 dark:text-amber-200">
+              {review.issues.map((it, i) => (
+                <li key={i}>{it}</li>
+              ))}
+            </ul>
+          )}
+          {review.rewrite && (
+            <div className="mb-2 max-h-40 overflow-y-auto whitespace-pre-wrap rounded border border-amber-200 bg-surface p-2 text-ink dark:border-amber-500/25">
+              {review.rewrite}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {review.rewrite && (
+              <button
+                onClick={() => {
+                  if (!editor) return;
+                  editor.commands.setContent(textToHtml(review.rewrite));
+                  setReview(null);
+                  startTransition(() => buildAndSend(sendReply));
+                }}
+                disabled={isPending}
+                className="rounded-md bg-brand-600 px-2.5 py-1 font-medium text-white hover:bg-brand-700 disabled:opacity-40 dark:bg-brand-500 dark:hover:bg-brand-400"
+              >
+                Use rewrite &amp; send
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setReview(null);
+                submit(sendReply);
+              }}
+              disabled={isPending}
+              className="rounded-md border border-line bg-surface px-2.5 py-1 font-medium text-ink-2 hover:bg-surface-2 disabled:opacity-40"
+            >
+              Send as-is
+            </button>
+            <button onClick={() => setReview(null)} disabled={isPending} className="rounded-md px-2.5 py-1 text-ink-3 hover:text-ink disabled:opacity-40">
+              Keep editing
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex items-center gap-2 border-t border-line-soft px-2.5 py-2">
         <button
-          onClick={() => submit(sendReply)}
+          onClick={reviewThenSend}
           disabled={isPending || (isEmpty && files.length === 0)}
           className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-40 dark:bg-brand-500 dark:hover:bg-brand-400"
         >
           {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />}
-          {isPending ? "Working…" : "Reply to customer"}
+          {busy === "review" ? "Checking…" : isPending ? "Working…" : "Reply to customer"}
         </button>
         <button
           onClick={() => submit(addNote)}
@@ -286,7 +372,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
             value=""
             onChange={(e) => {
               const found = canned.find((c) => c.id === e.target.value);
-              if (found && editor) editor.chain().focus().insertContent(textToHtml(found.body)).run();
+              if (found && editor) editor.chain().focus().insertContent(textToHtml(applyCannedVars(found.body, vars ?? {}))).run();
               e.target.value = "";
             }}
             aria-label="Insert canned response"

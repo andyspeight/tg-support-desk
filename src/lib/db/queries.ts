@@ -499,6 +499,15 @@ export async function createCannedResponse(title: string, body: string, createdB
   if (error) throw new Error(`createCannedResponse: ${error.message}`);
 }
 
+export async function updateCannedResponse(id: string, title: string, body: string): Promise<void> {
+  const { error } = await db()
+    .from("canned_responses")
+    .update({ title, body })
+    .eq("tenant_id", env.tenantId)
+    .eq("id", id);
+  if (error) throw new Error(`updateCannedResponse: ${error.message}`);
+}
+
 export async function deleteCannedResponse(id: string): Promise<void> {
   const { error } = await db().from("canned_responses").delete().eq("tenant_id", env.tenantId).eq("id", id);
   if (error) throw new Error(`deleteCannedResponse: ${error.message}`);

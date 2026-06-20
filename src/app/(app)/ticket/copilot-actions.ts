@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { requireAgent } from "@/lib/auth";
 import { audit } from "@/lib/db/queries";
-import { copilotDraft, copilotRephrase, copilotSummarise, copilotTranslate } from "@/lib/ai/copilot";
+import { copilotDraft, copilotRephrase, copilotReview, copilotSummarise, copilotTranslate, type ReplyReview } from "@/lib/ai/copilot";
 
 // Copilot actions return text for the agent to review in the reply box —
 // they never send. Errors surface as a readable string the UI can show.
@@ -40,4 +40,18 @@ export async function copilotRephraseAction(text: string) {
 export async function copilotTranslateAction(text: string, language: string) {
   await requireAgent();
   return guard(() => copilotTranslate(textSchema.parse(text), z.string().trim().min(2).max(40).parse(language)));
+}
+
+/** Pre-send quality gate — returns a verdict + (if curt/off-voice) a rewrite. */
+export async function copilotReviewAction(
+  ticketId: string,
+  text: string,
+): Promise<({ ok: true } & ReplyReview) | { ok: false; error: string }> {
+  await requireAgent();
+  try {
+    const review = await copilotReview(idSchema.parse(ticketId), textSchema.parse(text));
+    return { ok: true, ...review };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Review failed" };
+  }
 }

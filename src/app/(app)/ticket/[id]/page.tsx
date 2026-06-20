@@ -17,6 +17,7 @@ import { addNoteAction, mergeTicketAction, runAiAction, sendReplyAction, snoozeT
 import {
   copilotDraftAction,
   copilotRephraseAction,
+  copilotReviewAction,
   copilotSummariseAction,
   copilotTranslateAction,
 } from "../copilot-actions";
@@ -93,6 +94,12 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
   const session = await getSession();
   const watching = !!session && ticket.watchers.some((w) => w.toLowerCase() === session.email.toLowerCase());
+  const cannedVars = {
+    first_name: ticket.requester_name?.split(/\s+/)[0] ?? "",
+    name: ticket.requester_name ?? "",
+    agent: session?.name ?? session?.email ?? "",
+    ticket: `#${ticket.reference}`,
+  };
 
   const [canned, clientRecord, sla] = await Promise.all([
     listCannedResponses().catch(() => []),
@@ -164,6 +171,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <ReplyBox
             ticketId={ticket.id}
             canned={canned}
+            vars={cannedVars}
             sendReply={sendReplyAction}
             addNote={addNoteAction}
             copilot={{
@@ -171,6 +179,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               summarise: copilotSummariseAction,
               rephrase: copilotRephraseAction,
               translate: copilotTranslateAction,
+              review: copilotReviewAction,
             }}
           />
         </div>

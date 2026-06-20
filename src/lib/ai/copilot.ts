@@ -80,3 +80,43 @@ export async function copilotTranslate(text: string, targetLanguage: string): Pr
   const system = `Translate the text into ${targetLanguage}. Preserve meaning, tone and formatting. Return only the translation.`;
   return complete(env.utilityModel, system, text);
 }
+
+export type ReplyReview = { verdict: "ok" | "revise"; issues: string[]; rewrite: string };
+
+function parseReview(raw: string): ReplyReview {
+  try {
+    const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+    const p = JSON.parse(json) as Partial<ReplyReview>;
+    return {
+      verdict: p.verdict === "revise" ? "revise" : "ok",
+      issues: Array.isArray(p.issues) ? p.issues.filter((s): s is string => typeof s === "string").slice(0, 5) : [],
+      rewrite: typeof p.rewrite === "string" ? p.rewrite : "",
+    };
+  } catch {
+    return { verdict: "ok", issues: [], rewrite: "" }; // fail-open — never block a send
+  }
+}
+
+/**
+ * Pre-send quality gate. Busy agents can be terse to the point of cold; this
+ * reads the draft against the customer's latest message and, if it's
+ * curt/blunt/incomplete or off-voice, returns issues + a warmer rewrite.
+ * Fail-open by design: any problem yields verdict "ok" so the agent is never
+ * trapped by an AI hiccup.
+ */
+export async function copilotReview(ticketId: string, text: string): Promise<ReplyReview> {
+  let question = "";
+  try {
+    const loaded = await getTicketWithMessages(ticketId);
+    const latestCustomer = loaded ? [...loaded.messages].reverse().find((m) => m.role === "customer") : null;
+    question = latestCustomer?.body_text?.slice(0, 3000) ?? "";
+  } catch {
+    // Thread unavailable — fall back to a tone-only review.
+  }
+
+  const system = `You quality-check a support reply a Travelgenix agent is about to send. Busy agents are often too curt, blunt or brief. Judge the draft on: tone (warm and human, never abrupt or dismissive), whether it actually addresses the customer's message, and ${BRAND_VOICE}
+Respond with ONLY minified JSON: {"verdict":"ok"|"revise","issues":["short issue"],"rewrite":"full improved reply"}.
+Use "ok" when the draft is already warm, clear and complete (issues [], rewrite ""). Use "revise" when it is curt, cold, incomplete or off-voice: give 1-3 short specific issues and a full rewrite that keeps EVERY fact, link and specific the agent wrote — improve only tone, clarity and completeness. Never add facts, promises, refunds, credits or commitments the agent did not make.`;
+  const prompt = `Customer's latest message:\n${question || "(unavailable — judge tone and clarity only)"}\n\nAgent's draft reply:\n${text}`;
+  return parseReview(await complete(env.utilityModel, system, prompt, 1200));
+}
