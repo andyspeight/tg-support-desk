@@ -4,14 +4,28 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { requireAgent } from "@/lib/auth";
-import { addMessage, audit, getTicket, getTicketByReference, mergeTickets, updateTicket } from "@/lib/db/queries";
+import { addMessage, audit, getTicket, getTicketByReference, mergeTickets, setMessageAttachments, updateTicket } from "@/lib/db/queries";
 import { sendTicketReply } from "@/lib/channels/email";
+import { sanitizeEmailHtml, htmlToText } from "@/lib/channels/email-parse";
+import { storeOutboundAttachments, type OutboundFile } from "@/lib/channels/attachments";
+import type { Json } from "@/lib/db/database.types";
 import { resolveTicket } from "@/lib/ai/resolve";
 
-const replySchema = z.object({
-  ticketId: z.string().uuid(),
-  body: z.string().trim().min(1).max(20000),
-});
+/** Parse the rich composer: sanitised HTML, derived plain text, uploaded files. */
+async function composerInput(
+  formData: FormData,
+): Promise<{ ticketId: string; html: string; text: string; files: OutboundFile[] }> {
+  const ticketId = z.string().uuid().parse(formData.get("ticketId"));
+  const html = sanitizeEmailHtml(String(formData.get("html") ?? "")).slice(0, 100000);
+  const text = htmlToText(html);
+  const raw = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  const files: OutboundFile[] = [];
+  for (const f of raw.slice(0, 10)) {
+    const content = Buffer.from(await f.arrayBuffer());
+    files.push({ filename: f.name, mimeType: f.type || "application/octet-stream", size: content.length, content });
+  }
+  return { ticketId, html, text, files };
+}
 
 const updateSchema = z.object({
   ticketId: z.string().uuid(),
@@ -28,20 +42,37 @@ function refresh(ticketId: string) {
 
 export async function sendReplyAction(formData: FormData): Promise<void> {
   const session = await requireAgent();
-  const { ticketId, body } = replySchema.parse(Object.fromEntries(formData));
+  const { ticketId, html, text, files } = await composerInput(formData);
+  if (!text.trim() && files.length === 0) return;
   const ticket = await getTicket(ticketId);
   if (!ticket) throw new Error("Ticket not found");
 
-  await sendTicketReply(ticket, body, { role: "human", author: session.email });
+  await sendTicketReply(ticket, text, {
+    role: "human",
+    author: session.email,
+    html: html || undefined,
+    attachments: files,
+  });
   await updateTicket(ticketId, { status: "waiting_on_customer" });
   refresh(ticketId);
 }
 
 export async function addNoteAction(formData: FormData): Promise<void> {
   const session = await requireAgent();
-  const { ticketId, body } = replySchema.parse(Object.fromEntries(formData));
+  const { ticketId, html, text, files } = await composerInput(formData);
+  if (!text.trim() && files.length === 0) return;
 
-  await addMessage({ ticket_id: ticketId, role: "internal_note", author: session.email, body_text: body });
+  const message = await addMessage({
+    ticket_id: ticketId,
+    role: "internal_note",
+    author: session.email,
+    body_text: text,
+    body_html: html || null,
+  });
+  if (files.length > 0) {
+    const stored = await storeOutboundAttachments(ticketId, message.id, files);
+    await setMessageAttachments(message.id, stored as unknown as Json);
+  }
   await audit("human", session.email, "note.added", { type: "ticket", id: ticketId });
   refresh(ticketId);
 }

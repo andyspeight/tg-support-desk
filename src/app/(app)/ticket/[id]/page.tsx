@@ -4,6 +4,7 @@ import { getTicketSla, getTicketWithMessages, listCannedResponses } from "@/lib/
 import type { ClockState } from "@/lib/sla";
 import { getClientById } from "@/lib/integrations/airtable-clients";
 import { env } from "@/lib/env";
+import { sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
@@ -139,7 +140,14 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   </span>
                   <span className="text-xs text-zinc-400">{formatDateTime(message.created_at)}</span>
                 </div>
-                <pre className="mt-1.5 whitespace-pre-wrap font-sans text-sm text-zinc-800">{message.body_text}</pre>
+                {message.body_html ? (
+                  <div
+                    className="tg-prose mt-1.5 text-sm text-zinc-800"
+                    dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(message.body_html) }}
+                  />
+                ) : (
+                  <pre className="mt-1.5 whitespace-pre-wrap font-sans text-sm text-zinc-800">{message.body_text}</pre>
+                )}
                 <MessageAttachments messageId={message.id} attachments={message.attachments} />
               </div>
             );

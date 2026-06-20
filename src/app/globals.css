@@ -34,3 +34,25 @@ body {
   color: #0f172a;
   font-family: var(--font-sans), system-ui, sans-serif;
 }
+
+/* Rendered rich text (thread messages) and the TipTap composer. */
+.tg-prose p { margin: 0 0 0.5rem; }
+.tg-prose p:last-child { margin-bottom: 0; }
+.tg-prose ul { list-style: disc; padding-left: 1.25rem; margin: 0 0 0.5rem; }
+.tg-prose ol { list-style: decimal; padding-left: 1.25rem; margin: 0 0 0.5rem; }
+.tg-prose li { margin: 0.125rem 0; }
+.tg-prose a { color: #007a96; text-decoration: underline; }
+.tg-prose strong { font-weight: 600; }
+.tg-prose em { font-style: italic; }
+.tg-prose h2 { font-size: 1.05rem; font-weight: 600; margin: 0.5rem 0 0.25rem; }
+.tg-prose h3 { font-size: 0.95rem; font-weight: 600; margin: 0.5rem 0 0.25rem; }
+.tg-prose blockquote { border-left: 3px solid var(--line); padding-left: 0.75rem; color: var(--ink-2); margin: 0 0 0.5rem; }
+
+.tiptap:focus { outline: none; }
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #a1a1aa;
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
