@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-6">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-zinc-50 px-6">
       <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">{children}</div>
     </div>
   );
@@ -60,7 +60,7 @@ export default async function CsatPage({
               key={n}
               name="score"
               value={n}
-              className="flex-1 rounded-md border border-zinc-300 bg-white py-3 text-lg font-semibold text-zinc-700 hover:border-violet-400 hover:bg-violet-50"
+              className="flex-1 rounded-md border border-zinc-300 bg-white py-3 text-lg font-semibold text-zinc-700 hover:border-accent-400 hover:bg-accent-50"
             >
               {n}
             </button>

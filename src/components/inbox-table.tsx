@@ -155,8 +155,8 @@ export function InboxTable({ tickets, bulkUpdate }: Props) {
                 rowRefs.current[i] = el;
               }}
               onClick={() => setFocus(i)}
-              className={`border-t border-zinc-100 ${i === focus ? "bg-violet-50/60" : "hover:bg-white"} ${
-                selected.has(ticket.id) ? "bg-violet-50" : ""
+              className={`border-t border-zinc-100 ${i === focus ? "bg-brand-50/70" : "hover:bg-white"} ${
+                selected.has(ticket.id) ? "bg-brand-50" : ""
               }`}
             >
               <td className="py-2.5 pl-1">
@@ -173,7 +173,7 @@ export function InboxTable({ tickets, bulkUpdate }: Props) {
                   {ticket.subject}
                 </Link>
                 {ticket.ai_resolved && (
-                  <span className="ml-2 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-600">AI</span>
+                  <span className="ml-2 rounded bg-accent-50 px-1.5 py-0.5 text-[10px] font-medium text-accent-700">AI</span>
                 )}
               </td>
               <td className="truncate py-2.5 text-zinc-500">{ticket.requester_name ?? ticket.requester_email}</td>
