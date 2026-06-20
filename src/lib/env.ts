@@ -29,7 +29,10 @@ export const env = {
     return required("ANTHROPIC_API_KEY");
   },
   get resolutionModel() {
-    return optional("RESOLUTION_MODEL", "claude-fable-5");
+    // Temporary: claude-fable-5 is unavailable (Jun 2026) — default the
+    // resolution agent (and KB-grounded copilot drafting) to claude-opus-4-8
+    // until it returns. Override anytime via the RESOLUTION_MODEL env var.
+    return optional("RESOLUTION_MODEL", "claude-opus-4-8");
   },
   get utilityModel() {
     return optional("UTILITY_MODEL", "claude-haiku-4-5");
