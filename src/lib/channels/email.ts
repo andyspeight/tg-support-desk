@@ -14,7 +14,7 @@ import type { Json } from "@/lib/db/database.types";
 import { env } from "@/lib/env";
 import { matchesBlocklist, parseGmailMessage, type GmailMessage } from "./email-parse";
 import { buildReplyMime, getAttachmentBytes, sendMessage } from "./gmail";
-import { storeAttachments } from "./attachments";
+import { storeAttachments, storeOutboundAttachments, type OutboundFile } from "./attachments";
 
 // Email channel: Gmail message → ticket/message rows, and ticket reply → email.
 
@@ -138,7 +138,7 @@ async function latestCustomerThreadMeta(ticketId: string): Promise<{ messageId: 
 export async function sendTicketReply(
   ticket: Ticket,
   body: string,
-  opts: { role: "ai" | "human"; author: string },
+  opts: { role: "ai" | "human"; author: string; html?: string; attachments?: OutboundFile[] },
 ): Promise<Message> {
   if (ticket.channel !== "email") throw new Error(`sendTicketReply: unsupported channel ${ticket.channel}`);
 
@@ -147,11 +147,13 @@ export async function sendTicketReply(
   const refs = [...references, ...(messageId ? [messageId] : [])];
 
   const sent = await sendMessage(
-    buildReplyMime({
+    await buildReplyMime({
       to: ticket.requester_email,
       cc: ticket.cc_emails.filter((e) => e !== ticket.requester_email && e !== env.supportEmail),
       subject,
       text: body,
+      html: opts.html,
+      attachments: opts.attachments,
       inReplyTo: messageId,
       references: refs,
     }),
@@ -163,8 +165,15 @@ export async function sendTicketReply(
     role: opts.role,
     author: opts.author,
     body_text: body,
+    body_html: opts.html ?? null,
     channel_meta: { gmail_message_id: sent.id, gmail_thread_id: sent.threadId, outbound: true },
   });
+
+  if (opts.attachments && opts.attachments.length > 0) {
+    const stored = await storeOutboundAttachments(ticket.id, message.id, opts.attachments);
+    await setMessageAttachments(message.id, stored as unknown as Json);
+    message.attachments = stored as unknown as Json;
+  }
 
   if (!ticket.first_response_at) {
     await updateTicket(ticket.id, { first_response_at: new Date().toISOString() });

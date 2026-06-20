@@ -71,6 +71,49 @@ export async function storeAttachments(
   return out;
 }
 
+/** An agent-uploaded file destined for an outbound reply or internal note. */
+export type OutboundFile = { filename: string; mimeType: string; size: number; content: Buffer };
+
+/**
+ * Validate and store agent-uploaded files (bytes already in hand). Same
+ * allowlist + size cap as inbound; best-effort per item.
+ */
+export async function storeOutboundAttachments(
+  ticketId: string,
+  messageId: string,
+  files: OutboundFile[],
+): Promise<StoredAttachment[]> {
+  const out: StoredAttachment[] = [];
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const base: StoredAttachment = { filename: f.filename, mimeType: f.mimeType, size: f.size, stored: false };
+
+    const check = checkAttachment({ mimeType: f.mimeType, size: f.size });
+    if (!check.ok) {
+      out.push({ ...base, rejected: check.reason });
+      continue;
+    }
+    if (f.content.length > MAX_ATTACHMENT_BYTES) {
+      out.push({ ...base, rejected: "too large" });
+      continue;
+    }
+    try {
+      const key = storageKeyFor(env.tenantId, ticketId, messageId, i, f.filename);
+      const { error } = await db()
+        .storage.from(ATTACHMENTS_BUCKET)
+        .upload(key, f.content, { contentType: f.mimeType, upsert: true });
+      if (error) {
+        out.push({ ...base, rejected: `storage error: ${error.message}` });
+        continue;
+      }
+      out.push({ ...base, storageKey: key, stored: true });
+    } catch (error) {
+      out.push({ ...base, rejected: `store error: ${error instanceof Error ? error.message : String(error)}` });
+    }
+  }
+  return out;
+}
+
 /** Short-lived signed URL for a stored attachment, forcing download. */
 export async function signedAttachmentUrl(storageKey: string, filename: string): Promise<string | null> {
   const { data, error } = await db()

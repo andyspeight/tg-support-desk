@@ -1,4 +1,5 @@
 import "server-only";
+import MailComposer from "nodemailer/lib/mail-composer";
 import { env } from "@/lib/env";
 import type { GmailMessage } from "./email-parse";
 
@@ -61,38 +62,39 @@ export async function getAttachmentBytes(messageId: string, attachmentId: string
   return Buffer.from(data.data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
 
-function encodeHeaderWord(value: string): string {
-  // RFC 2047 encoding for non-ASCII header content.
-  return /^[\x20-\x7e]*$/.test(value) ? value : `=?UTF-8?B?${Buffer.from(value, "utf-8").toString("base64")}?=`;
-}
+export type OutboundAttachment = { filename: string; mimeType: string; content: Buffer };
 
-export function buildReplyMime(input: {
+/** Build a full reply MIME: text + optional HTML alternative + attachments. */
+export async function buildReplyMime(input: {
   to: string;
   cc?: string[];
   subject: string;
   text: string;
+  html?: string;
+  attachments?: OutboundAttachment[];
   inReplyTo?: string | null;
   references?: string[];
-}): string {
-  const from = `${encodeHeaderWord(env.supportFromName)} <${env.supportEmail}>`;
-  const headers = [
-    `From: ${from}`,
-    `To: ${input.to}`,
-    `Subject: ${encodeHeaderWord(input.subject)}`,
-    "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: base64",
-  ];
-  if (input.cc && input.cc.length) headers.splice(2, 0, `Cc: ${input.cc.join(", ")}`);
-  if (input.inReplyTo) headers.push(`In-Reply-To: ${input.inReplyTo}`);
-  if (input.references?.length) headers.push(`References: ${input.references.join(" ")}`);
-
-  const body = Buffer.from(input.text, "utf-8").toString("base64");
-  return `${headers.join("\r\n")}\r\n\r\n${body}`;
+}): Promise<Buffer> {
+  const mail = new MailComposer({
+    from: { name: env.supportFromName, address: env.supportEmail },
+    to: input.to,
+    cc: input.cc && input.cc.length ? input.cc : undefined,
+    subject: input.subject,
+    text: input.text,
+    html: input.html || undefined,
+    inReplyTo: input.inReplyTo || undefined,
+    references: input.references && input.references.length ? input.references : undefined,
+    attachments: input.attachments?.map((a) => ({
+      filename: a.filename,
+      content: a.content,
+      contentType: a.mimeType,
+    })),
+  });
+  return mail.compile().build();
 }
 
-export async function sendMessage(rawMime: string, threadId?: string | null): Promise<{ id: string; threadId: string }> {
-  const raw = Buffer.from(rawMime, "utf-8").toString("base64url");
+export async function sendMessage(rawMime: Buffer | string, threadId?: string | null): Promise<{ id: string; threadId: string }> {
+  const raw = (Buffer.isBuffer(rawMime) ? rawMime : Buffer.from(rawMime, "utf-8")).toString("base64url");
   const payload: Record<string, string> = { raw };
   if (threadId) payload.threadId = threadId;
   return (await gmailFetch("/messages/send", {

@@ -1,6 +1,23 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { useEditor, EditorContent, type Editor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Link from "@tiptap/extension-link";
+import Placeholder from "@tiptap/extension-placeholder";
+import {
+  Bold,
+  Italic,
+  List,
+  ListOrdered,
+  Link2,
+  Quote,
+  Paperclip,
+  Image as ImageIcon,
+  X,
+  Loader2,
+  Sparkles,
+} from "lucide-react";
 
 type CannedOption = { id: string; title: string; body: string };
 type CopilotResult = { ok: true; text: string } | { ok: false; error: string };
@@ -18,26 +35,109 @@ type Props = {
   };
 };
 
+const IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp";
+const FILE_ACCEPT =
+  ".pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,application/pdf,text/plain,text/csv";
+const MAX_FILES = 10;
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function textToHtml(text: string): string {
+  return text
+    .split(/\n{2,}/)
+    .map((p) => `<p>${p.split("\n").map(escapeHtml).join("<br>")}</p>`)
+    .join("");
+}
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+function ToolbarButton({
+  onClick,
+  active,
+  disabled,
+  label,
+  children,
+}: {
+  onClick: () => void;
+  active?: boolean;
+  disabled?: boolean;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      aria-pressed={active}
+      className={`flex h-8 w-8 items-center justify-center rounded-md transition disabled:opacity-40 ${
+        active ? "bg-brand-50 text-brand-700" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Props) {
-  const [body, setBody] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [isPending, startTransition] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const imageInput = useRef<HTMLInputElement>(null);
 
-  const submit = (action: (formData: FormData) => Promise<void>) => {
-    if (!body.trim() || isPending) return;
-    const formData = new FormData();
-    formData.set("ticketId", ticketId);
-    formData.set("body", body);
+  const editor = useEditor({
+    immediatelyRender: false,
+    extensions: [
+      StarterKit.configure({ heading: { levels: [2, 3] } }),
+      Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
+      Placeholder.configure({ placeholder: "Write a reply… (sent by email) or an internal note" }),
+    ],
+    content: "",
+    editorProps: {
+      attributes: {
+        class: "tg-prose min-h-[180px] max-h-[420px] overflow-y-auto px-3 py-2.5 text-sm text-zinc-800 focus:outline-none",
+      },
+    },
+  });
+
+  function addFiles(list: FileList | null) {
+    if (!list) return;
+    setError(null);
+    const incoming = Array.from(list);
+    const tooBig = incoming.find((f) => f.size > MAX_FILE_BYTES);
+    if (tooBig) setError(`"${tooBig.name}" is over the 25 MB limit.`);
+    setFiles((prev) => [...prev, ...incoming.filter((f) => f.size <= MAX_FILE_BYTES)].slice(0, MAX_FILES));
+  }
+
+  const isEmpty = !editor || editor.getText().trim() === "";
+
+  function submit(action: (formData: FormData) => Promise<void>) {
+    if (!editor || isPending) return;
+    if (isEmpty && files.length === 0) return;
+    const fd = new FormData();
+    fd.set("ticketId", ticketId);
+    fd.set("html", editor.getHTML());
+    for (const f of files) fd.append("files", f);
     startTransition(async () => {
-      await action(formData);
-      setBody("");
+      await action(fd);
+      editor.commands.clearContent();
+      setFiles([]);
+      setSummary(null);
     });
-  };
+  }
 
-  const runCopilot = (label: string, fn: () => Promise<CopilotResult>, apply: (text: string) => void) => {
-    if (busy) return;
+  function runCopilot(label: string, fn: () => Promise<CopilotResult>, apply: (text: string) => void) {
+    if (busy || !editor) return;
     setBusy(label);
     setError(null);
     startTransition(async () => {
@@ -46,15 +146,26 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
       else setError(result.error);
       setBusy(null);
     });
+  }
+
+  const setLink = (ed: Editor) => {
+    const prev = ed.getAttributes("link").href as string | undefined;
+    const url = window.prompt("Link URL", prev ?? "https://");
+    if (url === null) return;
+    if (url === "") ed.chain().focus().unsetLink().run();
+    else ed.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
   };
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm">
+    <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      {/* Copilot row */}
       {copilot && (
-        <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="font-medium text-accent-700">Copilot</span>
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-zinc-100 px-2.5 py-2 text-xs">
+          <span className="flex items-center gap-1 font-medium text-accent-700">
+            <Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} /> Copilot
+          </span>
           <button
-            onClick={() => runCopilot("draft", () => copilot.draft(ticketId), setBody)}
+            onClick={() => runCopilot("draft", () => copilot.draft(ticketId), (t) => editor?.commands.setContent(textToHtml(t)))}
             disabled={!!busy || isPending}
             className="rounded border border-accent-200 bg-accent-50 px-2 py-1 text-accent-700 hover:bg-accent-100 disabled:opacity-40"
           >
@@ -68,18 +179,19 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
             {busy === "summary" ? "Summarising…" : "Summarise"}
           </button>
           <button
-            onClick={() => body.trim() && runCopilot("rephrase", () => copilot.rephrase(body), setBody)}
-            disabled={!!busy || isPending || !body.trim()}
+            onClick={() => editor && !isEmpty && runCopilot("rephrase", () => copilot.rephrase(editor.getText()), (t) => editor.commands.setContent(textToHtml(t)))}
+            disabled={!!busy || isPending || isEmpty}
             className="rounded border border-zinc-200 px-2 py-1 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
           >
             {busy === "rephrase" ? "Rephrasing…" : "Rephrase"}
           </button>
           <button
             onClick={() => {
+              if (!editor || isEmpty) return;
               const lang = window.prompt("Translate the draft into which language?", "French");
-              if (lang && body.trim()) runCopilot("translate", () => copilot.translate(body, lang), setBody);
+              if (lang) runCopilot("translate", () => copilot.translate(editor.getText(), lang), (t) => editor.commands.setContent(textToHtml(t)));
             }}
-            disabled={!!busy || isPending || !body.trim()}
+            disabled={!!busy || isPending || isEmpty}
             className="rounded border border-zinc-200 px-2 py-1 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
           >
             Translate
@@ -88,37 +200,82 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
       )}
 
       {summary && (
-        <div className="mb-2 rounded-md border border-zinc-200 bg-zinc-50 p-2 text-xs text-zinc-600">
+        <div className="mx-2.5 mt-2 rounded-md border border-zinc-200 bg-zinc-50 p-2 text-xs text-zinc-600">
           <div className="mb-1 flex items-center justify-between">
             <span className="font-medium text-zinc-500">Thread summary</span>
-            <button onClick={() => setSummary(null)} className="text-zinc-400 hover:text-zinc-700">
-              dismiss
+            <button onClick={() => setSummary(null)} className="text-zinc-400 hover:text-zinc-700" aria-label="Dismiss summary">
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
           {summary}
         </div>
       )}
 
-      {error && <div className="mb-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{error}</div>}
+      {/* Formatting toolbar */}
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-zinc-100 px-2 py-1.5">
+        <ToolbarButton label="Bold" active={editor?.isActive("bold")} onClick={() => editor?.chain().focus().toggleBold().run()}>
+          <Bold className="h-4 w-4" strokeWidth={2} />
+        </ToolbarButton>
+        <ToolbarButton label="Italic" active={editor?.isActive("italic")} onClick={() => editor?.chain().focus().toggleItalic().run()}>
+          <Italic className="h-4 w-4" strokeWidth={2} />
+        </ToolbarButton>
+        <ToolbarButton label="Bulleted list" active={editor?.isActive("bulletList")} onClick={() => editor?.chain().focus().toggleBulletList().run()}>
+          <List className="h-4 w-4" strokeWidth={1.75} />
+        </ToolbarButton>
+        <ToolbarButton label="Numbered list" active={editor?.isActive("orderedList")} onClick={() => editor?.chain().focus().toggleOrderedList().run()}>
+          <ListOrdered className="h-4 w-4" strokeWidth={1.75} />
+        </ToolbarButton>
+        <ToolbarButton label="Quote" active={editor?.isActive("blockquote")} onClick={() => editor?.chain().focus().toggleBlockquote().run()}>
+          <Quote className="h-4 w-4" strokeWidth={1.75} />
+        </ToolbarButton>
+        <ToolbarButton label="Add link" active={editor?.isActive("link")} onClick={() => editor && setLink(editor)}>
+          <Link2 className="h-4 w-4" strokeWidth={1.75} />
+        </ToolbarButton>
+        <span className="mx-1 h-5 w-px bg-zinc-200" />
+        <ToolbarButton label="Attach image" onClick={() => imageInput.current?.click()}>
+          <ImageIcon className="h-4 w-4" strokeWidth={1.75} />
+        </ToolbarButton>
+        <ToolbarButton label="Attach file" onClick={() => fileInput.current?.click()}>
+          <Paperclip className="h-4 w-4" strokeWidth={1.75} />
+        </ToolbarButton>
+      </div>
 
-      <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        rows={5}
-        placeholder="Write a reply… (sent by email) or an internal note"
-        className="w-full resize-y rounded-md border border-zinc-200 p-2 text-sm focus:border-zinc-400 focus:outline-none"
-      />
-      <div className="mt-2 flex items-center gap-2">
+      <input ref={imageInput} type="file" accept={IMAGE_ACCEPT} multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+      <input ref={fileInput} type="file" accept={FILE_ACCEPT} multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+
+      <EditorContent editor={editor} />
+
+      {/* Attachment chips */}
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+          {files.map((f, i) => (
+            <span key={`${f.name}-${i}`} className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs text-zinc-700">
+              <Paperclip className="h-3 w-3 text-zinc-400" strokeWidth={1.75} />
+              <span className="max-w-[160px] truncate">{f.name}</span>
+              <span className="text-zinc-400">{formatBytes(f.size)}</span>
+              <button onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`} className="text-zinc-400 hover:text-red-600">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {error && <div className="mx-2.5 mb-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{error}</div>}
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 border-t border-zinc-100 px-2.5 py-2">
         <button
           onClick={() => submit(sendReply)}
-          disabled={isPending || !body.trim()}
-          className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
+          disabled={isPending || (isEmpty && files.length === 0)}
+          className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-40"
         >
+          {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />}
           {isPending ? "Working…" : "Reply to customer"}
         </button>
         <button
           onClick={() => submit(addNote)}
-          disabled={isPending || !body.trim()}
+          disabled={isPending || (isEmpty && files.length === 0)}
           className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
         >
           Internal note
@@ -129,8 +286,10 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
             value=""
             onChange={(e) => {
               const found = canned.find((c) => c.id === e.target.value);
-              if (found) setBody((current) => (current ? `${current}\n\n${found.body}` : found.body));
+              if (found && editor) editor.chain().focus().insertContent(textToHtml(found.body)).run();
+              e.target.value = "";
             }}
+            aria-label="Insert canned response"
           >
             <option value="" disabled>
               Canned responses…
