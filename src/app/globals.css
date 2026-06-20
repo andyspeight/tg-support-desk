@@ -1,12 +1,36 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
+}
+
+/* Travelgenix brand palette (travelgenix-design): navy primary, teal accent. */
+@theme {
+  --color-brand-50: #eef1f8;
+  --color-brand-100: #d9e0ef;
+  --color-brand-200: #b6c2de;
+  --color-brand-300: #8ca0c8;
+  --color-brand-400: #5a73a6;
+  --color-brand-500: #2a3f7a;
+  --color-brand-600: #1b2b5b;
+  --color-brand-700: #131f44;
+  --color-brand-800: #0d1630;
+  --color-brand-900: #080e20;
+
+  --color-accent-50: #e6f8fc;
+  --color-accent-100: #c8f0f8;
+  --color-accent-200: #9ee4f1;
+  --color-accent-300: #67d4e9;
+  --color-accent-400: #34c2de;
+  --color-accent-500: #00b4d8;
+  --color-accent-600: #0096b7;
+  --color-accent-700: #007a96;
+  --color-accent-800: #005f73;
 }
 
 body {
   background: #fafafa;
-  color: #18181b;
+  color: #0f172a;
   font-family: var(--font-sans), system-ui, sans-serif;
 }

@@ -20,7 +20,7 @@ import {
 
 const ROLE_STYLES: Record<Message["role"], { label: string; className: string }> = {
   customer: { label: "Customer", className: "border-zinc-200 bg-white" },
-  ai: { label: "AI", className: "border-violet-200 bg-violet-50" },
+  ai: { label: "AI", className: "border-accent-200 bg-accent-50" },
   human: { label: "Agent", className: "border-emerald-200 bg-emerald-50" },
   internal_note: { label: "Internal note", className: "border-amber-200 bg-amber-50" },
   system: { label: "System", className: "border-zinc-200 bg-zinc-50" },

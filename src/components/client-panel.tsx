@@ -35,7 +35,7 @@ export function ClientPanel({ record }: { record: ClientRecordLike }) {
   return (
     <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
       <div className="flex items-center gap-3 border-b border-zinc-100 bg-gradient-to-b from-zinc-50 to-white p-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-violet-600 text-base font-semibold text-white">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-600 text-base font-semibold text-white">
           {monogram}
         </div>
         <div className="min-w-0">
@@ -48,7 +48,7 @@ export function ClientPanel({ record }: { record: ClientRecordLike }) {
         {(plan || status) && (
           <div className="flex flex-wrap gap-1.5">
             {plan && (
-              <span className="rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-medium text-violet-700 ring-1 ring-inset ring-violet-200">
+              <span className="rounded-full bg-accent-50 px-2.5 py-0.5 text-xs font-medium text-accent-700 ring-1 ring-inset ring-accent-200">
                 {plan}
               </span>
             )}
@@ -82,7 +82,7 @@ export function ClientPanel({ record }: { record: ClientRecordLike }) {
             href={website}
             target="_blank"
             rel="noopener noreferrer"
-            className="block truncate text-xs font-medium text-violet-600 hover:text-violet-700"
+            className="block truncate text-xs font-medium text-accent-700 hover:text-accent-800"
           >
             {website.replace(/^https?:\/\//, "").replace(/\/+$/, "")} ↗
           </a>

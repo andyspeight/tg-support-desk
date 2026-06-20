@@ -11,7 +11,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-function Bar({ value, max, className = "bg-violet-500" }: { value: number; max: number; className?: string }) {
+function Bar({ value, max, className = "bg-accent-500" }: { value: number; max: number; className?: string }) {
   return (
     <span className="block h-1.5 w-full rounded-full bg-zinc-100">
       <span className={`block h-1.5 rounded-full ${className}`} style={{ width: `${max > 0 ? (value / max) * 100 : 0}%` }} />
@@ -42,12 +42,12 @@ export default async function AnalyticsPage() {
           <h2 className="text-sm font-semibold">True AI resolution rate</h2>
           <span className="text-xs text-zinc-400">target {target}%</span>
         </div>
-        <p className="mt-2 text-4xl font-semibold text-violet-700">
+        <p className="mt-2 text-4xl font-semibold text-accent-700">
           {a.aiResolutionRateStrict === null ? "—" : `${a.aiResolutionRateStrict}%`}
         </p>
         <div className="relative mt-4 h-3 rounded-full bg-zinc-100">
           <div
-            className="absolute h-3 rounded-full bg-violet-500"
+            className="absolute h-3 rounded-full bg-accent-500"
             style={{ width: `${Math.min(a.aiResolutionRateStrict ?? 0, 100)}%` }}
           />
           {RESOLUTION_MILESTONES.map((m) => (
@@ -106,7 +106,7 @@ export default async function AnalyticsPage() {
                   </span>
                 </div>
                 <div className="mt-1">
-                  <Bar value={row.rate} max={100} className={row.rate >= target ? "bg-emerald-500" : "bg-violet-500"} />
+                  <Bar value={row.rate} max={100} className={row.rate >= target ? "bg-emerald-500" : "bg-accent-500"} />
                 </div>
               </div>
             ))}

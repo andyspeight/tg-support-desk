@@ -5,7 +5,7 @@ import { RefreshPoller } from "@/components/refresh-poller";
 
 const ITEM_DOT: Record<RoadmapItemStatus, string> = {
   done: "bg-emerald-500",
-  in_progress: "bg-violet-500",
+  in_progress: "bg-accent-500",
   blocked: "bg-amber-500",
   todo: "bg-zinc-300",
 };
@@ -19,9 +19,9 @@ const ITEM_TEXT: Record<RoadmapItemStatus, string> = {
 
 function StatCard({ label, value, accent, href }: { label: string; value: string; accent?: boolean; href?: string }) {
   const body = (
-    <div className={`rounded-lg border bg-white p-4 ${accent ? "border-violet-200" : "border-zinc-200"} ${href ? "hover:border-zinc-400" : ""}`}>
+    <div className={`rounded-lg border bg-white p-4 ${accent ? "border-accent-200" : "border-zinc-200"} ${href ? "hover:border-zinc-400" : ""}`}>
       <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold ${accent ? "text-violet-700" : "text-zinc-900"}`}>{value}</p>
+      <p className={`mt-1 text-2xl font-semibold ${accent ? "text-accent-700" : "text-zinc-900"}`}>{value}</p>
     </div>
   );
   return href ? <Link href={href}>{body}</Link> : body;
@@ -80,7 +80,7 @@ export default async function DashboardPage() {
         </div>
         <div className="relative mt-6 h-3 rounded-full bg-zinc-100">
           <div
-            className="absolute h-3 rounded-full bg-violet-500 transition-all"
+            className="absolute h-3 rounded-full bg-accent-500 transition-all"
             style={{ width: `${Math.min(rate, 100)}%` }}
           />
           {RESOLUTION_MILESTONES.map((m) => (
@@ -93,7 +93,7 @@ export default async function DashboardPage() {
           ))}
         </div>
         <div className="mt-9 text-xs text-zinc-500">
-          Currently <span className="font-semibold text-violet-700">{stats.aiResolutionPct === null ? "no resolved tickets yet" : `${rate}%`}</span>
+          Currently <span className="font-semibold text-accent-700">{stats.aiResolutionPct === null ? "no resolved tickets yet" : `${rate}%`}</span>
           {stats.escalationReasons.length > 0 && (
             <span>
               {" "}· top escalation causes:{" "}
@@ -129,7 +129,7 @@ export default async function DashboardPage() {
                       status === "done"
                         ? "bg-emerald-500 text-white"
                         : status === "in_progress"
-                          ? "bg-violet-600 text-white"
+                          ? "bg-brand-600 text-white"
                           : "bg-zinc-100 text-zinc-400"
                     }`}
                   >
@@ -144,7 +144,7 @@ export default async function DashboardPage() {
                   <span className="hidden w-40 shrink-0 sm:block">
                     <span className="block h-1.5 rounded-full bg-zinc-100">
                       <span
-                        className={`block h-1.5 rounded-full ${status === "done" ? "bg-emerald-500" : "bg-violet-500"}`}
+                        className={`block h-1.5 rounded-full ${status === "done" ? "bg-emerald-500" : "bg-accent-500"}`}
                         style={{ width: `${pct}%` }}
                       />
                     </span>
@@ -170,7 +170,7 @@ export default async function DashboardPage() {
 
         <div className="mt-3 flex items-center gap-4 text-xs text-zinc-400">
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> done</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-violet-500" /> in progress</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent-500" /> in progress</span>
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" /> blocked — needs Andy</span>
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-zinc-300" /> up next</span>
         </div>

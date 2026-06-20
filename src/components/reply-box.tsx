@@ -52,11 +52,11 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
     <div className="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm">
       {copilot && (
         <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="font-medium text-violet-700">Copilot</span>
+          <span className="font-medium text-accent-700">Copilot</span>
           <button
             onClick={() => runCopilot("draft", () => copilot.draft(ticketId), setBody)}
             disabled={!!busy || isPending}
-            className="rounded border border-violet-200 bg-violet-50 px-2 py-1 text-violet-700 hover:bg-violet-100 disabled:opacity-40"
+            className="rounded border border-accent-200 bg-accent-50 px-2 py-1 text-accent-700 hover:bg-accent-100 disabled:opacity-40"
           >
             {busy === "draft" ? "Drafting…" : "Draft reply"}
           </button>
