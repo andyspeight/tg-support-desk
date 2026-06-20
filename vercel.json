@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/poll-gmail",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/stale-tickets",
+      "schedule": "0 * * * *"
     }
   ]
 }

@@ -19,9 +19,32 @@ function timeAgo(iso: string): string {
 type Props = {
   tickets: Ticket[];
   bulkUpdate: (formData: FormData) => Promise<void>;
+  awaiting?: Record<string, string>;
+  agents?: string[];
 };
 
-export function InboxTable({ tickets, bulkUpdate }: Props) {
+function waitingHours(since: string): number {
+  return Math.floor((Date.now() - new Date(since).getTime()) / 3_600_000);
+}
+
+function WaitingBadge({ since }: { since: string }) {
+  const hrs = waitingHours(since);
+  const over = hrs >= 24;
+  return (
+    <span
+      className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+        over
+          ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300"
+          : "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
+      }`}
+      title="Awaiting an agent reply"
+    >
+      waiting {hrs < 1 ? "<1" : hrs}h
+    </span>
+  );
+}
+
+export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focus, setFocus] = useState(0);
@@ -113,6 +136,29 @@ export function InboxTable({ tickets, bulkUpdate }: Props) {
             <button onClick={() => runBulk("assign_me")} disabled={isPending} className="rounded border border-line bg-surface px-2 py-1 hover:bg-surface-2">
               Assign to me
             </button>
+            {agents && agents.length > 0 && (
+              <select
+                defaultValue=""
+                disabled={isPending}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    runBulk("assign", e.target.value);
+                    e.target.value = "";
+                  }
+                }}
+                className="rounded border border-line bg-surface px-2 py-1 text-xs"
+                aria-label="Assign to teammate"
+              >
+                <option value="" disabled>
+                  Assign to…
+                </option>
+                {agents.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+            )}
             <button onClick={() => runBulk("status", "resolved")} disabled={isPending} className="rounded border border-line bg-surface px-2 py-1 hover:bg-surface-2">
               Resolve
             </button>
@@ -175,6 +221,7 @@ export function InboxTable({ tickets, bulkUpdate }: Props) {
                 {ticket.ai_resolved && (
                   <span className="ml-2 rounded bg-accent-50 px-1.5 py-0.5 text-[10px] font-medium text-accent-700 dark:bg-accent-500/10 dark:text-accent-300">AI</span>
                 )}
+                {awaiting?.[ticket.id] && <WaitingBadge since={awaiting[ticket.id]} />}
               </td>
               <td className="truncate py-2.5 text-ink-2">{ticket.requester_name ?? ticket.requester_email}</td>
               <td className="py-2.5">

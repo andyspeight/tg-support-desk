@@ -1,18 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTicketSla, getTicketWithMessages, listCannedResponses } from "@/lib/db/queries";
+import { getSession } from "@/lib/auth";
 import type { ClockState } from "@/lib/sla";
 import { getClientById } from "@/lib/integrations/airtable-clients";
 import { env } from "@/lib/env";
 import { sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
-import { AlertTriangle, ArrowLeft, Paperclip } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Eye, EyeOff, Paperclip } from "lucide-react";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
 import { ClientPanel } from "@/components/client-panel";
 import { RunAiButton } from "@/components/run-ai-button";
-import { addNoteAction, mergeTicketAction, runAiAction, sendReplyAction, updateTicketAction } from "../actions";
+import { addNoteAction, mergeTicketAction, runAiAction, sendReplyAction, snoozeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
 import {
   copilotDraftAction,
   copilotRephraseAction,
@@ -89,6 +90,9 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const loaded = await getTicketWithMessages(id).catch(() => null);
   if (!loaded) notFound();
   const { ticket, messages } = loaded;
+
+  const session = await getSession();
+  const watching = !!session && ticket.watchers.some((w) => w.toLowerCase() === session.email.toLowerCase());
 
   const [canned, clientRecord, sla] = await Promise.all([
     listCannedResponses().catch(() => []),
@@ -234,6 +238,51 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             Update ticket
           </button>
         </form>
+
+        {/* Watch + snooze */}
+        <div className="space-y-2 border-t border-line-soft pt-3 text-sm">
+          <form action={watchTicketAction}>
+            <input type="hidden" name="ticketId" value={ticket.id} />
+            <button className="flex w-full items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-3 py-1.5 text-ink-2 hover:bg-surface-2">
+              {watching ? (
+                <>
+                  <EyeOff className="h-3.5 w-3.5" strokeWidth={1.75} /> Stop watching
+                </>
+              ) : (
+                <>
+                  <Eye className="h-3.5 w-3.5" strokeWidth={1.75} /> Watch this ticket
+                </>
+              )}
+            </button>
+          </form>
+          {ticket.watchers.length > 0 && (
+            <p className="text-[11px] text-ink-3">Watching: {ticket.watchers.join(", ")}</p>
+          )}
+
+          <form action={snoozeTicketAction} className="flex items-center gap-1">
+            <input type="hidden" name="ticketId" value={ticket.id} />
+            <span className="mr-1 text-xs text-ink-2">Snooze</span>
+            {(["1h", "3h", "tomorrow", "3d"] as const).map((u) => (
+              <button
+                key={u}
+                name="until"
+                value={u}
+                className="rounded border border-line bg-surface px-1.5 py-1 text-[11px] text-ink-2 hover:bg-surface-2"
+              >
+                {u}
+              </button>
+            ))}
+          </form>
+          {ticket.snoozed_until && (
+            <form action={snoozeTicketAction} className="flex items-center justify-between text-[11px] text-amber-700 dark:text-amber-400">
+              <input type="hidden" name="ticketId" value={ticket.id} />
+              <span>Snoozed until {formatDateTime(ticket.snoozed_until)}</span>
+              <button name="until" value="clear" className="underline hover:no-underline">
+                clear
+              </button>
+            </form>
+          )}
+        </div>
 
         {ticket.escalation_reason && (
           <div className="rounded-md border border-red-100 bg-red-50 p-3 text-xs text-red-700 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300">

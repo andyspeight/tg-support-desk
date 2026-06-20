@@ -6,6 +6,7 @@ export type KbArticle = Tables<"kb_articles">;
 export type AiEvent = Tables<"ai_events">;
 export type CannedResponse = Tables<"canned_responses">;
 export type SlaPolicy = Tables<"sla_policies">;
+export type Notification = Tables<"notifications">;
 
 export type TicketStatus = Database["public"]["Enums"]["ticket_status"];
 export type TicketPriority = Database["public"]["Enums"]["ticket_priority"];

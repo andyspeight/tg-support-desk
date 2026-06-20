@@ -14,6 +14,7 @@ import {
   searchPastTickets,
   updateTicket,
 } from "@/lib/db/queries";
+import { notify, ticketRecipients } from "@/lib/db/notifications";
 import type { Message, Ticket } from "@/lib/db/types";
 import { getClientById, matchClientByEmail, summariseClient } from "@/lib/integrations/airtable-clients";
 import { sendTicketReply } from "@/lib/channels/email";
@@ -24,6 +25,20 @@ import { env } from "@/lib/env";
 // of answered / clarifying question / explicit escalation. Never silent.
 
 const AI_ACTOR = "resolution-agent";
+
+// Escalations ping the owner + watchers; if nobody owns it yet, ping all agents
+// so it gets picked up. notify() is defensive — never breaks the pipeline.
+async function notifyEscalation(ticket: Ticket, reason: string): Promise<void> {
+  const owners = ticketRecipients(ticket);
+  await notify({
+    recipients: owners.length > 0 ? owners : env.agentEmails,
+    type: "escalated",
+    ticketId: ticket.id,
+    title: `Escalated: #${ticket.reference} — ${ticket.subject}`,
+    body: reason.slice(0, 200),
+    actor: AI_ACTOR,
+  });
+}
 
 export async function resolveTicket(
   ticketId: string,
@@ -57,6 +72,7 @@ export async function resolveTicket(
       escalation_reason: "loop_suspected: 5+ AI replies in 24h",
     });
     await audit("system", AI_ACTOR, "ai.loop_guard_tripped", { type: "ticket", id: ticket.id });
+    await notifyEscalation(ticket, "Loop guard tripped: 5+ AI replies in 24h.");
     return null;
   }
 
@@ -236,6 +252,7 @@ async function applyOutcome(ticket: Ticket, outcome: AgentOutcome, result: Agent
       category: outcome.category,
       reason: outcome.reason,
     });
+    await notifyEscalation(ticket, `${outcome.category}: ${outcome.reason}`);
   }
 
   if (result) {
@@ -299,6 +316,7 @@ async function failSafeEscalate(ticket: Ticket, error: unknown): Promise<void> {
       escalation_reason: `tool_error: ${message}`.slice(0, 300),
     });
     await audit("system", AI_ACTOR, "ai.pipeline_error", { type: "ticket", id: ticket.id }, { error: message.slice(0, 500) });
+    await notifyEscalation(ticket, `Pipeline error: ${message.slice(0, 150)}`);
   } catch (inner) {
     console.error("failSafeEscalate failed:", inner);
   }

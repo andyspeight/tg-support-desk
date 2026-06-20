@@ -99,6 +99,9 @@ export async function updateTicket(id: string, patch: TablesUpdate<"tickets">): 
 export async function listTickets(view: InboxView, agentEmail: string): Promise<Ticket[]> {
   if (view === "breaching") return listBreachingTickets();
 
+  // Snoozed tickets drop out of the active queues until their time is up.
+  const activeNotSnoozed = `snoozed_until.is.null,snoozed_until.lte.${new Date().toISOString()}`;
+
   let query = db()
     .from("tickets")
     .select()
@@ -108,10 +111,10 @@ export async function listTickets(view: InboxView, agentEmail: string): Promise<
 
   switch (view) {
     case "mine":
-      query = query.eq("assignee", agentEmail).in("status", [...OPEN_STATUSES]);
+      query = query.eq("assignee", agentEmail).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed);
       break;
     case "unassigned":
-      query = query.is("assignee", null).in("status", [...OPEN_STATUSES]);
+      query = query.is("assignee", null).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed);
       break;
     case "escalated":
       query = query.eq("status", "escalated");
@@ -120,7 +123,7 @@ export async function listTickets(view: InboxView, agentEmail: string): Promise<
       query = query.eq("status", "waiting_on_customer");
       break;
     case "open":
-      query = query.in("status", [...OPEN_STATUSES]);
+      query = query.in("status", [...OPEN_STATUSES]).or(activeNotSnoozed);
       break;
     case "all":
       break;
@@ -130,13 +133,14 @@ export async function listTickets(view: InboxView, agentEmail: string): Promise<
 }
 
 export async function inboxCounts(agentEmail: string): Promise<Record<InboxView, number>> {
+  const activeNotSnoozed = `snoozed_until.is.null,snoozed_until.lte.${new Date().toISOString()}`;
   const base = () => db().from("tickets").select("id", { count: "exact", head: true }).eq("tenant_id", env.tenantId);
   const [mine, unassigned, escalated, waiting, open, all, breaching] = await Promise.all([
-    base().eq("assignee", agentEmail).in("status", [...OPEN_STATUSES]),
-    base().is("assignee", null).in("status", [...OPEN_STATUSES]),
+    base().eq("assignee", agentEmail).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
+    base().is("assignee", null).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
     base().eq("status", "escalated"),
     base().eq("status", "waiting_on_customer"),
-    base().in("status", [...OPEN_STATUSES]),
+    base().in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
     base(),
     listBreachingTickets(),
   ]);
@@ -149,6 +153,20 @@ export async function inboxCounts(agentEmail: string): Promise<Record<InboxView,
     open: open.count ?? 0,
     all: all.count ?? 0,
   };
+}
+
+/** Tickets awaiting an agent/AI reply (latest message is the customer's), with
+ *  the time we've been waiting since. Powers the inbox badge + stale-ticket cron. */
+export async function awaitingResponse(): Promise<{ ticketId: string; waitingSince: string }[]> {
+  const { data, error } = await db().rpc("tickets_awaiting_response", { p_tenant_id: env.tenantId });
+  if (error) throw new Error(`awaitingResponse: ${error.message}`);
+  return (data ?? []).map((r) => ({ ticketId: r.ticket_id, waitingSince: r.waiting_since }));
+}
+
+export async function getTicketsByIds(ids: string[]): Promise<Ticket[]> {
+  if (!ids.length) return [];
+  const result = await db().from("tickets").select().eq("tenant_id", env.tenantId).in("id", ids);
+  return unwrap(result, "getTicketsByIds");
 }
 
 export type BulkPatch = Omit<TablesUpdate<"tickets">, "tags"> & { addTag?: string };

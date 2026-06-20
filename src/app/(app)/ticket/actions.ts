@@ -5,6 +5,9 @@ import { z } from "zod";
 import { redirect } from "next/navigation";
 import { requireAgent } from "@/lib/auth";
 import { addMessage, audit, getTicket, getTicketByReference, mergeTickets, setMessageAttachments, updateTicket } from "@/lib/db/queries";
+import { notify } from "@/lib/db/notifications";
+import { parseMentions } from "@/lib/mentions";
+import { env } from "@/lib/env";
 import { sendTicketReply } from "@/lib/channels/email";
 import { sanitizeEmailHtml, htmlToText } from "@/lib/channels/email-parse";
 import { storeOutboundAttachments, type OutboundFile } from "@/lib/channels/attachments";
@@ -74,6 +77,21 @@ export async function addNoteAction(formData: FormData): Promise<void> {
     await setMessageAttachments(message.id, stored as unknown as Json);
   }
   await audit("human", session.email, "note.added", { type: "ticket", id: ticketId });
+
+  // @mention in an internal note pings the colleague (without reassigning).
+  const mentioned = parseMentions(text, env.agentEmails);
+  if (mentioned.length > 0) {
+    const t = await getTicket(ticketId);
+    await notify({
+      recipients: mentioned,
+      skip: session.email,
+      type: "mention",
+      ticketId,
+      title: t ? `${session.email} mentioned you on #${t.reference}` : `${session.email} mentioned you`,
+      body: text.slice(0, 200),
+      actor: session.email,
+    });
+  }
   refresh(ticketId);
 }
 
@@ -108,7 +126,63 @@ export async function updateTicketAction(formData: FormData): Promise<void> {
     await updateTicket(input.ticketId, patch);
     await audit("human", session.email, "ticket.updated", { type: "ticket", id: input.ticketId }, patch);
   }
+
+  // Alert the new owner when a ticket is handed to someone else.
+  if (input.assignee !== undefined) {
+    const newAssignee = input.assignee || null;
+    if (newAssignee && newAssignee !== ticket.assignee) {
+      await notify({
+        recipients: [newAssignee],
+        skip: session.email,
+        type: "assigned",
+        ticketId: ticket.id,
+        title: `You were assigned #${ticket.reference} — ${ticket.subject}`,
+        actor: session.email,
+      });
+    }
+  }
   refresh(input.ticketId);
+}
+
+const snoozeSchema = z.object({
+  ticketId: z.string().uuid(),
+  until: z.enum(["1h", "3h", "tomorrow", "3d", "clear"]),
+});
+
+function snoozeUntil(until: "1h" | "3h" | "tomorrow" | "3d"): string {
+  const now = Date.now();
+  if (until === "1h") return new Date(now + 3_600_000).toISOString();
+  if (until === "3h") return new Date(now + 3 * 3_600_000).toISOString();
+  if (until === "3d") return new Date(now + 3 * 86_400_000).toISOString();
+  const t = new Date(now); // "tomorrow" ≈ next day, 08:00 UTC
+  t.setUTCDate(t.getUTCDate() + 1);
+  t.setUTCHours(8, 0, 0, 0);
+  return t.toISOString();
+}
+
+/** Snooze a ticket out of the active queues until a time, or clear the snooze. */
+export async function snoozeTicketAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const { ticketId, until } = snoozeSchema.parse(Object.fromEntries(formData));
+  await updateTicket(ticketId, { snoozed_until: until === "clear" ? null : snoozeUntil(until) });
+  await audit("human", session.email, until === "clear" ? "ticket.unsnoozed" : "ticket.snoozed", { type: "ticket", id: ticketId }, { until });
+  refresh(ticketId);
+}
+
+/** Toggle the current agent as a watcher (gets the ticket's alerts without owning it). */
+export async function watchTicketAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const ticketId = z.string().uuid().parse(formData.get("ticketId"));
+  const ticket = await getTicket(ticketId);
+  if (!ticket) throw new Error("Ticket not found");
+  const me = session.email.toLowerCase();
+  const watching = ticket.watchers.some((w) => w.toLowerCase() === me);
+  const watchers = watching
+    ? ticket.watchers.filter((w) => w.toLowerCase() !== me)
+    : [...ticket.watchers, session.email];
+  await updateTicket(ticketId, { watchers });
+  await audit("human", session.email, watching ? "ticket.unwatched" : "ticket.watched", { type: "ticket", id: ticketId });
+  refresh(ticketId);
 }
 
 const mergeSchema = z.object({

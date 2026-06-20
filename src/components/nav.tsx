@@ -11,6 +11,7 @@ import {
   Settings,
   type LucideIcon,
 } from "lucide-react";
+import { NotificationsNavItem } from "@/components/notifications-nav";
 
 const LINKS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -41,6 +42,7 @@ export function Nav() {
           </Link>
         );
       })}
+      <NotificationsNavItem />
     </nav>
   );
 }

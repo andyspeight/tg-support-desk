@@ -337,6 +337,60 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          actor: string | null
+          body: string | null
+          created_at: string
+          id: string
+          read_at: string | null
+          recipient: string
+          tenant_id: string
+          ticket_id: string | null
+          title: string
+          type: string
+        }
+        Insert: {
+          actor?: string | null
+          body?: string | null
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          recipient: string
+          tenant_id?: string
+          ticket_id?: string | null
+          title: string
+          type: string
+        }
+        Update: {
+          actor?: string | null
+          body?: string | null
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          recipient?: string
+          tenant_id?: string
+          ticket_id?: string | null
+          title?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sla_policies: {
         Row: {
           business_hours: boolean
@@ -447,11 +501,13 @@ export type Database = {
           requester_name: string | null
           resolved_at: string | null
           sla_policy_id: string | null
+          snoozed_until: string | null
           status: Database["public"]["Enums"]["ticket_status"]
           subject: string
           tags: string[]
           tenant_id: string
           updated_at: string
+          watchers: string[]
         }
         Insert: {
           ai_resolved?: boolean
@@ -474,11 +530,13 @@ export type Database = {
           requester_name?: string | null
           resolved_at?: string | null
           sla_policy_id?: string | null
+          snoozed_until?: string | null
           status?: Database["public"]["Enums"]["ticket_status"]
           subject?: string
           tags?: string[]
           tenant_id?: string
           updated_at?: string
+          watchers?: string[]
         }
         Update: {
           ai_resolved?: boolean
@@ -501,11 +559,13 @@ export type Database = {
           requester_name?: string | null
           resolved_at?: string | null
           sla_policy_id?: string | null
+          snoozed_until?: string | null
           status?: Database["public"]["Enums"]["ticket_status"]
           subject?: string
           tags?: string[]
           tenant_id?: string
           updated_at?: string
+          watchers?: string[]
         }
         Relationships: [
           {
@@ -555,6 +615,13 @@ export type Database = {
           snippet: string
           subject: string
           ticket_id: string
+        }[]
+      }
+      tickets_awaiting_response: {
+        Args: { p_tenant_id?: string }
+        Returns: {
+          ticket_id: string
+          waiting_since: string
         }[]
       }
     }
