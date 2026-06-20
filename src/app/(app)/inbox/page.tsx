@@ -29,19 +29,19 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
         <h1 className="text-lg font-semibold">Inbox</h1>
       </div>
 
-      <div className="mt-4 flex gap-1 border-b border-zinc-200">
+      <div className="mt-4 flex gap-1 border-b border-line">
         {VIEWS.map((v) => (
           <Link
             key={v.key}
             href={`/inbox?view=${v.key}`}
             className={`-mb-px border-b-2 px-3 py-2 text-sm ${
               v.key === view
-                ? "border-zinc-900 font-medium text-zinc-900"
-                : "border-transparent text-zinc-500 hover:text-zinc-800"
+                ? "border-ink font-medium text-ink"
+                : "border-transparent text-ink-2 hover:text-ink"
             }`}
           >
             {v.label}
-            <span className="ml-1.5 text-xs text-zinc-400">{counts[v.key]}</span>
+            <span className="ml-1.5 text-xs text-ink-3">{counts[v.key]}</span>
           </Link>
         ))}
       </div>

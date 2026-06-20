@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme inline {
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains);
@@ -29,9 +31,45 @@
   --color-accent-800: #005f73;
 }
 
+/* Semantic surface/ink tokens — light values; dark values overridden below. */
+:root {
+  --canvas: #fafafa;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --line: #e4e4e7;
+  --line-soft: #f4f4f5;
+  --ink: #18181b;
+  --ink-2: #52525b;
+  --ink-3: #a1a1aa;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --canvas: #0a0a0a;
+  --surface: #18181b;
+  --surface-2: #27272a;
+  --line: #27272a;
+  --line-soft: #1f1f23;
+  --ink: #fafafa;
+  --ink-2: #a1a1aa;
+  --ink-3: #71717a;
+  color-scheme: dark;
+}
+
+@theme {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+}
+
 body {
-  background: #fafafa;
-  color: #0f172a;
+  background: var(--canvas);
+  color: var(--ink);
   font-family: var(--font-sans), system-ui, sans-serif;
 }
 
@@ -51,8 +89,13 @@ body {
 .tiptap:focus { outline: none; }
 .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
-  color: #a1a1aa;
+  color: var(--ink-3);
   float: left;
   height: 0;
   pointer-events: none;
 }
+
+/* Dark-mode overrides so sanitised rendered HTML stays readable. */
+[data-theme="dark"] .tg-prose { color: var(--ink); }
+[data-theme="dark"] .tg-prose blockquote { color: var(--ink-2); }
+[data-theme="dark"] .tg-prose a { color: #34c2de; }

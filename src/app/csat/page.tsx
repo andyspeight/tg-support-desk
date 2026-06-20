@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-zinc-50 px-6">
-      <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">{children}</div>
+    <div className="flex min-h-[100dvh] items-center justify-center bg-canvas px-6">
+      <div className="w-full max-w-md rounded-lg border border-line bg-surface p-8 shadow-sm">{children}</div>
     </div>
   );
 }
@@ -22,8 +22,8 @@ export default async function CsatPage({
   if (done) {
     return (
       <Shell>
-        <h1 className="text-lg font-semibold text-zinc-900">Thank you</h1>
-        <p className="mt-2 text-sm text-zinc-600">Your feedback has been recorded — we appreciate it.</p>
+        <h1 className="text-lg font-semibold text-ink">Thank you</h1>
+        <p className="mt-2 text-sm text-ink-2">Your feedback has been recorded — we appreciate it.</p>
       </Shell>
     );
   }
@@ -34,8 +34,8 @@ export default async function CsatPage({
   if (error || !ticketId) {
     return (
       <Shell>
-        <h1 className="text-lg font-semibold text-zinc-900">This link isn’t valid</h1>
-        <p className="mt-2 text-sm text-zinc-600">
+        <h1 className="text-lg font-semibold text-ink">This link isn’t valid</h1>
+        <p className="mt-2 text-sm text-ink-2">
           The survey link may have expired or been mistyped. If you still need help, just reply to our email.
         </p>
       </Shell>
@@ -44,15 +44,15 @@ export default async function CsatPage({
 
   return (
     <Shell>
-      <h1 className="text-lg font-semibold text-zinc-900">How did we do?</h1>
-      <p className="mt-1 text-sm text-zinc-600">Tap a rating for the support you just received.</p>
+      <h1 className="text-lg font-semibold text-ink">How did we do?</h1>
+      <p className="mt-1 text-sm text-ink-2">Tap a rating for the support you just received.</p>
       <form action={submitCsatAction} className="mt-5">
         <input type="hidden" name="t" value={t} />
         <textarea
           name="comment"
           rows={3}
           placeholder="Anything you’d like to add? (optional)"
-          className="mb-4 w-full resize-y rounded-md border border-zinc-200 p-2 text-sm focus:border-zinc-400 focus:outline-none"
+          className="mb-4 w-full resize-y rounded-md border border-line bg-surface p-2 text-sm placeholder:text-ink-3 focus:border-ink-3 focus:outline-none"
         />
         <div className="flex justify-between gap-2">
           {[1, 2, 3, 4, 5].map((n) => (
@@ -60,13 +60,13 @@ export default async function CsatPage({
               key={n}
               name="score"
               value={n}
-              className="flex-1 rounded-md border border-zinc-300 bg-white py-3 text-lg font-semibold text-zinc-700 hover:border-accent-400 hover:bg-accent-50"
+              className="flex-1 rounded-md border border-line bg-surface py-3 text-lg font-semibold text-ink hover:border-accent-400 hover:bg-accent-50 dark:hover:bg-accent-500/10"
             >
               {n}
             </button>
           ))}
         </div>
-        <div className="mt-1 flex justify-between text-[11px] text-zinc-400">
+        <div className="mt-1 flex justify-between text-[11px] text-ink-3">
           <span>Poor</span>
           <span>Excellent</span>
         </div>
