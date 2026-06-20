@@ -78,7 +78,7 @@ function ToolbarButton({
       aria-label={label}
       aria-pressed={active}
       className={`flex h-8 w-8 items-center justify-center rounded-md transition disabled:opacity-40 ${
-        active ? "bg-brand-50 text-brand-700" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
+        active ? "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200" : "text-ink-2 hover:bg-surface-2 hover:text-ink"
       }`}
     >
       {children}
@@ -105,7 +105,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
     content: "",
     editorProps: {
       attributes: {
-        class: "tg-prose min-h-[180px] max-h-[420px] overflow-y-auto px-3 py-2.5 text-sm text-zinc-800 focus:outline-none",
+        class: "tg-prose min-h-[180px] max-h-[420px] overflow-y-auto px-3 py-2.5 text-sm text-ink focus:outline-none",
       },
     },
   });
@@ -157,31 +157,31 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
   };
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+    <div className="rounded-xl border border-line bg-surface shadow-sm">
       {/* Copilot row */}
       {copilot && (
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-zinc-100 px-2.5 py-2 text-xs">
-          <span className="flex items-center gap-1 font-medium text-accent-700">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-line-soft px-2.5 py-2 text-xs">
+          <span className="flex items-center gap-1 font-medium text-accent-700 dark:text-accent-300">
             <Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} /> Copilot
           </span>
           <button
             onClick={() => runCopilot("draft", () => copilot.draft(ticketId), (t) => editor?.commands.setContent(textToHtml(t)))}
             disabled={!!busy || isPending}
-            className="rounded border border-accent-200 bg-accent-50 px-2 py-1 text-accent-700 hover:bg-accent-100 disabled:opacity-40"
+            className="rounded border border-accent-200 bg-accent-50 px-2 py-1 text-accent-700 hover:bg-accent-100 disabled:opacity-40 dark:border-accent-500/25 dark:bg-accent-500/10 dark:text-accent-300 dark:hover:bg-accent-500/20"
           >
             {busy === "draft" ? "Drafting…" : "Draft reply"}
           </button>
           <button
             onClick={() => runCopilot("summary", () => copilot.summarise(ticketId), setSummary)}
             disabled={!!busy || isPending}
-            className="rounded border border-zinc-200 px-2 py-1 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
+            className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
           >
             {busy === "summary" ? "Summarising…" : "Summarise"}
           </button>
           <button
             onClick={() => editor && !isEmpty && runCopilot("rephrase", () => copilot.rephrase(editor.getText()), (t) => editor.commands.setContent(textToHtml(t)))}
             disabled={!!busy || isPending || isEmpty}
-            className="rounded border border-zinc-200 px-2 py-1 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
+            className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
           >
             {busy === "rephrase" ? "Rephrasing…" : "Rephrase"}
           </button>
@@ -192,7 +192,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
               if (lang) runCopilot("translate", () => copilot.translate(editor.getText(), lang), (t) => editor.commands.setContent(textToHtml(t)));
             }}
             disabled={!!busy || isPending || isEmpty}
-            className="rounded border border-zinc-200 px-2 py-1 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
+            className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
           >
             Translate
           </button>
@@ -200,10 +200,10 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
       )}
 
       {summary && (
-        <div className="mx-2.5 mt-2 rounded-md border border-zinc-200 bg-zinc-50 p-2 text-xs text-zinc-600">
+        <div className="mx-2.5 mt-2 rounded-md border border-line bg-surface-2 p-2 text-xs text-ink-2">
           <div className="mb-1 flex items-center justify-between">
-            <span className="font-medium text-zinc-500">Thread summary</span>
-            <button onClick={() => setSummary(null)} className="text-zinc-400 hover:text-zinc-700" aria-label="Dismiss summary">
+            <span className="font-medium text-ink-2">Thread summary</span>
+            <button onClick={() => setSummary(null)} className="text-ink-3 hover:text-ink" aria-label="Dismiss summary">
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -212,7 +212,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
       )}
 
       {/* Formatting toolbar */}
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-zinc-100 px-2 py-1.5">
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-line-soft px-2 py-1.5">
         <ToolbarButton label="Bold" active={editor?.isActive("bold")} onClick={() => editor?.chain().focus().toggleBold().run()}>
           <Bold className="h-4 w-4" strokeWidth={2} />
         </ToolbarButton>
@@ -231,7 +231,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
         <ToolbarButton label="Add link" active={editor?.isActive("link")} onClick={() => editor && setLink(editor)}>
           <Link2 className="h-4 w-4" strokeWidth={1.75} />
         </ToolbarButton>
-        <span className="mx-1 h-5 w-px bg-zinc-200" />
+        <span className="mx-1 h-5 w-px bg-line" />
         <ToolbarButton label="Attach image" onClick={() => imageInput.current?.click()}>
           <ImageIcon className="h-4 w-4" strokeWidth={1.75} />
         </ToolbarButton>
@@ -249,11 +249,11 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
       {files.length > 0 && (
         <div className="flex flex-wrap gap-1.5 px-3 pb-2">
           {files.map((f, i) => (
-            <span key={`${f.name}-${i}`} className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs text-zinc-700">
-              <Paperclip className="h-3 w-3 text-zinc-400" strokeWidth={1.75} />
+            <span key={`${f.name}-${i}`} className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2 py-1 text-xs text-ink">
+              <Paperclip className="h-3 w-3 text-ink-3" strokeWidth={1.75} />
               <span className="max-w-[160px] truncate">{f.name}</span>
-              <span className="text-zinc-400">{formatBytes(f.size)}</span>
-              <button onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`} className="text-zinc-400 hover:text-red-600">
+              <span className="text-ink-3">{formatBytes(f.size)}</span>
+              <button onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`} className="text-ink-3 hover:text-red-600 dark:hover:text-red-400">
                 <X className="h-3.5 w-3.5" />
               </button>
             </span>
@@ -261,14 +261,14 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
         </div>
       )}
 
-      {error && <div className="mx-2.5 mb-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{error}</div>}
+      {error && <div className="mx-2.5 mb-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
 
       {/* Actions */}
-      <div className="flex items-center gap-2 border-t border-zinc-100 px-2.5 py-2">
+      <div className="flex items-center gap-2 border-t border-line-soft px-2.5 py-2">
         <button
           onClick={() => submit(sendReply)}
           disabled={isPending || (isEmpty && files.length === 0)}
-          className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-40"
+          className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-40 dark:bg-brand-500 dark:hover:bg-brand-400"
         >
           {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />}
           {isPending ? "Working…" : "Reply to customer"}
@@ -276,13 +276,13 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, copilot }: Prop
         <button
           onClick={() => submit(addNote)}
           disabled={isPending || (isEmpty && files.length === 0)}
-          className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+          className="rounded-md border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-2 disabled:opacity-40"
         >
           Internal note
         </button>
         {canned.length > 0 && (
           <select
-            className="ml-auto rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm text-zinc-600"
+            className="ml-auto rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink-2"
             value=""
             onChange={(e) => {
               const found = canned.find((c) => c.id === e.target.value);

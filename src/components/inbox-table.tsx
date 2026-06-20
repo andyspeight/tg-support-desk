@@ -99,35 +99,35 @@ export function InboxTable({ tickets, bulkUpdate }: Props) {
   }, [focus]);
 
   if (tickets.length === 0) {
-    return <p className="mt-10 text-center text-sm text-zinc-400">No tickets in this view.</p>;
+    return <p className="mt-10 text-center text-sm text-ink-3">No tickets in this view.</p>;
   }
 
   const count = selected.size;
 
   return (
     <div className="mt-2">
-      <div className="flex items-center gap-2 border-b border-zinc-100 py-2 text-xs text-zinc-500">
+      <div className="flex items-center gap-2 border-b border-line-soft py-2 text-xs text-ink-2">
         {count > 0 ? (
           <>
-            <span className="font-medium text-zinc-700">{count} selected</span>
-            <button onClick={() => runBulk("assign_me")} disabled={isPending} className="rounded border border-zinc-300 bg-white px-2 py-1 hover:bg-zinc-50">
+            <span className="font-medium text-ink">{count} selected</span>
+            <button onClick={() => runBulk("assign_me")} disabled={isPending} className="rounded border border-line bg-surface px-2 py-1 hover:bg-surface-2">
               Assign to me
             </button>
-            <button onClick={() => runBulk("status", "resolved")} disabled={isPending} className="rounded border border-zinc-300 bg-white px-2 py-1 hover:bg-zinc-50">
+            <button onClick={() => runBulk("status", "resolved")} disabled={isPending} className="rounded border border-line bg-surface px-2 py-1 hover:bg-surface-2">
               Resolve
             </button>
-            <button onClick={() => runBulk("status", "escalated")} disabled={isPending} className="rounded border border-zinc-300 bg-white px-2 py-1 hover:bg-zinc-50">
+            <button onClick={() => runBulk("status", "escalated")} disabled={isPending} className="rounded border border-line bg-surface px-2 py-1 hover:bg-surface-2">
               Escalate
             </button>
-            <button onClick={() => runBulk("status", "closed")} disabled={isPending} className="rounded border border-zinc-300 bg-white px-2 py-1 hover:bg-zinc-50">
+            <button onClick={() => runBulk("status", "closed")} disabled={isPending} className="rounded border border-line bg-surface px-2 py-1 hover:bg-surface-2">
               Close
             </button>
-            <button onClick={() => setSelected(new Set())} className="ml-auto text-zinc-400 hover:text-zinc-700">
+            <button onClick={() => setSelected(new Set())} className="ml-auto text-ink-3 hover:text-ink">
               Clear
             </button>
           </>
         ) : (
-          <span className="text-zinc-400">
+          <span className="text-ink-3">
             Keyboard: <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>x</kbd> select · <kbd>↵</kbd> open · <kbd>a</kbd> assign me ·{" "}
             <kbd>r</kbd> resolve · <kbd>e</kbd> escalate
           </span>
@@ -136,7 +136,7 @@ export function InboxTable({ tickets, bulkUpdate }: Props) {
 
       <table className="w-full table-fixed text-sm">
         <thead>
-          <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
+          <tr className="text-left text-xs uppercase tracking-wide text-ink-3">
             <th className="w-8 py-2"></th>
             <th className="w-14 py-2 font-medium">#</th>
             <th className="py-2 font-medium">Subject</th>
@@ -155,8 +155,8 @@ export function InboxTable({ tickets, bulkUpdate }: Props) {
                 rowRefs.current[i] = el;
               }}
               onClick={() => setFocus(i)}
-              className={`border-t border-zinc-100 ${i === focus ? "bg-brand-50/70" : "hover:bg-white"} ${
-                selected.has(ticket.id) ? "bg-brand-50" : ""
+              className={`border-t border-line-soft ${i === focus ? "bg-brand-50/70 dark:bg-brand-500/15" : "hover:bg-surface-2"} ${
+                selected.has(ticket.id) ? "bg-brand-50 dark:bg-brand-500/15" : ""
               }`}
             >
               <td className="py-2.5 pl-1">
@@ -167,24 +167,24 @@ export function InboxTable({ tickets, bulkUpdate }: Props) {
                   aria-label={`Select ticket ${ticket.reference}`}
                 />
               </td>
-              <td className="py-2.5 text-zinc-400">#{ticket.reference}</td>
+              <td className="py-2.5 text-ink-3">#{ticket.reference}</td>
               <td className="truncate py-2.5 pr-4">
-                <Link href={`/ticket/${ticket.id}`} className="font-medium text-zinc-900 hover:underline">
+                <Link href={`/ticket/${ticket.id}`} className="font-medium text-ink hover:underline">
                   {ticket.subject}
                 </Link>
                 {ticket.ai_resolved && (
-                  <span className="ml-2 rounded bg-accent-50 px-1.5 py-0.5 text-[10px] font-medium text-accent-700">AI</span>
+                  <span className="ml-2 rounded bg-accent-50 px-1.5 py-0.5 text-[10px] font-medium text-accent-700 dark:bg-accent-500/10 dark:text-accent-300">AI</span>
                 )}
               </td>
-              <td className="truncate py-2.5 text-zinc-500">{ticket.requester_name ?? ticket.requester_email}</td>
+              <td className="truncate py-2.5 text-ink-2">{ticket.requester_name ?? ticket.requester_email}</td>
               <td className="py-2.5">
                 <StatusBadge status={ticket.status} />
               </td>
               <td className="py-2.5">
                 <PriorityBadge priority={ticket.priority} />
               </td>
-              <td className="truncate py-2.5 text-zinc-500">{ticket.assignee ?? "—"}</td>
-              <td className="py-2.5 text-zinc-400">{timeAgo(ticket.updated_at)}</td>
+              <td className="truncate py-2.5 text-ink-2">{ticket.assignee ?? "—"}</td>
+              <td className="py-2.5 text-ink-3">{timeAgo(ticket.updated_at)}</td>
             </tr>
           ))}
         </tbody>

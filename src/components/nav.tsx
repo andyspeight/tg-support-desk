@@ -2,14 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  BarChart3,
+  BookOpen,
+  Inbox,
+  LayoutDashboard,
+  Search,
+  Settings,
+  type LucideIcon,
+} from "lucide-react";
 
-const LINKS = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/inbox", label: "Inbox" },
-  { href: "/search", label: "Search" },
-  { href: "/kb", label: "Knowledge base" },
-  { href: "/analytics", label: "Analytics" },
-  { href: "/settings", label: "Settings" },
+const LINKS: { href: string; label: string; icon: LucideIcon }[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/inbox", label: "Inbox", icon: Inbox },
+  { href: "/search", label: "Search", icon: Search },
+  { href: "/kb", label: "Knowledge base", icon: BookOpen },
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Nav() {
@@ -18,14 +27,16 @@ export function Nav() {
     <nav className="flex flex-col gap-0.5 p-2">
       {LINKS.map((link) => {
         const active = pathname === link.href || pathname.startsWith(`${link.href}/`) || (link.href === "/inbox" && pathname.startsWith("/ticket"));
+        const Icon = link.icon;
         return (
           <Link
             key={link.href}
             href={link.href}
-            className={`rounded-md px-3 py-2 text-sm ${
-              active ? "bg-zinc-100 font-medium text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
+            className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm ${
+              active ? "bg-surface-2 font-medium text-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink"
             }`}
           >
+            <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
             {link.label}
           </Link>
         );

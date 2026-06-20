@@ -6,6 +6,7 @@ import { getClientById } from "@/lib/integrations/airtable-clients";
 import { env } from "@/lib/env";
 import { sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
+import { AlertTriangle, ArrowLeft, Paperclip } from "lucide-react";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
@@ -20,11 +21,11 @@ import {
 } from "../copilot-actions";
 
 const ROLE_STYLES: Record<Message["role"], { label: string; className: string }> = {
-  customer: { label: "Customer", className: "border-zinc-200 bg-white" },
-  ai: { label: "AI", className: "border-accent-200 bg-accent-50" },
-  human: { label: "Agent", className: "border-emerald-200 bg-emerald-50" },
-  internal_note: { label: "Internal note", className: "border-amber-200 bg-amber-50" },
-  system: { label: "System", className: "border-zinc-200 bg-zinc-50" },
+  customer: { label: "Customer", className: "border-line bg-surface" },
+  ai: { label: "AI", className: "border-accent-200 bg-accent-50 dark:border-accent-500/25 dark:bg-accent-500/10" },
+  human: { label: "Agent", className: "border-emerald-200 bg-emerald-50 dark:border-emerald-500/25 dark:bg-emerald-500/10" },
+  internal_note: { label: "Internal note", className: "border-amber-200 bg-amber-50 dark:border-amber-500/25 dark:bg-amber-500/10" },
+  system: { label: "System", className: "border-line bg-surface-2" },
 };
 
 function formatDateTime(iso: string): string {
@@ -45,35 +46,35 @@ function formatBytes(bytes: number): string {
 }
 
 const CLOCK_LABEL: Record<ClockState, { text: string; cls: string }> = {
-  met: { text: "met", cls: "text-emerald-600" },
-  late: { text: "met late", cls: "text-amber-600" },
-  pending: { text: "due", cls: "text-zinc-600" },
-  breached: { text: "breached", cls: "font-semibold text-red-600" },
+  met: { text: "met", cls: "text-emerald-600 dark:text-emerald-400" },
+  late: { text: "met late", cls: "text-amber-600 dark:text-amber-400" },
+  pending: { text: "due", cls: "text-ink-2" },
+  breached: { text: "breached", cls: "font-semibold text-red-600 dark:text-red-400" },
 };
 
 function MessageAttachments({ messageId, attachments }: { messageId: string; attachments: unknown }) {
   const list = (Array.isArray(attachments) ? attachments : []) as MessageAttachment[];
   if (list.length === 0) return null;
   return (
-    <div className="mt-2 flex flex-wrap gap-2 border-t border-black/5 pt-2">
+    <div className="mt-2 flex flex-wrap gap-2 border-t border-black/5 pt-2 dark:border-white/10">
       {list.map((a, i) =>
         a.stored ? (
           <a
             key={i}
             href={`/api/attachments/${messageId}/${i}`}
-            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 hover:border-zinc-400"
+            className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink hover:border-ink-3"
           >
-            <span aria-hidden>📎</span>
+            <Paperclip className="h-3.5 w-3.5" strokeWidth={1.75} />
             <span className="max-w-[200px] truncate">{a.filename}</span>
-            <span className="text-zinc-400">{formatBytes(a.size)}</span>
+            <span className="text-ink-3">{formatBytes(a.size)}</span>
           </a>
         ) : (
           <span
             key={i}
             title={a.rejected}
-            className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-zinc-200 px-2 py-1 text-xs text-zinc-400"
+            className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-line px-2 py-1 text-xs text-ink-3"
           >
-            <span aria-hidden>⚠</span>
+            <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} />
             <span className="max-w-[200px] truncate line-through">{a.filename}</span>
             <span>blocked</span>
           </span>
@@ -105,17 +106,18 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
       {/* Conversation column */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="border-b border-zinc-200 bg-white px-6 py-4">
+        <div className="border-b border-line bg-surface px-6 py-4">
           <div className="flex items-center gap-3">
-            <Link href="/inbox" className="text-sm text-zinc-400 hover:text-zinc-700">
-              ← Inbox
+            <Link href="/inbox" className="inline-flex items-center gap-1 text-sm text-ink-3 hover:text-ink">
+              <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
+              Inbox
             </Link>
-            <span className="text-sm text-zinc-400">#{ticket.reference}</span>
+            <span className="text-sm text-ink-3">#{ticket.reference}</span>
             <StatusBadge status={ticket.status} />
             <PriorityBadge priority={ticket.priority} />
           </div>
           <h1 className="mt-1 truncate text-base font-semibold">{ticket.subject}</h1>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-ink-2">
             {ticket.requester_name ? `${ticket.requester_name} · ` : ""}
             {ticket.requester_email} · opened {formatDateTime(ticket.created_at)}
           </p>
@@ -123,9 +125,9 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
 
         <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
           {ticket.status === "escalated" && handover && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-red-700">AI handover</p>
-              <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-zinc-800">{handover.body_text}</pre>
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/25 dark:bg-red-500/10">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">AI handover</p>
+              <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-ink">{handover.body_text}</pre>
             </div>
           )}
 
@@ -134,19 +136,19 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             return (
               <div key={message.id} className={`rounded-lg border p-3 ${style.className}`}>
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-xs font-semibold text-zinc-700">
+                  <span className="text-xs font-semibold text-ink">
                     {style.label}
                     {message.author && message.author !== "resolution-agent" ? ` · ${message.author}` : ""}
                   </span>
-                  <span className="text-xs text-zinc-400">{formatDateTime(message.created_at)}</span>
+                  <span className="text-xs text-ink-3">{formatDateTime(message.created_at)}</span>
                 </div>
                 {message.body_html ? (
                   <div
-                    className="tg-prose mt-1.5 text-sm text-zinc-800"
+                    className="tg-prose mt-1.5 text-sm text-ink"
                     dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(message.body_html) }}
                   />
                 ) : (
-                  <pre className="mt-1.5 whitespace-pre-wrap font-sans text-sm text-zinc-800">{message.body_text}</pre>
+                  <pre className="mt-1.5 whitespace-pre-wrap font-sans text-sm text-ink">{message.body_text}</pre>
                 )}
                 <MessageAttachments messageId={message.id} attachments={message.attachments} />
               </div>
@@ -154,7 +156,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           })}
         </div>
 
-        <div className="border-t border-zinc-200 bg-zinc-50 p-4">
+        <div className="border-t border-line bg-surface-2 p-4">
           <ReplyBox
             ticketId={ticket.id}
             canned={canned}
@@ -171,18 +173,18 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       </div>
 
       {/* Controls column (Customer 360 panel lands here in Phase 2) */}
-      <aside className="w-[27rem] shrink-0 space-y-5 overflow-y-auto border-l border-zinc-200 bg-zinc-50/40 p-5">
+      <aside className="w-[27rem] shrink-0 space-y-5 overflow-y-auto border-l border-line bg-surface-2/40 p-5">
         <form action={runAiAction}>
           <input type="hidden" name="ticketId" value={ticket.id} />
           <RunAiButton />
         </form>
 
         <div>
-          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Customer</h2>
+          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Customer</h2>
           {clientRecord ? (
             <ClientPanel record={clientRecord} />
           ) : (
-            <p className="rounded-lg border border-dashed border-zinc-200 bg-white p-3 text-xs text-zinc-400">
+            <p className="rounded-lg border border-dashed border-line bg-surface p-3 text-xs text-ink-3">
               {ticket.client_id ? "Client record unavailable." : "No client record matched."}
             </p>
           )}
@@ -191,8 +193,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         <form action={updateTicketAction} className="space-y-3 text-sm">
           <input type="hidden" name="ticketId" value={ticket.id} />
           <div>
-            <label className="text-xs font-medium text-zinc-500">Status</label>
-            <select name="status" defaultValue={ticket.status} className="mt-1 w-full rounded-md border border-zinc-200 px-2 py-1.5">
+            <label className="text-xs font-medium text-ink-2">Status</label>
+            <select name="status" defaultValue={ticket.status} className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5">
               <option value="new">New</option>
               <option value="ai_working">AI working</option>
               <option value="waiting_on_customer">Waiting on customer</option>
@@ -202,16 +204,16 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-zinc-500">Priority</label>
-            <select name="priority" defaultValue={ticket.priority} className="mt-1 w-full rounded-md border border-zinc-200 px-2 py-1.5">
+            <label className="text-xs font-medium text-ink-2">Priority</label>
+            <select name="priority" defaultValue={ticket.priority} className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5">
               <option value="p1">P1 — Urgent</option>
               <option value="p2">P2 — Standard</option>
               <option value="p3">P3 — Low</option>
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-zinc-500">Assignee</label>
-            <select name="assignee" defaultValue={ticket.assignee ?? ""} className="mt-1 w-full rounded-md border border-zinc-200 px-2 py-1.5">
+            <label className="text-xs font-medium text-ink-2">Assignee</label>
+            <select name="assignee" defaultValue={ticket.assignee ?? ""} className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5">
               <option value="">Unassigned</option>
               {env.agentEmails.map((email) => (
                 <option key={email} value={email}>
@@ -221,44 +223,44 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-zinc-500">Tags (comma-separated)</label>
+            <label className="text-xs font-medium text-ink-2">Tags (comma-separated)</label>
             <input
               name="tags"
               defaultValue={ticket.tags.join(", ")}
-              className="mt-1 w-full rounded-md border border-zinc-200 px-2 py-1.5"
+              className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5"
             />
           </div>
-          <button className="w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 font-medium text-zinc-700 hover:bg-zinc-50">
+          <button className="w-full rounded-md border border-line bg-surface px-3 py-1.5 font-medium text-ink hover:bg-surface-2">
             Update ticket
           </button>
         </form>
 
         {ticket.escalation_reason && (
-          <div className="rounded-md border border-red-100 bg-red-50 p-3 text-xs text-red-700">
+          <div className="rounded-md border border-red-100 bg-red-50 p-3 text-xs text-red-700 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300">
             <span className="font-semibold">Escalation:</span> {ticket.escalation_reason}
           </div>
         )}
 
-        <form action={mergeTicketAction} className="border-t border-zinc-100 pt-3">
-          <label className="text-xs font-medium text-zinc-500">Merge into ticket #</label>
+        <form action={mergeTicketAction} className="border-t border-line-soft pt-3">
+          <label className="text-xs font-medium text-ink-2">Merge into ticket #</label>
           <div className="mt-1 flex gap-2">
             <input
               name="targetRef"
               inputMode="numeric"
               placeholder="ref"
-              className="w-20 rounded-md border border-zinc-200 px-2 py-1.5 text-sm"
+              className="w-20 rounded-md border border-line bg-surface px-2 py-1.5 text-sm"
             />
             <input type="hidden" name="ticketId" value={ticket.id} />
-            <button className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50">
+            <button className="rounded-md border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink-2 hover:bg-surface-2">
               Merge
             </button>
           </div>
-          <p className="mt-1 text-[11px] text-zinc-400">Moves this conversation into the target and closes this one.</p>
+          <p className="mt-1 text-[11px] text-ink-3">Moves this conversation into the target and closes this one.</p>
         </form>
 
         {sla && (
-          <div className="rounded-md border border-zinc-100 bg-zinc-50 p-2 text-xs text-zinc-500">
-            <p className="font-medium text-zinc-600">SLA</p>
+          <div className="rounded-md border border-line-soft bg-surface-2 p-2 text-xs text-ink-2">
+            <p className="font-medium text-ink-2">SLA</p>
             <p className="mt-1">
               First response{" "}
               <span className={CLOCK_LABEL[sla.firstResponse.state].cls}>{CLOCK_LABEL[sla.firstResponse.state].text}</span>{" "}
@@ -271,7 +273,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </div>
         )}
 
-        <div className="text-xs text-zinc-400">
+        <div className="text-xs text-ink-3">
           <p>Intent: {ticket.intent ?? "—"}</p>
           <p>Language: {ticket.language ?? "—"}</p>
           <p>AI resolved: {ticket.ai_resolved ? "yes" : "no"}</p>
