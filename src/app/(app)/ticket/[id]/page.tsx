@@ -2,12 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTicketSla, getTicketWithMessages, listCannedResponses } from "@/lib/db/queries";
 import type { ClockState } from "@/lib/sla";
-import { getClientById, summariseClient } from "@/lib/integrations/airtable-clients";
+import { getClientById } from "@/lib/integrations/airtable-clients";
 import { env } from "@/lib/env";
 import type { Message } from "@/lib/db/types";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
+import { ClientPanel } from "@/components/client-panel";
+import { RunAiButton } from "@/components/run-ai-button";
 import { addNoteAction, mergeTicketAction, runAiAction, sendReplyAction, updateTicketAction } from "../actions";
 import {
   copilotDraftAction,
@@ -161,13 +163,22 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       </div>
 
       {/* Controls column (Customer 360 panel lands here in Phase 2) */}
-      <aside className="w-72 shrink-0 space-y-4 overflow-y-auto border-l border-zinc-200 bg-white p-4">
+      <aside className="w-[27rem] shrink-0 space-y-5 overflow-y-auto border-l border-zinc-200 bg-zinc-50/40 p-5">
         <form action={runAiAction}>
           <input type="hidden" name="ticketId" value={ticket.id} />
-          <button className="w-full rounded-md bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500">
-            Run AI on this ticket
-          </button>
+          <RunAiButton />
         </form>
+
+        <div>
+          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Customer</h2>
+          {clientRecord ? (
+            <ClientPanel record={clientRecord} />
+          ) : (
+            <p className="rounded-lg border border-dashed border-zinc-200 bg-white p-3 text-xs text-zinc-400">
+              {ticket.client_id ? "Client record unavailable." : "No client record matched."}
+            </p>
+          )}
+        </div>
 
         <form action={updateTicketAction} className="space-y-3 text-sm">
           <input type="hidden" name="ticketId" value={ticket.id} />
@@ -219,19 +230,6 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             <span className="font-semibold">Escalation:</span> {ticket.escalation_reason}
           </div>
         )}
-
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Client</h2>
-          {clientRecord ? (
-            <pre className="mt-2 whitespace-pre-wrap rounded-md border border-zinc-100 bg-zinc-50 p-2 font-sans text-xs text-zinc-600">
-              {summariseClient(clientRecord).split("\n").slice(0, 12).join("\n")}
-            </pre>
-          ) : (
-            <p className="mt-2 text-xs text-zinc-400">
-              {ticket.client_id ? "Client record unavailable." : "No client record matched."}
-            </p>
-          )}
-        </div>
 
         <form action={mergeTicketAction} className="border-t border-zinc-100 pt-3">
           <label className="text-xs font-medium text-zinc-500">Merge into ticket #</label>
