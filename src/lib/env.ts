@@ -74,7 +74,13 @@ export const env = {
     return csv("AGENT_EMAILS").map((e) => e.toLowerCase());
   },
   get authDevBypass() {
-    return optional("AUTH_DEV_BYPASS") === "true" && process.env.NODE_ENV !== "production";
+    // Local dev convenience (next dev). Plus a deliberately narrow preview escape
+    // hatch: PREVIEW_NO_SSO lets the team click through a PRIVATE Vercel *preview*
+    // deployment before the .travelify.io SSO is wired. Hard-blocked on production
+    // via VERCEL_ENV so it can never open the real desk. Remove once SSO is live.
+    const localDev = optional("AUTH_DEV_BYPASS") === "true" && process.env.NODE_ENV !== "production";
+    const previewOnly = optional("PREVIEW_NO_SSO") === "true" && process.env.VERCEL_ENV !== "production";
+    return localDev || previewOnly;
   },
   get cronSecret() {
     return required("CRON_SECRET");
