@@ -10,6 +10,7 @@ export async function GET(request: Request) {
   if (request.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
     return new Response("Unauthorized", { status: 401 });
   }
+  if (!env.gmailConfigured) return Response.json({ skipped: "gmail not configured" });
 
   try {
     const summary = await pollGmailInbox();
