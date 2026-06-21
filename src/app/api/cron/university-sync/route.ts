@@ -8,11 +8,13 @@ import { embedDocument } from "@/lib/ai/embeddings";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+// Index/hub pages (lists of lessons), not lessons themselves — skipped at ingest.
+const SKIP_PATHS = /^\/$|\/learning-path|\/what-s-new/i;
+
 // Ingest the Travelgenix University (Duda blog) into the KB via Firecrawl:
 // map → scrape (clean markdown) → distil → load, deduped by source URL so it's
 // re-runnable. Bounded per run (UNIVERSITY_BATCH) to respect timeouts + cost.
-// Manual-trigger for a controlled pilot (Bearer CRON_SECRET); not registered as
-// a Vercel cron until validated. Dormant until FIRECRAWL_API_KEY is set.
+// Runs on a Vercel cron (Bearer CRON_SECRET). Dormant until FIRECRAWL_API_KEY is set.
 export async function GET(request: Request) {
   if (request.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
     return new Response("Unauthorized", { status: 401 });
@@ -28,7 +30,7 @@ export async function GET(request: Request) {
     const urls = [...new Set(links)].filter((u) => {
       try {
         const p = new URL(u);
-        return p.host === host && (!prefix || p.pathname.startsWith(prefix));
+        return p.host === host && (!prefix || p.pathname.startsWith(prefix)) && !SKIP_PATHS.test(p.pathname);
       } catch {
         return false;
       }

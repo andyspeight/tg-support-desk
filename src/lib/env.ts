@@ -143,9 +143,10 @@ export const env = {
     return Number(optional("AI_MAX_TURNS", "8"));
   },
   get aiShadowMode() {
-    // Parallel-run safety: the resolution agent drafts into an internal note
-    // for a human to review/send, instead of replying to the customer.
-    return optional("AI_SHADOW_MODE") === "true";
+    // Parallel-run safety, ON by default: the resolution agent drafts into an
+    // internal note for a human to review/send instead of replying to the
+    // customer. Set AI_SHADOW_MODE=false to go fully live once it's trusted.
+    return optional("AI_SHADOW_MODE", "true") !== "false";
   },
   get gmailPollBatch() {
     return Number(optional("GMAIL_POLL_BATCH", "10"));
