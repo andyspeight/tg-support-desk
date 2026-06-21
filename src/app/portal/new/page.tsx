@@ -3,8 +3,13 @@ import { requireClient } from "@/lib/auth";
 import { raiseTicketAction } from "@/app/portal/actions";
 import { SubmitButton } from "@/components/portal/submit-button";
 
-export default async function NewTicketPage() {
+export default async function NewTicketPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ subject?: string; body?: string }>;
+}) {
   await requireClient();
+  const { subject, body } = await searchParams;
 
   return (
     <div className="mx-auto max-w-xl">
@@ -21,6 +26,7 @@ export default async function NewTicketPage() {
           name="subject"
           required
           maxLength={200}
+          defaultValue={subject ?? ""}
           placeholder="Subject"
           className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm font-medium placeholder:text-ink-3 focus:border-ink-3 focus:outline-none"
         />
@@ -29,9 +35,20 @@ export default async function NewTicketPage() {
           required
           rows={8}
           maxLength={8000}
+          defaultValue={body ?? ""}
           placeholder="Describe what’s happening — include any error messages, the page you’re on, and what you expected."
           className="w-full resize-y rounded-md border border-line bg-surface p-3 text-sm leading-relaxed placeholder:text-ink-3 focus:border-ink-3 focus:outline-none"
         />
+        <label className="block text-xs text-ink-2">
+          Attach screenshots or files (optional)
+          <input
+            type="file"
+            name="files"
+            multiple
+            accept="image/*,.pdf,.txt,.csv,.log"
+            className="mt-1 block w-full text-xs text-ink-3 file:mr-3 file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink-2 hover:file:bg-line"
+          />
+        </label>
         <SubmitButton pendingLabel="Submitting…">Submit ticket</SubmitButton>
       </form>
     </div>

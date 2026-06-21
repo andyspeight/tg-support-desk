@@ -342,6 +342,21 @@ export async function addMessage(input: Omit<TablesInsert<"messages">, "tenant_i
   return unwrap(result, "addMessage");
 }
 
+/** Count of an actor's recent audited actions in a window — lightweight,
+ *  serverless-safe rate limiting (e.g. portal ask-box abuse). */
+export async function recentActionCount(actor: string, action: string, withinSeconds: number): Promise<number> {
+  const since = new Date(Date.now() - withinSeconds * 1000).toISOString();
+  const { count, error } = await db()
+    .from("audit_log")
+    .select("*", { count: "exact", head: true })
+    .eq("tenant_id", env.tenantId)
+    .eq("actor", actor)
+    .eq("action", action)
+    .gte("created_at", since);
+  if (error) throw new Error(`recentActionCount: ${error.message}`);
+  return count ?? 0;
+}
+
 export async function getMessageById(id: string): Promise<Message | null> {
   const { data, error } = await db().from("messages").select().eq("id", id).maybeSingle();
   if (error) throw new Error(`getMessageById: ${error.message}`);

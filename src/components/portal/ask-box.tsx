@@ -7,6 +7,7 @@ type Result = Awaited<ReturnType<typeof askAction>>;
 
 export function AskBox() {
   const [q, setQ] = useState("");
+  const [asked, setAsked] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
 
@@ -16,6 +17,7 @@ export function AskBox() {
     if (!question || loading) return;
     setLoading(true);
     setResult(null);
+    setAsked(question);
     try {
       setResult(await askAction(question));
     } catch {
@@ -27,6 +29,14 @@ export function AskBox() {
       setLoading(false);
     }
   }
+
+  // Smart handoff: carry the question + the assistant's attempt into a new
+  // ticket so nothing is retyped and the agent has full context.
+  const handoffHref =
+    `/portal/new?subject=${encodeURIComponent(asked.slice(0, 180))}` +
+    `&body=${encodeURIComponent(
+      `I asked the assistant: "${asked}"\n\nIts answer:\n${result?.answer ?? ""}\n\nThis didn't fully solve it — here's what I still need:\n`,
+    )}`;
 
   return (
     <div className="rounded-xl border border-line bg-surface p-4 shadow-sm">
@@ -66,10 +76,10 @@ export function AskBox() {
           )}
           <p className="text-xs text-ink-3">
             Didn’t solve it?{" "}
-            <Link href="/portal/new" className="font-medium text-brand-600 hover:underline dark:text-brand-300">
+            <Link href={handoffHref} className="font-medium text-brand-600 hover:underline dark:text-brand-300">
               Raise a ticket
-            </Link>
-            .
+            </Link>{" "}
+            — we’ll carry over your question.
           </p>
         </div>
       )}
