@@ -7,6 +7,7 @@ import type {
   AiOutcome,
   CannedResponse,
   KbArticle,
+  KbSource,
   KbStatus,
   Message,
   SlaPolicy,
@@ -416,6 +417,18 @@ export async function existingKbSourceTicketIds(ticketIds: string[]): Promise<Se
     .in("source_ticket_id", ticketIds);
   if (error) throw new Error(`existingKbSourceTicketIds: ${error.message}`);
   return new Set((data ?? []).map((r) => r.source_ticket_id).filter((id): id is string => Boolean(id)));
+}
+
+/** Source URLs already ingested for a crawled source (dedupe for the sync job). */
+export async function existingKbSourceUrls(source: KbSource): Promise<Set<string>> {
+  const { data, error } = await db()
+    .from("kb_articles")
+    .select("source_url")
+    .eq("tenant_id", env.tenantId)
+    .eq("source", source)
+    .not("source_url", "is", null);
+  if (error) throw new Error(`existingKbSourceUrls: ${error.message}`);
+  return new Set((data ?? []).map((r) => r.source_url).filter((u): u is string => Boolean(u)));
 }
 
 export type KbMatch = { id: string; title: string; body: string; similarity: number };

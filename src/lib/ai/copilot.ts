@@ -143,3 +143,23 @@ Respond with ONLY minified JSON: {"title":"concise question-shaped title","body"
     throw new Error(`copilotDraftKbArticle: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
+
+/** Distil a crawled page (e.g. a University lesson) into a clean KB article. */
+export async function distilKbFromPage(markdown: string, hintTitle: string | null): Promise<{ title: string; body: string }> {
+  const system = `You turn a Travelgenix University lesson (a how-to article) into a clean knowledge-base entry the support AI and agents can reuse. ${BRAND_VOICE}
+Stay accurate to the source — do not invent. Strip navigation, marketing fluff, cookie notices and boilerplate; keep the substance as a focused how-to. Where a detail clearly won't generalise, leave a [bracketed placeholder].
+Respond with ONLY minified JSON: {"title":"concise question-shaped title","body":"the article in plain text"}.`;
+  const prompt = `${hintTitle ? `Lesson title: ${hintTitle}\n\n` : ""}Lesson content (markdown):\n${markdown.slice(0, 24000)}`;
+  const raw = await complete(env.resolutionModel, system, prompt, 2000);
+
+  try {
+    const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+    const p = JSON.parse(json) as { title?: string; body?: string };
+    const title = (p.title ?? hintTitle ?? "").trim();
+    const body = (p.body ?? "").trim();
+    if (!title || !body) throw new Error("empty distillation");
+    return { title: title.slice(0, 300), body: body.slice(0, 20000) };
+  } catch (error) {
+    throw new Error(`distilKbFromPage: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}

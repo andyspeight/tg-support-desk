@@ -229,7 +229,9 @@ export type Database = {
           embedding: string | null
           id: string
           source: Database["public"]["Enums"]["kb_source"]
+          source_hash: string | null
           source_ticket_id: string | null
+          source_url: string | null
           status: Database["public"]["Enums"]["kb_status"]
           tenant_id: string
           title: string
@@ -243,7 +245,9 @@ export type Database = {
           embedding?: string | null
           id?: string
           source?: Database["public"]["Enums"]["kb_source"]
+          source_hash?: string | null
           source_ticket_id?: string | null
+          source_url?: string | null
           status?: Database["public"]["Enums"]["kb_status"]
           tenant_id?: string
           title: string
@@ -257,7 +261,9 @@ export type Database = {
           embedding?: string | null
           id?: string
           source?: Database["public"]["Enums"]["kb_source"]
+          source_hash?: string | null
           source_ticket_id?: string | null
+          source_url?: string | null
           status?: Database["public"]["Enums"]["kb_status"]
           tenant_id?: string
           title?: string
@@ -637,6 +643,7 @@ export type Database = {
         | "ticket_mined"
         | "zendesk_import"
         | "knowledge_bot"
+        | "university"
       kb_status: "draft" | "review" | "published" | "archived"
       message_role: "customer" | "ai" | "human" | "internal_note" | "system"
       ticket_channel: "email" | "widget" | "portal" | "whatsapp"
@@ -783,6 +790,7 @@ export const Constants = {
         "ticket_mined",
         "zendesk_import",
         "knowledge_bot",
+        "university",
       ],
       kb_status: ["draft", "review", "published", "archived"],
       message_role: ["customer", "ai", "human", "internal_note", "system"],

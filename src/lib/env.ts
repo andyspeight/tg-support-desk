@@ -46,6 +46,28 @@ export const env = {
   get rerankModel() {
     return optional("RERANK_MODEL", "rerank-2.5");
   },
+  // Firecrawl + University (Duda blog) KB ingestion. Dormant until the API key
+  // is set, so the sync route/cron is a safe no-op before then.
+  get firecrawlApiKey() {
+    return optional("FIRECRAWL_API_KEY");
+  },
+  get firecrawlConfigured() {
+    return Boolean(optional("FIRECRAWL_API_KEY"));
+  },
+  get universityBaseUrl() {
+    return optional("UNIVERSITY_BASE_URL", "https://university.travelgenix.io");
+  },
+  get universityPathPrefix() {
+    return optional("UNIVERSITY_PATH_PREFIX"); // e.g. "/post" to restrict to blog posts
+  },
+  get universityBatch() {
+    return Number(optional("UNIVERSITY_BATCH", "10"));
+  },
+  get universityAutopublish() {
+    // false (default): land as 'review' for approval. true: embed + publish on
+    // ingest so it's immediately usable by the AI.
+    return optional("UNIVERSITY_AUTOPUBLISH") === "true";
+  },
   get airtablePat() {
     return required("AIRTABLE_PAT");
   },
