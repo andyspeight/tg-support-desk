@@ -2,7 +2,7 @@ import "server-only";
 import { runResolutionAgent } from "./agent";
 import { mandatoryEscalation } from "./guardrails";
 import { classifyTicket } from "./triage";
-import { embedQuery } from "./embeddings";
+import { searchKb } from "./kb-search";
 import type { AgentOutcome, AgentRunResult, TicketContext, ToolExecutors } from "./types";
 import {
   addMessage,
@@ -10,7 +10,6 @@ import {
   countRecentAiMessages,
   getTicketWithMessages,
   insertAiEvent,
-  matchKbArticles,
   searchPastTickets,
   updateTicket,
 } from "@/lib/db/queries";
@@ -171,7 +170,7 @@ function buildExecutors(ticket: Ticket): ToolExecutors {
     search_kb: async (input) => {
       const query = String(input.query ?? "").trim();
       if (!query) return "Empty query.";
-      const matches = await matchKbArticles(await embedQuery(query), 5);
+      const matches = await searchKb(query, 5);
       if (!matches.length) return "No relevant published KB articles found.";
       return matches
         .map(
@@ -205,7 +204,51 @@ function buildExecutors(ticket: Ticket): ToolExecutors {
   };
 }
 
+// Shadow mode: don't act on the outcome — record what the AI *would* have done
+// as an internal note for a human to review/send, plus the ai_event so shadow
+// performance stays measurable. No customer email, no auto-resolve.
+async function applyShadowOutcome(ticket: Ticket, outcome: AgentOutcome, result: AgentRunResult | null): Promise<void> {
+  const draft =
+    outcome.kind === "answered" || outcome.kind === "clarified"
+      ? outcome.reply
+      : `Category: ${outcome.category}\nReason: ${outcome.reason}\n\nSuggested reply:\n${outcome.suggestedReply || "(none drafted)"}`;
+
+  await addMessage({
+    ticket_id: ticket.id,
+    role: "internal_note",
+    author: AI_ACTOR,
+    body_text: `AI SHADOW DRAFT — not sent (shadow mode on).\nWould have: ${outcome.kind}.\n\n${draft}`,
+    channel_meta: { kind: "shadow_draft", would_be: outcome.kind },
+  });
+  await updateTicket(ticket.id, {
+    status: "escalated",
+    escalation_reason: "shadow_mode: AI drafted a reply — review and send manually",
+    tags: ticket.tags.includes("ai-shadow") ? ticket.tags : [...ticket.tags, "ai-shadow"],
+  });
+  await audit("ai", AI_ACTOR, "ai.shadow_draft", { type: "ticket", id: ticket.id }, { would_be: outcome.kind });
+  await notifyEscalation(ticket, "Shadow mode: AI drafted a reply for review.");
+
+  if (result) {
+    await insertAiEvent({
+      ticket_id: ticket.id,
+      turn: result.turns,
+      model: result.model,
+      tools_called: result.toolsCalled.map((t) => ({ ...t })),
+      confidence: outcome.kind === "escalated" ? null : outcome.confidence,
+      outcome: outcome.kind === "clarified" ? "clarified" : outcome.kind === "answered" ? "answered" : "escalated",
+      latency_ms: result.latencyMs,
+      input_tokens: result.inputTokens,
+      output_tokens: result.outputTokens,
+    });
+  }
+}
+
 async function applyOutcome(ticket: Ticket, outcome: AgentOutcome, result: AgentRunResult | null): Promise<void> {
+  if (env.aiShadowMode) {
+    await applyShadowOutcome(ticket, outcome, result);
+    return;
+  }
+
   if (outcome.kind === "answered" || outcome.kind === "clarified") {
     // On a resolving answer, invite a one-tap CSAT rating (when a public base
     // URL + signing secret are configured). Clarifying replies get no survey.

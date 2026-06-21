@@ -43,6 +43,9 @@ export const env = {
   get embeddingModel() {
     return optional("EMBEDDING_MODEL", "voyage-3.5");
   },
+  get rerankModel() {
+    return optional("RERANK_MODEL", "rerank-2.5");
+  },
   get airtablePat() {
     return required("AIRTABLE_PAT");
   },
@@ -116,6 +119,11 @@ export const env = {
   },
   get aiMaxTurns() {
     return Number(optional("AI_MAX_TURNS", "8"));
+  },
+  get aiShadowMode() {
+    // Parallel-run safety: the resolution agent drafts into an internal note
+    // for a human to review/send, instead of replying to the customer.
+    return optional("AI_SHADOW_MODE") === "true";
   },
   get gmailPollBatch() {
     return Number(optional("GMAIL_POLL_BATCH", "10"));

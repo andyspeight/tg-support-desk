@@ -1,8 +1,8 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "@/lib/env";
-import { getTicketWithMessages, matchKbArticles } from "@/lib/db/queries";
-import { embedQuery } from "./embeddings";
+import { getTicketWithMessages } from "@/lib/db/queries";
+import { searchKb } from "./kb-search";
 
 // Agent copilot: drafting and rewriting help for the human side. Grounded in
 // the same KB as the resolution agent, in Travelgenix brand voice. These
@@ -49,7 +49,7 @@ export async function copilotDraft(ticketId: string): Promise<string> {
 
   let kb = "";
   try {
-    const matches = await matchKbArticles(await embedQuery(query), 4);
+    const matches = await searchKb(query, 4);
     kb = matches.map((m) => `## ${m.title}\n${m.body.slice(0, 1500)}`).join("\n\n");
   } catch {
     // embeddings/KB unavailable — draft from the thread alone, still useful.
@@ -119,4 +119,27 @@ Respond with ONLY minified JSON: {"verdict":"ok"|"revise","issues":["short issue
 Use "ok" when the draft is already warm, clear and complete (issues [], rewrite ""). Use "revise" when it is curt, cold, incomplete or off-voice: give 1-3 short specific issues and a full rewrite that keeps EVERY fact, link and specific the agent wrote — improve only tone, clarity and completeness. Never add facts, promises, refunds, credits or commitments the agent did not make.`;
   const prompt = `Customer's latest message:\n${question || "(unavailable — judge tone and clarity only)"}\n\nAgent's draft reply:\n${text}`;
   return parseReview(await complete(env.utilityModel, system, prompt, 1200));
+}
+
+/** Self-improvement loop: turn a resolved ticket into a reusable KB article
+ *  candidate (review queue). Generalised + PII-stripped, brand voice. */
+export async function copilotDraftKbArticle(ticketId: string): Promise<{ title: string; body: string }> {
+  const loaded = await getTicketWithMessages(ticketId);
+  if (!loaded) throw new Error("ticket not found");
+
+  const system = `You turn a resolved support ticket into a reusable knowledge-base article for a Travelgenix agent or AI to reuse on similar issues. ${BRAND_VOICE}
+Generalise away from this one customer: NO names, emails, booking/order references or other PII. Capture the problem and the working resolution as a clear how-to. Where a step depends on a specific that won't generalise, write a [bracketed placeholder]. Never invent anything the conversation doesn't support.
+Respond with ONLY minified JSON: {"title":"concise question-shaped title","body":"the article in plain text"}.`;
+  const raw = await complete(env.resolutionModel, system, threadText(loaded.messages), 1500);
+
+  try {
+    const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+    const p = JSON.parse(json) as { title?: string; body?: string };
+    const title = (p.title ?? "").trim();
+    const body = (p.body ?? "").trim();
+    if (!title || !body) throw new Error("empty draft");
+    return { title: title.slice(0, 300), body: body.slice(0, 20000) };
+  } catch (error) {
+    throw new Error(`copilotDraftKbArticle: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }

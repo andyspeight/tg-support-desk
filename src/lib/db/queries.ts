@@ -389,6 +389,35 @@ export async function publishKbArticle(id: string, embedding: number[]): Promise
   return updateKbArticle(id, { status: "published", embedding: JSON.stringify(embedding) });
 }
 
+/** Human-resolved, previously-escalated tickets in a recent window — candidates
+ *  for mining into KB articles (self-improvement loop). */
+export async function listHumanResolvedEscalated(withinHours: number, limit = 50): Promise<Ticket[]> {
+  const since = new Date(Date.now() - withinHours * 3_600_000).toISOString();
+  const result = await db()
+    .from("tickets")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .in("status", ["resolved", "closed"])
+    .eq("ai_resolved", false)
+    .not("escalation_reason", "is", null)
+    .gte("resolved_at", since)
+    .order("resolved_at", { ascending: false })
+    .limit(limit);
+  return unwrap(result, "listHumanResolvedEscalated");
+}
+
+/** Of the given tickets, which already have a KB article mined from them. */
+export async function existingKbSourceTicketIds(ticketIds: string[]): Promise<Set<string>> {
+  if (ticketIds.length === 0) return new Set();
+  const { data, error } = await db()
+    .from("kb_articles")
+    .select("source_ticket_id")
+    .eq("tenant_id", env.tenantId)
+    .in("source_ticket_id", ticketIds);
+  if (error) throw new Error(`existingKbSourceTicketIds: ${error.message}`);
+  return new Set((data ?? []).map((r) => r.source_ticket_id).filter((id): id is string => Boolean(id)));
+}
+
 export type KbMatch = { id: string; title: string; body: string; similarity: number };
 
 export async function matchKbArticles(queryEmbedding: number[], count = 5): Promise<KbMatch[]> {

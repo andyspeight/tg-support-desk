@@ -212,6 +212,10 @@ export default async function SettingsPage() {
             <dt className="text-ink-2">Confidence threshold</dt>
             <dd>{process.env.AI_CONFIDENCE_THRESHOLD ?? "0.55"}</dd>
           </div>
+          <div className="flex justify-between">
+            <dt className="text-ink-2">Shadow mode</dt>
+            <dd>{process.env.AI_SHADOW_MODE === "true" ? "on — AI drafts, never sends" : "off"}</dd>
+          </div>
         </dl>
       </section>
 
