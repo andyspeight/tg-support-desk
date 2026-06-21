@@ -608,6 +608,7 @@ export type Database = {
           body: string
           id: string
           similarity: number
+          source_url: string
           title: string
         }[]
       }

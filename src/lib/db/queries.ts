@@ -431,7 +431,7 @@ export async function existingKbSourceUrls(source: KbSource): Promise<Set<string
   return new Set((data ?? []).map((r) => r.source_url).filter((u): u is string => Boolean(u)));
 }
 
-export type KbMatch = { id: string; title: string; body: string; similarity: number };
+export type KbMatch = { id: string; title: string; body: string; similarity: number; source_url: string | null };
 
 export async function matchKbArticles(queryEmbedding: number[], count = 5): Promise<KbMatch[]> {
   const result = await db().rpc("match_kb_articles", {

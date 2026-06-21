@@ -3,7 +3,12 @@ import type { ToolExecutors } from "../types";
 // Deterministic tool fixtures so eval results reflect prompt/loop changes,
 // not live data. Grow FIXTURE_KB alongside the real KB's main topics.
 
-export const FIXTURE_KB: { title: string; body: string }[] = [
+export const FIXTURE_KB: { title: string; body: string; source_url?: string }[] = [
+  {
+    title: "Getting found online: driving traffic to your travel website",
+    body: `A great website only earns bookings if people find it. The reliable levers are: search (a clear page title and description per destination, and a Google Business Profile), social posting on the one or two platforms you can keep up with, and email to the customers you already have. Pick the single channel you can do consistently and build from there rather than spreading thin.`,
+    source_url: "https://university.travelgenix.io/getting-found-online",
+  },
   {
     title: "Embedding the Travelgenix booking widget",
     body: `To add the booking widget to any page of your website, paste the widget snippet just before the closing </body> tag:
@@ -36,7 +41,10 @@ export function fixtureExecutors(): ToolExecutors {
       if (!scored.length) return "No relevant published KB articles found.";
       return scored
         .slice(0, 3)
-        .map((s) => `[similarity ${(0.5 + 0.1 * s.score).toFixed(2)}] ${s.article.title}\n${s.article.body}`)
+        .map((s) => {
+          const link = s.article.source_url ? `\nSource link: ${s.article.source_url}` : "";
+          return `[similarity ${(0.5 + 0.1 * s.score).toFixed(2)}] ${s.article.title}\n${s.article.body}${link}`;
+        })
         .join("\n\n---\n\n");
     },
 

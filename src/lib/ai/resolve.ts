@@ -3,6 +3,7 @@ import { runResolutionAgent } from "./agent";
 import { mandatoryEscalation } from "./guardrails";
 import { classifyTicket } from "./triage";
 import { searchKb } from "./kb-search";
+import { sanitiseReplyLinks } from "./reply-links";
 import type { AgentOutcome, AgentRunResult, TicketContext, ToolExecutors } from "./types";
 import {
   addMessage,
@@ -95,19 +96,20 @@ export async function resolveTicket(
         suggestedReply: "",
         holdingReply: holdingReplyTemplate(ticket),
       };
-      await applyOutcome(ticket, outcome, null);
+      await applyOutcome(ticket, outcome, null, new Set());
       return outcome;
     }
 
     const ctx = buildTicketContext(ticket, messages);
-    const result = await runResolutionAgent(ctx, buildExecutors(ticket), {
+    const retrievedLinks = new Set<string>();
+    const result = await runResolutionAgent(ctx, buildExecutors(ticket, retrievedLinks), {
       apiKey: env.anthropicApiKey,
       model: env.resolutionModel,
       maxTurns: env.aiMaxTurns,
       confidenceThreshold: env.aiConfidenceThreshold,
     });
 
-    await applyOutcome(ticket, result.outcome, result);
+    await applyOutcome(ticket, result.outcome, result, retrievedLinks);
     return result.outcome;
   } catch (error) {
     await failSafeEscalate(ticket, error);
@@ -165,7 +167,7 @@ function buildTicketContext(ticket: Ticket, messages: Message[]): TicketContext 
   };
 }
 
-function buildExecutors(ticket: Ticket): ToolExecutors {
+function buildExecutors(ticket: Ticket, linkSink: Set<string>): ToolExecutors {
   return {
     search_kb: async (input) => {
       const query = String(input.query ?? "").trim();
@@ -173,10 +175,11 @@ function buildExecutors(ticket: Ticket): ToolExecutors {
       const matches = await searchKb(query, 5);
       if (!matches.length) return "No relevant published KB articles found.";
       return matches
-        .map(
-          (m) =>
-            `[similarity ${m.similarity.toFixed(2)}] ${m.title}\n${m.body.slice(0, 2000)}`,
-        )
+        .map((m) => {
+          if (m.source_url) linkSink.add(m.source_url);
+          const link = m.source_url ? `\nSource link: ${m.source_url}` : "";
+          return `[similarity ${m.similarity.toFixed(2)}] ${m.title}\n${m.body.slice(0, 2000)}${link}`;
+        })
         .join("\n\n---\n\n");
     },
 
@@ -243,16 +246,22 @@ async function applyShadowOutcome(ticket: Ticket, outcome: AgentOutcome, result:
   }
 }
 
-async function applyOutcome(ticket: Ticket, outcome: AgentOutcome, result: AgentRunResult | null): Promise<void> {
+async function applyOutcome(
+  ticket: Ticket,
+  outcome: AgentOutcome,
+  result: AgentRunResult | null,
+  retrievedLinks: Set<string>,
+): Promise<void> {
   if (env.aiShadowMode) {
     await applyShadowOutcome(ticket, outcome, result);
     return;
   }
 
   if (outcome.kind === "answered" || outcome.kind === "clarified") {
-    // On a resolving answer, invite a one-tap CSAT rating (when a public base
-    // URL + signing secret are configured). Clarifying replies get no survey.
-    let body = outcome.reply;
+    // Strip any "Want to know more?" link the agent didn't actually retrieve
+    // (no hallucinated sources), then invite a one-tap CSAT rating on a
+    // resolving answer (when a public base URL + signing secret are configured).
+    let body = sanitiseReplyLinks(outcome.reply, retrievedLinks);
     if (outcome.kind === "answered" && env.appBaseUrl && env.csatSecret) {
       body += `\n\nHow did we do? Rate this support in one tap: ${csatSurveyUrl(env.appBaseUrl, ticket.id, env.csatSecret)}`;
     }
