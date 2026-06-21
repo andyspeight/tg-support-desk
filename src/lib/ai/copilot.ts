@@ -144,22 +144,23 @@ Respond with ONLY minified JSON: {"title":"concise question-shaped title","body"
   }
 }
 
-/** Distil a crawled page (e.g. a University lesson) into a clean KB article. */
+/** Distil a crawled page (e.g. a University lesson) into a clean KB article.
+ *  Plain TITLE/body format, not JSON: long lesson bodies (quotes, newlines,
+ *  braces) routinely broke JSON.parse, which failed the page and cost a
+ *  re-scrape on every retry. The fallback keeps a non-conforming reply usable. */
 export async function distilKbFromPage(markdown: string, hintTitle: string | null): Promise<{ title: string; body: string }> {
   const system = `You turn a Travelgenix University lesson (a how-to article) into a clean knowledge-base entry the support AI and agents can reuse. ${BRAND_VOICE}
 Stay accurate to the source — do not invent. Strip navigation, marketing fluff, cookie notices and boilerplate; keep the substance as a focused how-to. Where a detail clearly won't generalise, leave a [bracketed placeholder].
-Respond with ONLY minified JSON: {"title":"concise question-shaped title","body":"the article in plain text"}.`;
-  const prompt = `${hintTitle ? `Lesson title: ${hintTitle}\n\n` : ""}Lesson content (markdown):\n${markdown.slice(0, 24000)}`;
-  const raw = await complete(env.resolutionModel, system, prompt, 2000);
+Respond in EXACTLY this format and nothing else:
+TITLE: <a concise, question-shaped title on one line>
 
-  try {
-    const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
-    const p = JSON.parse(json) as { title?: string; body?: string };
-    const title = (p.title ?? hintTitle ?? "").trim();
-    const body = (p.body ?? "").trim();
-    if (!title || !body) throw new Error("empty distillation");
-    return { title: title.slice(0, 300), body: body.slice(0, 20000) };
-  } catch (error) {
-    throw new Error(`distilKbFromPage: ${error instanceof Error ? error.message : String(error)}`);
-  }
+<the article body in plain text>`;
+  const prompt = `${hintTitle ? `Lesson title: ${hintTitle}\n\n` : ""}Lesson content (markdown):\n${markdown.slice(0, 24000)}`;
+  const raw = (await complete(env.resolutionModel, system, prompt, 2000)).trim();
+
+  const match = raw.match(/^TITLE:[ \t]*(.+?)[ \t]*\n([\s\S]*)$/);
+  const title = (match ? match[1] : hintTitle ?? "").trim();
+  const body = (match ? match[2] : raw).trim();
+  if (!title || !body) throw new Error("distilKbFromPage: empty distillation");
+  return { title: title.slice(0, 300), body: body.slice(0, 20000) };
 }
