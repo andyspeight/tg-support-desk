@@ -1,0 +1,13 @@
+{
+  "name": "KB-answerable with University source link: driving traffic",
+  "ticket": {
+    "subject": "How do I get more visitors to my website?",
+    "requester_name": "Raj Patel",
+    "requester_email": "raj@globetrottertravel.example.com",
+    "body": "Hi, our Travelgenix site is live but hardly anyone visits it. How do we get more people to the site? Thanks, Raj"
+  },
+  "expected": {
+    "outcomes": ["answered"],
+    "must_include": ["university.travelgenix.io/getting-found-online"]
+  }
+}
