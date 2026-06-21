@@ -124,3 +124,29 @@ export async function hasRecentNotification(
   }
   return (count ?? 0) > 0;
 }
+
+/** Unread + not-yet-emailed notifications within a recent window — the source
+ *  for the email mirror. Bounded so enabling Gmail doesn't backfill old ones. */
+export async function listUnemailedNotifications(withinHours = 12): Promise<Notification[]> {
+  const since = new Date(Date.now() - withinHours * 3_600_000).toISOString();
+  const { data, error } = await db()
+    .from("notifications")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .is("emailed_at", null)
+    .is("read_at", null)
+    .gte("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(500);
+  if (error) throw new Error(`listUnemailedNotifications: ${error.message}`);
+  return data ?? [];
+}
+
+export async function markEmailed(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const { error } = await db()
+    .from("notifications")
+    .update({ emailed_at: new Date().toISOString() })
+    .in("id", ids);
+  if (error) throw new Error(`markEmailed: ${error.message}`);
+}

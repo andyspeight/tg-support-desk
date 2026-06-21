@@ -342,6 +342,7 @@ export type Database = {
           actor: string | null
           body: string | null
           created_at: string
+          emailed_at: string | null
           id: string
           read_at: string | null
           recipient: string
@@ -354,6 +355,7 @@ export type Database = {
           actor?: string | null
           body?: string | null
           created_at?: string
+          emailed_at?: string | null
           id?: string
           read_at?: string | null
           recipient: string
@@ -366,6 +368,7 @@ export type Database = {
           actor?: string | null
           body?: string | null
           created_at?: string
+          emailed_at?: string | null
           id?: string
           read_at?: string | null
           recipient?: string

@@ -70,6 +70,17 @@ export const env = {
   get supportFromName() {
     return optional("SUPPORT_FROM_NAME", "Travelgenix Support");
   },
+  // True when the Gmail send path is fully configured. Lets notification email
+  // + the morning digest stay dormant (a no-op) until the mailbox is wired —
+  // checked with optional() so it never throws when Gmail isn't set up yet.
+  get gmailConfigured() {
+    return Boolean(
+      optional("GMAIL_CLIENT_ID") &&
+        optional("GMAIL_CLIENT_SECRET") &&
+        optional("GMAIL_REFRESH_TOKEN") &&
+        optional("SUPPORT_EMAIL"),
+    );
+  },
   get tgAuthSessionUrl() {
     return optional("TG_AUTH_SESSION_URL");
   },
