@@ -164,3 +164,38 @@ TITLE: <a concise, question-shaped title on one line>
   if (!title || !body) throw new Error("distilKbFromPage: empty distillation");
   return { title: title.slice(0, 300), body: body.slice(0, 20000) };
 }
+
+export type AskResult = { answer: string; sources: { title: string; url: string }[] };
+
+/** Instant self-serve answer for the client portal — grounded in the published
+ *  KB, with "read more" links to the source lessons. No ticket, no email, no
+ *  shadow gating: this never acts, it only answers what the KB supports. */
+export async function askKb(question: string): Promise<AskResult> {
+  const q = question.trim().slice(0, 1000);
+  if (!q) return { answer: "Ask a question about using Travelgenix and I'll help if I can.", sources: [] };
+
+  let matches: Awaited<ReturnType<typeof searchKb>> = [];
+  try {
+    matches = await searchKb(q, 5);
+  } catch {
+    // KB/embeddings unavailable — fall through to the raise-a-ticket nudge.
+  }
+  if (matches.length === 0) {
+    return {
+      answer: "I couldn't find an answer to that in our help content. If you raise a ticket, the team will pick it up.",
+      sources: [],
+    };
+  }
+
+  const kb = matches.map((m) => `## ${m.title}\n${m.body.slice(0, 1800)}`).join("\n\n");
+  const system = `You answer Travelgenix clients' questions in the self-serve help box. ${BRAND_VOICE}
+Answer ONLY from the knowledge base provided, in two to four sentences that directly solve the question. If the knowledge base doesn't actually answer it, say you're not sure and suggest raising a ticket — never guess. Never discuss refunds, credits, discounts or contract/billing changes; say the team will help with those. Do not add links or a sign-off — just the answer.`;
+  const prompt = `Knowledge base:\n${kb}\n\nClient question: ${q}\n\nAnswer the client.`;
+  const answer = (await complete(env.resolutionModel, system, prompt, 700)).trim();
+
+  const sources = matches
+    .filter((m) => m.source_url)
+    .slice(0, 3)
+    .map((m) => ({ title: m.title, url: m.source_url as string }));
+  return { answer, sources };
+}

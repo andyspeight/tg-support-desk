@@ -54,6 +54,41 @@ export async function getTicketWithMessages(id: string): Promise<{ ticket: Ticke
   return { ticket, messages: unwrap(result, "getTicketWithMessages") };
 }
 
+// --- Client portal reads: every query scoped to the signed-in requester's
+// email, and internal notes / system messages are never exposed to a client. ---
+
+export async function listRequesterTickets(email: string): Promise<Ticket[]> {
+  const { data, error } = await db()
+    .from("tickets")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .eq("requester_email", email.toLowerCase())
+    .order("updated_at", { ascending: false });
+  if (error) throw new Error(`listRequesterTickets: ${error.message}`);
+  return data ?? [];
+}
+
+export async function getRequesterTicket(
+  id: string,
+  email: string,
+): Promise<{ ticket: Ticket; messages: Message[] } | null> {
+  const { data: ticket, error } = await db()
+    .from("tickets")
+    .select()
+    .eq("id", id)
+    .eq("requester_email", email.toLowerCase())
+    .maybeSingle();
+  if (error) throw new Error(`getRequesterTicket: ${error.message}`);
+  if (!ticket) return null;
+  const result = await db()
+    .from("messages")
+    .select()
+    .eq("ticket_id", id)
+    .in("role", ["customer", "ai", "human"]) // never expose internal_note / system
+    .order("created_at", { ascending: true });
+  return { ticket, messages: unwrap(result, "getRequesterTicket") };
+}
+
 /** Record a CSAT rating — only on resolved/closed tickets. Safe to call
  * from the public survey route (the caller verifies the signed token). */
 export async function recordCsat(ticketId: string, score: number, comment: string | null): Promise<boolean> {

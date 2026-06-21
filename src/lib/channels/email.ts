@@ -156,7 +156,23 @@ export async function sendTicketReply(
   body: string,
   opts: { role: "ai" | "human"; author: string; html?: string; attachments?: OutboundFile[] },
 ): Promise<Message> {
-  if (ticket.channel !== "email") throw new Error(`sendTicketReply: unsupported channel ${ticket.channel}`);
+  // Non-email channels (portal, widget) deliver in-app: store the reply as a
+  // message the client sees in their portal. No outbound email.
+  if (ticket.channel !== "email") {
+    const message = await addMessage({
+      ticket_id: ticket.id,
+      role: opts.role,
+      author: opts.author,
+      body_text: body,
+      body_html: opts.html ?? null,
+      channel_meta: { delivered: ticket.channel },
+    });
+    if (!ticket.first_response_at) {
+      await updateTicket(ticket.id, { first_response_at: new Date().toISOString() });
+    }
+    await audit(opts.role === "ai" ? "ai" : "human", opts.author, "message.sent", { type: "ticket", id: ticket.id });
+    return message;
+  }
 
   const { messageId, references } = await latestCustomerThreadMeta(ticket.id);
   const subject = /^re:/i.test(ticket.subject) ? ticket.subject : `Re: ${ticket.subject}`;

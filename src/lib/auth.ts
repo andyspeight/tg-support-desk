@@ -49,3 +49,12 @@ export async function requireAgent(): Promise<Session> {
   if (!session?.isAgent) throw new Error("Not authorised: agent session required");
   return session;
 }
+
+/** Any authenticated Travelgenix user — used by the client support portal.
+ *  Portal data is always scoped to session.email, so a client only ever sees
+ *  their own tickets. */
+export async function requireClient(): Promise<Session> {
+  const session = await getSession();
+  if (!session) throw new Error("Not authorised: sign in required");
+  return session;
+}
