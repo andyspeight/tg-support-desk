@@ -82,7 +82,10 @@ export default async function KbPage({
             it — published articles are embedded immediately and start answering tickets.
           </p>
         ) : (
-          <div className="mx-auto max-w-2xl">
+          // key on the article id forces the uncontrolled title/body fields to
+          // remount (and so reset to the selected article) on every selection —
+          // without it, a <textarea defaultValue> keeps the first body shown.
+          <div key={editing?.id ?? "new"} className="mx-auto max-w-2xl">
             <form action={saveArticleAction} className="space-y-3">
               <input type="hidden" name="id" value={editing?.id ?? ""} />
               <input
