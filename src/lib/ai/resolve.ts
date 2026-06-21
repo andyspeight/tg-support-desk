@@ -2,7 +2,7 @@ import "server-only";
 import { runResolutionAgent } from "./agent";
 import { mandatoryEscalation } from "./guardrails";
 import { classifyTicket } from "./triage";
-import { embedQuery } from "./embeddings";
+import { searchKb } from "./kb-search";
 import type { AgentOutcome, AgentRunResult, TicketContext, ToolExecutors } from "./types";
 import {
   addMessage,
@@ -10,10 +10,10 @@ import {
   countRecentAiMessages,
   getTicketWithMessages,
   insertAiEvent,
-  matchKbArticles,
   searchPastTickets,
   updateTicket,
 } from "@/lib/db/queries";
+import { notify, ticketRecipients } from "@/lib/db/notifications";
 import type { Message, Ticket } from "@/lib/db/types";
 import { getClientById, matchClientByEmail, summariseClient } from "@/lib/integrations/airtable-clients";
 import { sendTicketReply } from "@/lib/channels/email";
@@ -24,6 +24,20 @@ import { env } from "@/lib/env";
 // of answered / clarifying question / explicit escalation. Never silent.
 
 const AI_ACTOR = "resolution-agent";
+
+// Escalations ping the owner + watchers; if nobody owns it yet, ping all agents
+// so it gets picked up. notify() is defensive — never breaks the pipeline.
+async function notifyEscalation(ticket: Ticket, reason: string): Promise<void> {
+  const owners = ticketRecipients(ticket);
+  await notify({
+    recipients: owners.length > 0 ? owners : env.agentEmails,
+    type: "escalated",
+    ticketId: ticket.id,
+    title: `Escalated: #${ticket.reference} — ${ticket.subject}`,
+    body: reason.slice(0, 200),
+    actor: AI_ACTOR,
+  });
+}
 
 export async function resolveTicket(
   ticketId: string,
@@ -57,6 +71,7 @@ export async function resolveTicket(
       escalation_reason: "loop_suspected: 5+ AI replies in 24h",
     });
     await audit("system", AI_ACTOR, "ai.loop_guard_tripped", { type: "ticket", id: ticket.id });
+    await notifyEscalation(ticket, "Loop guard tripped: 5+ AI replies in 24h.");
     return null;
   }
 
@@ -155,7 +170,7 @@ function buildExecutors(ticket: Ticket): ToolExecutors {
     search_kb: async (input) => {
       const query = String(input.query ?? "").trim();
       if (!query) return "Empty query.";
-      const matches = await matchKbArticles(await embedQuery(query), 5);
+      const matches = await searchKb(query, 5);
       if (!matches.length) return "No relevant published KB articles found.";
       return matches
         .map(
@@ -189,7 +204,51 @@ function buildExecutors(ticket: Ticket): ToolExecutors {
   };
 }
 
+// Shadow mode: don't act on the outcome — record what the AI *would* have done
+// as an internal note for a human to review/send, plus the ai_event so shadow
+// performance stays measurable. No customer email, no auto-resolve.
+async function applyShadowOutcome(ticket: Ticket, outcome: AgentOutcome, result: AgentRunResult | null): Promise<void> {
+  const draft =
+    outcome.kind === "answered" || outcome.kind === "clarified"
+      ? outcome.reply
+      : `Category: ${outcome.category}\nReason: ${outcome.reason}\n\nSuggested reply:\n${outcome.suggestedReply || "(none drafted)"}`;
+
+  await addMessage({
+    ticket_id: ticket.id,
+    role: "internal_note",
+    author: AI_ACTOR,
+    body_text: `AI SHADOW DRAFT — not sent (shadow mode on).\nWould have: ${outcome.kind}.\n\n${draft}`,
+    channel_meta: { kind: "shadow_draft", would_be: outcome.kind },
+  });
+  await updateTicket(ticket.id, {
+    status: "escalated",
+    escalation_reason: "shadow_mode: AI drafted a reply — review and send manually",
+    tags: ticket.tags.includes("ai-shadow") ? ticket.tags : [...ticket.tags, "ai-shadow"],
+  });
+  await audit("ai", AI_ACTOR, "ai.shadow_draft", { type: "ticket", id: ticket.id }, { would_be: outcome.kind });
+  await notifyEscalation(ticket, "Shadow mode: AI drafted a reply for review.");
+
+  if (result) {
+    await insertAiEvent({
+      ticket_id: ticket.id,
+      turn: result.turns,
+      model: result.model,
+      tools_called: result.toolsCalled.map((t) => ({ ...t })),
+      confidence: outcome.kind === "escalated" ? null : outcome.confidence,
+      outcome: outcome.kind === "clarified" ? "clarified" : outcome.kind === "answered" ? "answered" : "escalated",
+      latency_ms: result.latencyMs,
+      input_tokens: result.inputTokens,
+      output_tokens: result.outputTokens,
+    });
+  }
+}
+
 async function applyOutcome(ticket: Ticket, outcome: AgentOutcome, result: AgentRunResult | null): Promise<void> {
+  if (env.aiShadowMode) {
+    await applyShadowOutcome(ticket, outcome, result);
+    return;
+  }
+
   if (outcome.kind === "answered" || outcome.kind === "clarified") {
     // On a resolving answer, invite a one-tap CSAT rating (when a public base
     // URL + signing secret are configured). Clarifying replies get no survey.
@@ -236,6 +295,7 @@ async function applyOutcome(ticket: Ticket, outcome: AgentOutcome, result: Agent
       category: outcome.category,
       reason: outcome.reason,
     });
+    await notifyEscalation(ticket, `${outcome.category}: ${outcome.reason}`);
   }
 
   if (result) {
@@ -299,6 +359,7 @@ async function failSafeEscalate(ticket: Ticket, error: unknown): Promise<void> {
       escalation_reason: `tool_error: ${message}`.slice(0, 300),
     });
     await audit("system", AI_ACTOR, "ai.pipeline_error", { type: "ticket", id: ticket.id }, { error: message.slice(0, 500) });
+    await notifyEscalation(ticket, `Pipeline error: ${message.slice(0, 150)}`);
   } catch (inner) {
     console.error("failSafeEscalate failed:", inner);
   }

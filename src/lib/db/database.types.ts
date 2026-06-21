@@ -229,7 +229,9 @@ export type Database = {
           embedding: string | null
           id: string
           source: Database["public"]["Enums"]["kb_source"]
+          source_hash: string | null
           source_ticket_id: string | null
+          source_url: string | null
           status: Database["public"]["Enums"]["kb_status"]
           tenant_id: string
           title: string
@@ -243,7 +245,9 @@ export type Database = {
           embedding?: string | null
           id?: string
           source?: Database["public"]["Enums"]["kb_source"]
+          source_hash?: string | null
           source_ticket_id?: string | null
+          source_url?: string | null
           status?: Database["public"]["Enums"]["kb_status"]
           tenant_id?: string
           title: string
@@ -257,7 +261,9 @@ export type Database = {
           embedding?: string | null
           id?: string
           source?: Database["public"]["Enums"]["kb_source"]
+          source_hash?: string | null
           source_ticket_id?: string | null
+          source_url?: string | null
           status?: Database["public"]["Enums"]["kb_status"]
           tenant_id?: string
           title?: string
@@ -330,6 +336,63 @@ export type Database = {
           },
           {
             foreignKeyName: "messages_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          actor: string | null
+          body: string | null
+          created_at: string
+          emailed_at: string | null
+          id: string
+          read_at: string | null
+          recipient: string
+          tenant_id: string
+          ticket_id: string | null
+          title: string
+          type: string
+        }
+        Insert: {
+          actor?: string | null
+          body?: string | null
+          created_at?: string
+          emailed_at?: string | null
+          id?: string
+          read_at?: string | null
+          recipient: string
+          tenant_id?: string
+          ticket_id?: string | null
+          title: string
+          type: string
+        }
+        Update: {
+          actor?: string | null
+          body?: string | null
+          created_at?: string
+          emailed_at?: string | null
+          id?: string
+          read_at?: string | null
+          recipient?: string
+          tenant_id?: string
+          ticket_id?: string | null
+          title?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_ticket_id_fkey"
             columns: ["ticket_id"]
             isOneToOne: false
             referencedRelation: "tickets"
@@ -447,11 +510,13 @@ export type Database = {
           requester_name: string | null
           resolved_at: string | null
           sla_policy_id: string | null
+          snoozed_until: string | null
           status: Database["public"]["Enums"]["ticket_status"]
           subject: string
           tags: string[]
           tenant_id: string
           updated_at: string
+          watchers: string[]
         }
         Insert: {
           ai_resolved?: boolean
@@ -474,11 +539,13 @@ export type Database = {
           requester_name?: string | null
           resolved_at?: string | null
           sla_policy_id?: string | null
+          snoozed_until?: string | null
           status?: Database["public"]["Enums"]["ticket_status"]
           subject?: string
           tags?: string[]
           tenant_id?: string
           updated_at?: string
+          watchers?: string[]
         }
         Update: {
           ai_resolved?: boolean
@@ -501,11 +568,13 @@ export type Database = {
           requester_name?: string | null
           resolved_at?: string | null
           sla_policy_id?: string | null
+          snoozed_until?: string | null
           status?: Database["public"]["Enums"]["ticket_status"]
           subject?: string
           tags?: string[]
           tenant_id?: string
           updated_at?: string
+          watchers?: string[]
         }
         Relationships: [
           {
@@ -557,6 +626,13 @@ export type Database = {
           ticket_id: string
         }[]
       }
+      tickets_awaiting_response: {
+        Args: { p_tenant_id?: string }
+        Returns: {
+          ticket_id: string
+          waiting_since: string
+        }[]
+      }
     }
     Enums: {
       actor_type: "ai" | "human" | "system"
@@ -567,6 +643,7 @@ export type Database = {
         | "ticket_mined"
         | "zendesk_import"
         | "knowledge_bot"
+        | "university"
       kb_status: "draft" | "review" | "published" | "archived"
       message_role: "customer" | "ai" | "human" | "internal_note" | "system"
       ticket_channel: "email" | "widget" | "portal" | "whatsapp"
@@ -713,6 +790,7 @@ export const Constants = {
         "ticket_mined",
         "zendesk_import",
         "knowledge_bot",
+        "university",
       ],
       kb_status: ["draft", "review", "published", "archived"],
       message_role: ["customer", "ai", "human", "internal_note", "system"],

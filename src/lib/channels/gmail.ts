@@ -102,3 +102,10 @@ export async function sendMessage(rawMime: Buffer | string, threadId?: string | 
     body: JSON.stringify(payload),
   })) as { id: string; threadId: string };
 }
+
+/** Send a fresh (non-threaded) email from support@ — used for internal agent
+ *  alerts (notification mirror + morning digest), not customer-facing. */
+export async function sendEmail(input: { to: string; subject: string; text: string; html?: string }): Promise<void> {
+  const mime = await buildReplyMime({ to: input.to, subject: input.subject, text: input.text, html: input.html });
+  await sendMessage(mime);
+}

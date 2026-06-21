@@ -1,8 +1,8 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "@/lib/env";
-import { getTicketWithMessages, matchKbArticles } from "@/lib/db/queries";
-import { embedQuery } from "./embeddings";
+import { getTicketWithMessages } from "@/lib/db/queries";
+import { searchKb } from "./kb-search";
 
 // Agent copilot: drafting and rewriting help for the human side. Grounded in
 // the same KB as the resolution agent, in Travelgenix brand voice. These
@@ -49,7 +49,7 @@ export async function copilotDraft(ticketId: string): Promise<string> {
 
   let kb = "";
   try {
-    const matches = await matchKbArticles(await embedQuery(query), 4);
+    const matches = await searchKb(query, 4);
     kb = matches.map((m) => `## ${m.title}\n${m.body.slice(0, 1500)}`).join("\n\n");
   } catch {
     // embeddings/KB unavailable — draft from the thread alone, still useful.
@@ -79,4 +79,87 @@ export async function copilotRephrase(text: string): Promise<string> {
 export async function copilotTranslate(text: string, targetLanguage: string): Promise<string> {
   const system = `Translate the text into ${targetLanguage}. Preserve meaning, tone and formatting. Return only the translation.`;
   return complete(env.utilityModel, system, text);
+}
+
+export type ReplyReview = { verdict: "ok" | "revise"; issues: string[]; rewrite: string };
+
+function parseReview(raw: string): ReplyReview {
+  try {
+    const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+    const p = JSON.parse(json) as Partial<ReplyReview>;
+    return {
+      verdict: p.verdict === "revise" ? "revise" : "ok",
+      issues: Array.isArray(p.issues) ? p.issues.filter((s): s is string => typeof s === "string").slice(0, 5) : [],
+      rewrite: typeof p.rewrite === "string" ? p.rewrite : "",
+    };
+  } catch {
+    return { verdict: "ok", issues: [], rewrite: "" }; // fail-open — never block a send
+  }
+}
+
+/**
+ * Pre-send quality gate. Busy agents can be terse to the point of cold; this
+ * reads the draft against the customer's latest message and, if it's
+ * curt/blunt/incomplete or off-voice, returns issues + a warmer rewrite.
+ * Fail-open by design: any problem yields verdict "ok" so the agent is never
+ * trapped by an AI hiccup.
+ */
+export async function copilotReview(ticketId: string, text: string): Promise<ReplyReview> {
+  let question = "";
+  try {
+    const loaded = await getTicketWithMessages(ticketId);
+    const latestCustomer = loaded ? [...loaded.messages].reverse().find((m) => m.role === "customer") : null;
+    question = latestCustomer?.body_text?.slice(0, 3000) ?? "";
+  } catch {
+    // Thread unavailable — fall back to a tone-only review.
+  }
+
+  const system = `You quality-check a support reply a Travelgenix agent is about to send. Busy agents are often too curt, blunt or brief. Judge the draft on: tone (warm and human, never abrupt or dismissive), whether it actually addresses the customer's message, and ${BRAND_VOICE}
+Respond with ONLY minified JSON: {"verdict":"ok"|"revise","issues":["short issue"],"rewrite":"full improved reply"}.
+Use "ok" when the draft is already warm, clear and complete (issues [], rewrite ""). Use "revise" when it is curt, cold, incomplete or off-voice: give 1-3 short specific issues and a full rewrite that keeps EVERY fact, link and specific the agent wrote — improve only tone, clarity and completeness. Never add facts, promises, refunds, credits or commitments the agent did not make.`;
+  const prompt = `Customer's latest message:\n${question || "(unavailable — judge tone and clarity only)"}\n\nAgent's draft reply:\n${text}`;
+  return parseReview(await complete(env.utilityModel, system, prompt, 1200));
+}
+
+/** Self-improvement loop: turn a resolved ticket into a reusable KB article
+ *  candidate (review queue). Generalised + PII-stripped, brand voice. */
+export async function copilotDraftKbArticle(ticketId: string): Promise<{ title: string; body: string }> {
+  const loaded = await getTicketWithMessages(ticketId);
+  if (!loaded) throw new Error("ticket not found");
+
+  const system = `You turn a resolved support ticket into a reusable knowledge-base article for a Travelgenix agent or AI to reuse on similar issues. ${BRAND_VOICE}
+Generalise away from this one customer: NO names, emails, booking/order references or other PII. Capture the problem and the working resolution as a clear how-to. Where a step depends on a specific that won't generalise, write a [bracketed placeholder]. Never invent anything the conversation doesn't support.
+Respond with ONLY minified JSON: {"title":"concise question-shaped title","body":"the article in plain text"}.`;
+  const raw = await complete(env.resolutionModel, system, threadText(loaded.messages), 1500);
+
+  try {
+    const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+    const p = JSON.parse(json) as { title?: string; body?: string };
+    const title = (p.title ?? "").trim();
+    const body = (p.body ?? "").trim();
+    if (!title || !body) throw new Error("empty draft");
+    return { title: title.slice(0, 300), body: body.slice(0, 20000) };
+  } catch (error) {
+    throw new Error(`copilotDraftKbArticle: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/** Distil a crawled page (e.g. a University lesson) into a clean KB article. */
+export async function distilKbFromPage(markdown: string, hintTitle: string | null): Promise<{ title: string; body: string }> {
+  const system = `You turn a Travelgenix University lesson (a how-to article) into a clean knowledge-base entry the support AI and agents can reuse. ${BRAND_VOICE}
+Stay accurate to the source — do not invent. Strip navigation, marketing fluff, cookie notices and boilerplate; keep the substance as a focused how-to. Where a detail clearly won't generalise, leave a [bracketed placeholder].
+Respond with ONLY minified JSON: {"title":"concise question-shaped title","body":"the article in plain text"}.`;
+  const prompt = `${hintTitle ? `Lesson title: ${hintTitle}\n\n` : ""}Lesson content (markdown):\n${markdown.slice(0, 24000)}`;
+  const raw = await complete(env.resolutionModel, system, prompt, 2000);
+
+  try {
+    const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+    const p = JSON.parse(json) as { title?: string; body?: string };
+    const title = (p.title ?? hintTitle ?? "").trim();
+    const body = (p.body ?? "").trim();
+    if (!title || !body) throw new Error("empty distillation");
+    return { title: title.slice(0, 300), body: body.slice(0, 20000) };
+  } catch (error) {
+    throw new Error(`distilKbFromPage: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }

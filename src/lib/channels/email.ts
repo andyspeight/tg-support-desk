@@ -9,6 +9,7 @@ import {
   setMessageAttachments,
   updateTicket,
 } from "@/lib/db/queries";
+import { notify, ticketRecipients } from "@/lib/db/notifications";
 import type { Message, Ticket } from "@/lib/db/types";
 import type { Json } from "@/lib/db/database.types";
 import { env } from "@/lib/env";
@@ -116,6 +117,21 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
       message.attachments = stored as unknown as Json;
     } catch (error) {
       console.error("storeAttachments failed:", error);
+    }
+  }
+
+  // Existing-ticket customer reply → ping the owner + watchers. (The AI runs
+  // separately; this matters for human-owned / escalated tickets.)
+  if (!createdTicket && !parsed.isAutoReply) {
+    const recipients = ticketRecipients(ticket);
+    if (recipients.length > 0) {
+      await notify({
+        recipients,
+        type: "customer_reply",
+        ticketId: ticket.id,
+        title: `Customer replied on #${ticket.reference} — ${ticket.subject}`,
+        actor: parsed.fromEmail,
+      });
     }
   }
 

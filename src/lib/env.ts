@@ -43,6 +43,31 @@ export const env = {
   get embeddingModel() {
     return optional("EMBEDDING_MODEL", "voyage-3.5");
   },
+  get rerankModel() {
+    return optional("RERANK_MODEL", "rerank-2.5");
+  },
+  // Firecrawl + University (Duda blog) KB ingestion. Dormant until the API key
+  // is set, so the sync route/cron is a safe no-op before then.
+  get firecrawlApiKey() {
+    return optional("FIRECRAWL_API_KEY");
+  },
+  get firecrawlConfigured() {
+    return Boolean(optional("FIRECRAWL_API_KEY"));
+  },
+  get universityBaseUrl() {
+    return optional("UNIVERSITY_BASE_URL", "https://university.travelgenix.io");
+  },
+  get universityPathPrefix() {
+    return optional("UNIVERSITY_PATH_PREFIX"); // e.g. "/post" to restrict to blog posts
+  },
+  get universityBatch() {
+    return Number(optional("UNIVERSITY_BATCH", "10"));
+  },
+  get universityAutopublish() {
+    // false (default): land as 'review' for approval. true: embed + publish on
+    // ingest so it's immediately usable by the AI.
+    return optional("UNIVERSITY_AUTOPUBLISH") === "true";
+  },
   get airtablePat() {
     return required("AIRTABLE_PAT");
   },
@@ -69,6 +94,17 @@ export const env = {
   },
   get supportFromName() {
     return optional("SUPPORT_FROM_NAME", "Travelgenix Support");
+  },
+  // True when the Gmail send path is fully configured. Lets notification email
+  // + the morning digest stay dormant (a no-op) until the mailbox is wired —
+  // checked with optional() so it never throws when Gmail isn't set up yet.
+  get gmailConfigured() {
+    return Boolean(
+      optional("GMAIL_CLIENT_ID") &&
+        optional("GMAIL_CLIENT_SECRET") &&
+        optional("GMAIL_REFRESH_TOKEN") &&
+        optional("SUPPORT_EMAIL"),
+    );
   },
   get tgAuthSessionUrl() {
     return optional("TG_AUTH_SESSION_URL");
@@ -105,6 +141,11 @@ export const env = {
   },
   get aiMaxTurns() {
     return Number(optional("AI_MAX_TURNS", "8"));
+  },
+  get aiShadowMode() {
+    // Parallel-run safety: the resolution agent drafts into an internal note
+    // for a human to review/send, instead of replying to the customer.
+    return optional("AI_SHADOW_MODE") === "true";
   },
   get gmailPollBatch() {
     return Number(optional("GMAIL_POLL_BATCH", "10"));

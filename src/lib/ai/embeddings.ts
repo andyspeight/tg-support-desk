@@ -36,3 +36,22 @@ export async function embedDocument(text: string): Promise<number[]> {
   const [vector] = await embed([text], "document");
   return vector;
 }
+
+const VOYAGE_RERANK_URL = "https://api.voyageai.com/v1/rerank";
+
+/** Rerank documents against a query (Voyage reranker). Returns indices into the
+ *  original `documents` array, best first. Used to sharpen KB retrieval. */
+export async function rerank(query: string, documents: string[]): Promise<{ index: number; score: number }[]> {
+  if (documents.length === 0) return [];
+  const res = await fetch(VOYAGE_RERANK_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.voyageApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ model: env.rerankModel, query, documents, top_k: documents.length }),
+  });
+  if (!res.ok) throw new Error(`Voyage rerank: ${res.status} ${await res.text()}`);
+  const data = (await res.json()) as { data: { index: number; relevance_score: number }[] };
+  return data.data.map((d) => ({ index: d.index, score: d.relevance_score })).sort((a, b) => b.score - a.score);
+}

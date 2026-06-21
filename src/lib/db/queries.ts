@@ -7,6 +7,7 @@ import type {
   AiOutcome,
   CannedResponse,
   KbArticle,
+  KbSource,
   KbStatus,
   Message,
   SlaPolicy,
@@ -99,6 +100,9 @@ export async function updateTicket(id: string, patch: TablesUpdate<"tickets">): 
 export async function listTickets(view: InboxView, agentEmail: string): Promise<Ticket[]> {
   if (view === "breaching") return listBreachingTickets();
 
+  // Snoozed tickets drop out of the active queues until their time is up.
+  const activeNotSnoozed = `snoozed_until.is.null,snoozed_until.lte.${new Date().toISOString()}`;
+
   let query = db()
     .from("tickets")
     .select()
@@ -108,10 +112,10 @@ export async function listTickets(view: InboxView, agentEmail: string): Promise<
 
   switch (view) {
     case "mine":
-      query = query.eq("assignee", agentEmail).in("status", [...OPEN_STATUSES]);
+      query = query.eq("assignee", agentEmail).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed);
       break;
     case "unassigned":
-      query = query.is("assignee", null).in("status", [...OPEN_STATUSES]);
+      query = query.is("assignee", null).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed);
       break;
     case "escalated":
       query = query.eq("status", "escalated");
@@ -120,7 +124,7 @@ export async function listTickets(view: InboxView, agentEmail: string): Promise<
       query = query.eq("status", "waiting_on_customer");
       break;
     case "open":
-      query = query.in("status", [...OPEN_STATUSES]);
+      query = query.in("status", [...OPEN_STATUSES]).or(activeNotSnoozed);
       break;
     case "all":
       break;
@@ -130,13 +134,14 @@ export async function listTickets(view: InboxView, agentEmail: string): Promise<
 }
 
 export async function inboxCounts(agentEmail: string): Promise<Record<InboxView, number>> {
+  const activeNotSnoozed = `snoozed_until.is.null,snoozed_until.lte.${new Date().toISOString()}`;
   const base = () => db().from("tickets").select("id", { count: "exact", head: true }).eq("tenant_id", env.tenantId);
   const [mine, unassigned, escalated, waiting, open, all, breaching] = await Promise.all([
-    base().eq("assignee", agentEmail).in("status", [...OPEN_STATUSES]),
-    base().is("assignee", null).in("status", [...OPEN_STATUSES]),
+    base().eq("assignee", agentEmail).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
+    base().is("assignee", null).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
     base().eq("status", "escalated"),
     base().eq("status", "waiting_on_customer"),
-    base().in("status", [...OPEN_STATUSES]),
+    base().in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
     base(),
     listBreachingTickets(),
   ]);
@@ -149,6 +154,20 @@ export async function inboxCounts(agentEmail: string): Promise<Record<InboxView,
     open: open.count ?? 0,
     all: all.count ?? 0,
   };
+}
+
+/** Tickets awaiting an agent/AI reply (latest message is the customer's), with
+ *  the time we've been waiting since. Powers the inbox badge + stale-ticket cron. */
+export async function awaitingResponse(): Promise<{ ticketId: string; waitingSince: string }[]> {
+  const { data, error } = await db().rpc("tickets_awaiting_response", { p_tenant_id: env.tenantId });
+  if (error) throw new Error(`awaitingResponse: ${error.message}`);
+  return (data ?? []).map((r) => ({ ticketId: r.ticket_id, waitingSince: r.waiting_since }));
+}
+
+export async function getTicketsByIds(ids: string[]): Promise<Ticket[]> {
+  if (!ids.length) return [];
+  const result = await db().from("tickets").select().eq("tenant_id", env.tenantId).in("id", ids);
+  return unwrap(result, "getTicketsByIds");
 }
 
 export type BulkPatch = Omit<TablesUpdate<"tickets">, "tags"> & { addTag?: string };
@@ -371,6 +390,47 @@ export async function publishKbArticle(id: string, embedding: number[]): Promise
   return updateKbArticle(id, { status: "published", embedding: JSON.stringify(embedding) });
 }
 
+/** Human-resolved, previously-escalated tickets in a recent window — candidates
+ *  for mining into KB articles (self-improvement loop). */
+export async function listHumanResolvedEscalated(withinHours: number, limit = 50): Promise<Ticket[]> {
+  const since = new Date(Date.now() - withinHours * 3_600_000).toISOString();
+  const result = await db()
+    .from("tickets")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .in("status", ["resolved", "closed"])
+    .eq("ai_resolved", false)
+    .not("escalation_reason", "is", null)
+    .gte("resolved_at", since)
+    .order("resolved_at", { ascending: false })
+    .limit(limit);
+  return unwrap(result, "listHumanResolvedEscalated");
+}
+
+/** Of the given tickets, which already have a KB article mined from them. */
+export async function existingKbSourceTicketIds(ticketIds: string[]): Promise<Set<string>> {
+  if (ticketIds.length === 0) return new Set();
+  const { data, error } = await db()
+    .from("kb_articles")
+    .select("source_ticket_id")
+    .eq("tenant_id", env.tenantId)
+    .in("source_ticket_id", ticketIds);
+  if (error) throw new Error(`existingKbSourceTicketIds: ${error.message}`);
+  return new Set((data ?? []).map((r) => r.source_ticket_id).filter((id): id is string => Boolean(id)));
+}
+
+/** Source URLs already ingested for a crawled source (dedupe for the sync job). */
+export async function existingKbSourceUrls(source: KbSource): Promise<Set<string>> {
+  const { data, error } = await db()
+    .from("kb_articles")
+    .select("source_url")
+    .eq("tenant_id", env.tenantId)
+    .eq("source", source)
+    .not("source_url", "is", null);
+  if (error) throw new Error(`existingKbSourceUrls: ${error.message}`);
+  return new Set((data ?? []).map((r) => r.source_url).filter((u): u is string => Boolean(u)));
+}
+
 export type KbMatch = { id: string; title: string; body: string; similarity: number };
 
 export async function matchKbArticles(queryEmbedding: number[], count = 5): Promise<KbMatch[]> {
@@ -479,6 +539,15 @@ export async function createCannedResponse(title: string, body: string, createdB
     .from("canned_responses")
     .insert({ tenant_id: env.tenantId, title, body, created_by: createdBy });
   if (error) throw new Error(`createCannedResponse: ${error.message}`);
+}
+
+export async function updateCannedResponse(id: string, title: string, body: string): Promise<void> {
+  const { error } = await db()
+    .from("canned_responses")
+    .update({ title, body })
+    .eq("tenant_id", env.tenantId)
+    .eq("id", id);
+  if (error) throw new Error(`updateCannedResponse: ${error.message}`);
 }
 
 export async function deleteCannedResponse(id: string): Promise<void> {

@@ -7,6 +7,7 @@ import {
   deleteCannedAction,
   deleteTagAction,
   removeBlockedAction,
+  updateCannedAction,
 } from "./actions";
 
 function show(value: string | undefined): string {
@@ -35,33 +36,57 @@ export default async function SettingsPage() {
 
       <section className="mt-6 rounded-lg border border-line bg-surface p-4">
         <h2 className="text-sm font-semibold">Canned responses</h2>
-        <div className="mt-2 space-y-2">
+        <p className="mt-1 text-xs text-ink-3">
+          Insert from the reply box. Variables fill in on insert:{" "}
+          <code className="rounded bg-surface-2 px-1">{"{{first_name}}"}</code>{" "}
+          <code className="rounded bg-surface-2 px-1">{"{{name}}"}</code>{" "}
+          <code className="rounded bg-surface-2 px-1">{"{{agent}}"}</code>{" "}
+          <code className="rounded bg-surface-2 px-1">{"{{ticket}}"}</code>.
+        </p>
+        <div className="mt-3 space-y-2">
           {canned.length === 0 && <p className="text-sm text-ink-3">None yet.</p>}
           {canned.map((c) => (
-            <div key={c.id} className="flex items-start gap-2 rounded-md border border-line-soft p-2">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-ink">{c.title}</p>
-                <p className="mt-0.5 line-clamp-2 text-xs text-ink-2">{c.body}</p>
+            <form key={c.id} action={updateCannedAction} className="space-y-1.5 rounded-md border border-line-soft p-2">
+              <input type="hidden" name="id" value={c.id} />
+              <input
+                name="title"
+                defaultValue={c.title}
+                required
+                className="w-full rounded-md border border-line bg-surface px-2 py-1.5 text-sm font-medium focus:border-ink-3 focus:outline-none"
+              />
+              <textarea
+                name="body"
+                defaultValue={c.body}
+                required
+                rows={2}
+                className="w-full resize-y rounded-md border border-line bg-surface p-2 text-xs text-ink-2 focus:border-ink-3 focus:outline-none"
+              />
+              <div className="flex gap-2">
+                <button className="rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2">
+                  Save
+                </button>
+                <button
+                  formAction={deleteCannedAction}
+                  className="rounded-md px-2.5 py-1 text-xs text-ink-3 hover:text-red-600 dark:hover:text-red-400"
+                >
+                  Delete
+                </button>
               </div>
-              <form action={deleteCannedAction}>
-                <input type="hidden" name="id" value={c.id} />
-                <button className="text-xs text-ink-3 hover:text-red-600 dark:hover:text-red-400">Delete</button>
-              </form>
-            </div>
+            </form>
           ))}
         </div>
         <form action={createCannedAction} className="mt-3 space-y-2 border-t border-line-soft pt-3">
           <input
             name="title"
             required
-            placeholder="Title"
+            placeholder="New canned response title"
             className="w-full rounded-md border border-line bg-surface px-2 py-1.5 text-sm placeholder:text-ink-3 focus:border-ink-3 focus:outline-none"
           />
           <textarea
             name="body"
             required
             rows={3}
-            placeholder="Response text…"
+            placeholder="Response text… use {{first_name}}, {{agent}}, {{ticket}}"
             className="w-full resize-y rounded-md border border-line bg-surface p-2 text-sm placeholder:text-ink-3 focus:border-ink-3 focus:outline-none"
           />
           <button className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-surface-2 dark:text-ink dark:hover:bg-line">
@@ -186,6 +211,10 @@ export default async function SettingsPage() {
           <div className="flex justify-between">
             <dt className="text-ink-2">Confidence threshold</dt>
             <dd>{process.env.AI_CONFIDENCE_THRESHOLD ?? "0.55"}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-ink-2">Shadow mode</dt>
+            <dd>{process.env.AI_SHADOW_MODE === "true" ? "on — AI drafts, never sends" : "off"}</dd>
           </div>
         </dl>
       </section>

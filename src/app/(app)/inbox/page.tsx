@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
-import { inboxCounts, listTickets, type InboxView } from "@/lib/db/queries";
+import { awaitingResponse, inboxCounts, listTickets, type InboxView } from "@/lib/db/queries";
+import { env } from "@/lib/env";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { InboxTable } from "@/components/inbox-table";
 import { bulkUpdateTicketsAction } from "./actions";
@@ -20,7 +21,13 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const { view: rawView } = await searchParams;
   const view: InboxView = VIEWS.some((v) => v.key === rawView) ? (rawView as InboxView) : "open";
 
-  const [tickets, counts] = await Promise.all([listTickets(view, session.email), inboxCounts(session.email)]);
+  const [tickets, counts, awaiting] = await Promise.all([
+    listTickets(view, session.email),
+    inboxCounts(session.email),
+    awaitingResponse().catch(() => []),
+  ]);
+  const awaitingMap: Record<string, string> = {};
+  for (const a of awaiting) awaitingMap[a.ticketId] = a.waitingSince;
 
   return (
     <div className="p-6">
@@ -46,7 +53,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
         ))}
       </div>
 
-      <InboxTable tickets={tickets} bulkUpdate={bulkUpdateTicketsAction} />
+      <InboxTable tickets={tickets} bulkUpdate={bulkUpdateTicketsAction} awaiting={awaitingMap} agents={env.agentEmails} />
     </div>
   );
 }
