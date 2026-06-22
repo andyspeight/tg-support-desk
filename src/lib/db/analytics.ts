@@ -188,3 +188,99 @@ export async function getAnalytics(): Promise<Analytics> {
     return EMPTY;
   }
 }
+
+// ── Weekly gap digest (brief §8: the improvement-loop email) ──────────────────
+// Distinct from the daily morning-digest (per-agent triage). This is the weekly
+// "where is the AI struggling + what needs reviewing" summary for Andy/agents.
+
+export type WeeklyGapDigest = {
+  thisWeek: { created: number; resolved: number; aiResolved: number; aiRatePct: number | null };
+  lastWeekAiRatePct: number | null;
+  topEscalationReasons: { reason: string; count: number }[];
+  failingIntents: { intent: string; total: number; aiRate: number }[];
+  kbReview: { count: number; titles: string[] };
+};
+
+type DigestRow = Pick<Row, "status" | "ai_resolved" | "intent" | "created_at" | "csat_score" | "escalation_reason">;
+
+/** Cohorted by creation date: "this week" = tickets created in the last 7 days,
+ *  with the prior 7 days as the trend baseline. Returns null on any error so the
+ *  cron can skip cleanly. */
+export async function getWeeklyGapDigest(): Promise<WeeklyGapDigest | null> {
+  try {
+    const client = db();
+    const tenant = env.tenantId;
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const since = new Date(now - 2 * WEEK_MS).toISOString();
+
+    const [ticketsRes, kbCountRes, kbTitlesRes] = await Promise.all([
+      client
+        .from("tickets")
+        .select("status, ai_resolved, intent, created_at, csat_score, escalation_reason")
+        .eq("tenant_id", tenant)
+        .gte("created_at", since)
+        .limit(5000),
+      client.from("kb_articles").select("id", { count: "exact", head: true }).eq("tenant_id", tenant).eq("status", "review"),
+      client
+        .from("kb_articles")
+        .select("title")
+        .eq("tenant_id", tenant)
+        .eq("status", "review")
+        .order("updated_at", { ascending: false })
+        .limit(5),
+    ]);
+    if (ticketsRes.error) throw new Error(ticketsRes.error.message);
+
+    const rows = (ticketsRes.data as DigestRow[]) ?? [];
+    const cutoff = now - WEEK_MS;
+    const isThisWeek = (r: DigestRow) => new Date(r.created_at).getTime() >= cutoff;
+
+    const cohortRate = (set: DigestRow[]) => {
+      const done = set.filter((r) => r.status === "resolved" || r.status === "closed");
+      const ai = done.filter((r) => r.ai_resolved && (r.csat_score === null || r.csat_score >= 3));
+      return { resolved: done.length, aiResolved: ai.length, ratePct: done.length ? pct(ai.length, done.length) : null };
+    };
+
+    const thisWeekRows = rows.filter(isThisWeek);
+    const tw = cohortRate(thisWeekRows);
+    const lw = cohortRate(rows.filter((r) => !isThisWeek(r)));
+
+    const reasonMap = new Map<string, number>();
+    for (const r of thisWeekRows) {
+      if (!r.escalation_reason) continue;
+      const key = r.escalation_reason.split(":")[0].trim() || "other";
+      reasonMap.set(key, (reasonMap.get(key) ?? 0) + 1);
+    }
+    const topEscalationReasons = [...reasonMap.entries()]
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const intentMap = new Map<string, { total: number; ai: number }>();
+    for (const r of thisWeekRows.filter((r) => r.status === "resolved" || r.status === "closed")) {
+      const key = r.intent ?? "untriaged";
+      const cur = intentMap.get(key) ?? { total: 0, ai: 0 };
+      cur.total += 1;
+      if (r.ai_resolved) cur.ai += 1;
+      intentMap.set(key, cur);
+    }
+    const failingIntents = [...intentMap.entries()]
+      .map(([intent, v]) => ({ intent, total: v.total, aiRate: pct(v.ai, v.total) }))
+      .filter((x) => x.total >= 2 && x.aiRate < 70)
+      .sort((a, b) => a.aiRate - b.aiRate)
+      .slice(0, 5);
+
+    const titles = ((kbTitlesRes.data as { title: string }[] | null) ?? []).map((r) => r.title);
+
+    return {
+      thisWeek: { created: thisWeekRows.length, resolved: tw.resolved, aiResolved: tw.aiResolved, aiRatePct: tw.ratePct },
+      lastWeekAiRatePct: lw.ratePct,
+      topEscalationReasons,
+      failingIntents,
+      kbReview: { count: kbCountRes.count ?? 0, titles },
+    };
+  } catch {
+    return null;
+  }
+}
