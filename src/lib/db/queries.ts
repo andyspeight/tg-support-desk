@@ -6,6 +6,7 @@ import { ticketSla, type TicketSla } from "@/lib/sla";
 import type {
   AiOutcome,
   CannedResponse,
+  ClientSupportHistory,
   KbArticle,
   KbSource,
   KbStatus,
@@ -188,6 +189,67 @@ export async function inboxCounts(agentEmail: string): Promise<Record<InboxView,
     breaching: breaching.length,
     open: open.count ?? 0,
     all: all.count ?? 0,
+  };
+}
+
+/** Customer 360 support history for a ticket's client — keyed on the matched
+ *  Airtable client when we have one (company-wide view), else the requester's
+ *  own email. Counts include the current ticket; the recent list excludes it.
+ *  This is the frame the Phase 3 integration-error feed slots into later. */
+export async function getClientSupportHistory(opts: {
+  clientId: string | null;
+  requesterEmail: string;
+  excludeTicketId: string;
+}): Promise<ClientSupportHistory> {
+  const { clientId, requesterEmail, excludeTicketId } = opts;
+  const email = requesterEmail.toLowerCase();
+  const scope: ClientSupportHistory["scope"] = clientId ? "client" : "requester";
+
+  const countBase = () => {
+    const q = db().from("tickets").select("id", { count: "exact", head: true }).eq("tenant_id", env.tenantId);
+    return clientId ? q.eq("client_id", clientId) : q.eq("requester_email", email);
+  };
+  const csatQuery = () => {
+    const q = db().from("tickets").select("csat_score").eq("tenant_id", env.tenantId).not("csat_score", "is", null);
+    return clientId ? q.eq("client_id", clientId) : q.eq("requester_email", email);
+  };
+  const recentQuery = () => {
+    const q = db()
+      .from("tickets")
+      .select("id, reference, subject, status, created_at, ai_resolved")
+      .eq("tenant_id", env.tenantId)
+      .neq("id", excludeTicketId)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    return clientId ? q.eq("client_id", clientId) : q.eq("requester_email", email);
+  };
+
+  const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const [total, open, last30, csat, recent] = await Promise.all([
+    countBase(),
+    countBase().in("status", [...OPEN_STATUSES]),
+    countBase().gte("created_at", since30),
+    csatQuery(),
+    recentQuery(),
+  ]);
+
+  for (const r of [total, open, last30, csat, recent]) {
+    if (r.error) throw new Error(`getClientSupportHistory: ${r.error.message}`);
+  }
+
+  const scores = (csat.data ?? [])
+    .map((r) => r.csat_score)
+    .filter((s): s is number => typeof s === "number");
+  const csatAvg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+
+  return {
+    scope,
+    total: total.count ?? 0,
+    open: open.count ?? 0,
+    last30Days: last30.count ?? 0,
+    csatAvg,
+    csatCount: scores.length,
+    recent: (recent.data ?? []) as ClientSupportHistory["recent"],
   };
 }
 

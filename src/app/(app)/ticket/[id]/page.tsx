@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getTicketSla, getTicketWithMessages, listCannedResponses } from "@/lib/db/queries";
+import { getClientSupportHistory, getTicketSla, getTicketWithMessages, listCannedResponses } from "@/lib/db/queries";
 import { getSession } from "@/lib/auth";
 import type { ClockState } from "@/lib/sla";
 import { getClientById } from "@/lib/integrations/airtable-clients";
@@ -12,6 +12,7 @@ import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
 import { ClientPanel } from "@/components/client-panel";
+import { SupportHistoryPanel } from "@/components/support-history-panel";
 import { RunAiButton } from "@/components/run-ai-button";
 import { addNoteAction, mergeTicketAction, runAiAction, sendReplyAction, snoozeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
 import {
@@ -101,10 +102,15 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     ticket: `#${ticket.reference}`,
   };
 
-  const [canned, clientRecord, sla] = await Promise.all([
+  const [canned, clientRecord, sla, supportHistory] = await Promise.all([
     listCannedResponses().catch(() => []),
     ticket.client_id ? getClientById(ticket.client_id) : Promise.resolve(null),
     getTicketSla(ticket).catch(() => null),
+    getClientSupportHistory({
+      clientId: ticket.client_id,
+      requesterEmail: ticket.requester_email,
+      excludeTicketId: ticket.id,
+    }).catch(() => null),
   ]);
 
   const handover = [...messages]
@@ -185,7 +191,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         </div>
       </div>
 
-      {/* Controls column (Customer 360 panel lands here in Phase 2) */}
+      {/* Controls column — Customer 360 (client record + support history) up top */}
       <aside className="w-[27rem] shrink-0 space-y-5 overflow-y-auto border-l border-line bg-surface-2/40 p-5">
         <form action={runAiAction}>
           <input type="hidden" name="ticketId" value={ticket.id} />
@@ -202,6 +208,13 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             </p>
           )}
         </div>
+
+        {supportHistory && (
+          <div>
+            <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Support history</h2>
+            <SupportHistoryPanel history={supportHistory} />
+          </div>
+        )}
 
         <form action={updateTicketAction} className="space-y-3 text-sm">
           <input type="hidden" name="ticketId" value={ticket.id} />
