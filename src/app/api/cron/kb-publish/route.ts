@@ -5,9 +5,11 @@ import { embed } from "@/lib/ai/embeddings";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-// Small enough that even the longest University lessons stay under Voyage's
-// per-request token ceiling, and few enough requests to dodge RPM limits.
-const BATCH = 40;
+// Small batches: a 40-doc request (~26K tokens) blows past Voyage's free-tier
+// token-per-minute ceiling on the first call (429), so nothing publishes. Eight
+// (~5K tokens) clears the free limit and drains in bites across cron runs; once
+// the account is on pay-as-you-go it sails through and a run drains the lot.
+const BATCH = 8;
 const TIME_BUDGET_MS = 270_000;
 
 // One-time bulk publish of the seeded KB: embed every reviewed article (Voyage)
