@@ -8,6 +8,23 @@ export type CannedResponse = Tables<"canned_responses">;
 export type SlaPolicy = Tables<"sla_policies">;
 export type Notification = Tables<"notifications">;
 
+export type ClientSupportHistoryItem = Pick<
+  Ticket,
+  "id" | "reference" | "subject" | "status" | "created_at" | "ai_resolved"
+>;
+
+/** Customer 360 support history — company-level when an Airtable client is
+ *  matched, otherwise scoped to the requester's own email. */
+export type ClientSupportHistory = {
+  scope: "client" | "requester";
+  total: number;
+  open: number;
+  last30Days: number;
+  csatAvg: number | null;
+  csatCount: number;
+  recent: ClientSupportHistoryItem[];
+};
+
 export type TicketStatus = Database["public"]["Enums"]["ticket_status"];
 export type TicketPriority = Database["public"]["Enums"]["ticket_priority"];
 export type TicketChannel = Database["public"]["Enums"]["ticket_channel"];
