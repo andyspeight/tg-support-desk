@@ -60,6 +60,10 @@ export async function raiseTicketAction(formData: FormData): Promise<void> {
     subject: formData.get("subject"),
     body: formData.get("body"),
   });
+  // Ticket creation fires the AI loop — rate-limit it like the ask box (brief §10).
+  if ((await recentActionCount(session.email, "ticket.created", 300)) >= 8) {
+    throw new Error("You’ve raised several tickets in a row — please wait a moment before raising another.");
+  }
   const files = await filesFrom(formData);
 
   const ticket = await createTicket({
@@ -96,6 +100,10 @@ export async function replyAction(formData: FormData): Promise<void> {
   });
   const owned = await getRequesterTicket(ticketId, session.email); // ownership check
   if (!owned) throw new Error("Ticket not found");
+  // Replies re-run the AI loop too — same rate-limit posture (brief §10).
+  if ((await recentActionCount(session.email, "ticket.customer_reply", 60)) >= 20) {
+    throw new Error("You’re replying very quickly — give it a moment and try again.");
+  }
   const files = await filesFrom(formData);
 
   const message = await addMessage({ ticket_id: ticketId, role: "customer", author: session.email, body_text: body });
@@ -124,6 +132,8 @@ export async function rateAction(formData: FormData): Promise<void> {
   if (!isValidScore(score)) return;
   const owned = await getRequesterTicket(ticketId, session.email); // ownership check
   if (!owned) throw new Error("Ticket not found");
+  // CSAT only applies once a ticket is resolved/closed (mirrors recordCsat).
+  if (owned.ticket.status !== "resolved" && owned.ticket.status !== "closed") return;
 
   await updateTicket(ticketId, { csat_score: score });
   await audit("human", session.email, "csat.rated", { type: "ticket", id: ticketId }, { score });
