@@ -1,4 +1,5 @@
 import { getAnalytics } from "@/lib/db/analytics";
+import { getClientById } from "@/lib/integrations/airtable-clients";
 import { RESOLUTION_MILESTONES } from "@/lib/roadmap";
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -22,6 +23,21 @@ function Bar({ value, max, className = "bg-accent-500" }: { value: number; max: 
 export default async function AnalyticsPage() {
   const a = await getAnalytics();
   const target = 70;
+
+  // Resolve the top-client rec ids to company names (agent-only page; falls
+  // back to the id per-item so a slow/missing Airtable never breaks the page).
+  const clientNames = new Map<string, string>();
+  await Promise.all(
+    a.topClients.map(async (c) => {
+      try {
+        const rec = await getClientById(c.clientId);
+        const name = rec?.fields?.["ClientName"] ?? rec?.fields?.["Trading Name"];
+        if (name) clientNames.set(c.clientId, String(name));
+      } catch {
+        // keep the rec id
+      }
+    }),
+  );
 
   return (
     <div className="mx-auto max-w-4xl p-6">
@@ -142,12 +158,19 @@ export default async function AnalyticsPage() {
         <p className="text-xs text-ink-3">Feeds the CRM care conversation. Names resolve via the 360 panel.</p>
         <div className="mt-2 space-y-1">
           {a.topClients.length === 0 && <p className="text-sm text-ink-3">No client-matched tickets yet.</p>}
-          {a.topClients.map((c) => (
-            <div key={c.clientId} className="flex items-center justify-between rounded-md border border-line-soft bg-surface px-3 py-1.5 text-sm">
-              <span className="font-mono text-xs text-ink-2">{c.clientId}</span>
-              <span className="text-ink">{c.count}</span>
-            </div>
-          ))}
+          {a.topClients.map((c) => {
+            const name = clientNames.get(c.clientId);
+            return (
+              <div key={c.clientId} className="flex items-center justify-between gap-3 rounded-md border border-line-soft bg-surface px-3 py-1.5 text-sm">
+                {name ? (
+                  <span className="min-w-0 truncate text-ink">{name}</span>
+                ) : (
+                  <span className="min-w-0 truncate font-mono text-xs text-ink-2">{c.clientId}</span>
+                )}
+                <span className="shrink-0 text-ink">{c.count}</span>
+              </div>
+            );
+          })}
         </div>
       </section>
     </div>
