@@ -11,6 +11,7 @@ import {
   countRecentAiMessages,
   getTicketWithMessages,
   insertAiEvent,
+  recordKbUsage,
   searchPastTickets,
   updateTicket,
 } from "@/lib/db/queries";
@@ -25,6 +26,10 @@ import { env } from "@/lib/env";
 // of answered / clarifying question / explicit escalation. Never silent.
 
 const AI_ACTOR = "resolution-agent";
+
+// A KB article surfaced by search_kb during a run, tracked so we can attribute
+// the ticket's outcome back to the articles that informed it.
+type RetrievedArticle = { id: string; sourceUrl: string | null };
 
 // Escalations ping the owner + watchers; if nobody owns it yet, ping all agents
 // so it gets picked up. notify() is defensive — never breaks the pipeline.
@@ -96,20 +101,20 @@ export async function resolveTicket(
         suggestedReply: "",
         holdingReply: holdingReplyTemplate(ticket),
       };
-      await applyOutcome(ticket, outcome, null, new Set());
+      await applyOutcome(ticket, outcome, null, []);
       return outcome;
     }
 
     const ctx = buildTicketContext(ticket, messages);
-    const retrievedLinks = new Set<string>();
-    const result = await runResolutionAgent(ctx, buildExecutors(ticket, retrievedLinks), {
+    const retrieved: RetrievedArticle[] = [];
+    const result = await runResolutionAgent(ctx, buildExecutors(ticket, retrieved), {
       apiKey: env.anthropicApiKey,
       model: env.resolutionModel,
       maxTurns: env.aiMaxTurns,
       confidenceThreshold: env.aiConfidenceThreshold,
     });
 
-    await applyOutcome(ticket, result.outcome, result, retrievedLinks);
+    await applyOutcome(ticket, result.outcome, result, retrieved);
     return result.outcome;
   } catch (error) {
     await failSafeEscalate(ticket, error);
@@ -167,7 +172,7 @@ function buildTicketContext(ticket: Ticket, messages: Message[]): TicketContext 
   };
 }
 
-function buildExecutors(ticket: Ticket, linkSink: Set<string>): ToolExecutors {
+function buildExecutors(ticket: Ticket, retrieved: RetrievedArticle[]): ToolExecutors {
   return {
     search_kb: async (input) => {
       const query = String(input.query ?? "").trim();
@@ -176,7 +181,7 @@ function buildExecutors(ticket: Ticket, linkSink: Set<string>): ToolExecutors {
       if (!matches.length) return "No relevant published KB articles found.";
       return matches
         .map((m) => {
-          if (m.source_url) linkSink.add(m.source_url);
+          retrieved.push({ id: m.id, sourceUrl: m.source_url });
           const link = m.source_url ? `\nSource link: ${m.source_url}` : "";
           return `[similarity ${m.similarity.toFixed(2)}] ${m.title}\n${m.body.slice(0, 2000)}${link}`;
         })
@@ -210,7 +215,12 @@ function buildExecutors(ticket: Ticket, linkSink: Set<string>): ToolExecutors {
 // Shadow mode: don't act on the outcome — record what the AI *would* have done
 // as an internal note for a human to review/send, plus the ai_event so shadow
 // performance stays measurable. No customer email, no auto-resolve.
-async function applyShadowOutcome(ticket: Ticket, outcome: AgentOutcome, result: AgentRunResult | null): Promise<void> {
+async function applyShadowOutcome(
+  ticket: Ticket,
+  outcome: AgentOutcome,
+  result: AgentRunResult | null,
+  retrieved: RetrievedArticle[],
+): Promise<void> {
   const draft =
     outcome.kind === "answered" || outcome.kind === "clarified"
       ? outcome.reply
@@ -230,6 +240,8 @@ async function applyShadowOutcome(ticket: Ticket, outcome: AgentOutcome, result:
   });
   await audit("ai", AI_ACTOR, "ai.shadow_draft", { type: "ticket", id: ticket.id }, { would_be: outcome.kind });
   await notifyEscalation(ticket, "Shadow mode: AI drafted a reply for review.");
+  // Surfaced-only: nothing was sent to the customer, so no citation credit.
+  await recordKbUsageSafe(ticket.id, retrieved, null);
 
   if (result) {
     await insertAiEvent({
@@ -250,12 +262,15 @@ async function applyOutcome(
   ticket: Ticket,
   outcome: AgentOutcome,
   result: AgentRunResult | null,
-  retrievedLinks: Set<string>,
+  retrieved: RetrievedArticle[],
 ): Promise<void> {
+  const retrievedLinks = new Set(retrieved.map((r) => r.sourceUrl).filter((u): u is string => Boolean(u)));
   if (env.aiShadowMode) {
-    await applyShadowOutcome(ticket, outcome, result);
+    await applyShadowOutcome(ticket, outcome, result, retrieved);
     return;
   }
+
+  let sentBody: string | null = null;
 
   if (outcome.kind === "answered" || outcome.kind === "clarified") {
     // Strip any "Want to know more?" link the agent didn't actually retrieve
@@ -266,6 +281,7 @@ async function applyOutcome(
       body += `\n\nHow did we do? Rate this support in one tap: ${csatSurveyUrl(env.appBaseUrl, ticket.id, env.csatSecret)}`;
     }
     await sendTicketReply(ticket, body, { role: "ai", author: AI_ACTOR });
+    sentBody = body;
     await updateTicket(ticket.id, {
       ...(outcome.language ? { language: outcome.language } : {}),
       ...(outcome.kind === "answered"
@@ -307,6 +323,10 @@ async function applyOutcome(
     await notifyEscalation(ticket, `${outcome.category}: ${outcome.reason}`);
   }
 
+  // Attribute the run's KB articles to this ticket (cited = link made it into
+  // the sent reply). Outcome is read live later, so reopens/CSAT stay accurate.
+  await recordKbUsageSafe(ticket.id, retrieved, sentBody);
+
   if (result) {
     await insertAiEvent({
       ticket_id: ticket.id,
@@ -323,6 +343,29 @@ async function applyOutcome(
     for (const call of result.toolsCalled) {
       await audit("ai", AI_ACTOR, "ai.tool_call", { type: "ticket", id: ticket.id }, { tool: call.name, ok: call.ok });
     }
+  }
+}
+
+// An article is "cited" when its source link survived into the reply actually
+// sent — the strongest signal it helped. Best-effort: never breaks the pipeline.
+async function recordKbUsageSafe(
+  ticketId: string,
+  retrieved: RetrievedArticle[],
+  sentBody: string | null,
+): Promise<void> {
+  if (retrieved.length === 0) return;
+  const items = new Map<string, boolean>();
+  for (const r of retrieved) {
+    const cited = Boolean(sentBody && r.sourceUrl && sentBody.includes(r.sourceUrl));
+    items.set(r.id, (items.get(r.id) ?? false) || cited);
+  }
+  try {
+    await recordKbUsage(
+      ticketId,
+      [...items].map(([articleId, cited]) => ({ articleId, cited })),
+    );
+  } catch (error) {
+    console.error("recordKbUsage failed:", error);
   }
 }
 

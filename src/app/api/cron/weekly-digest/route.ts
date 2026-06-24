@@ -41,6 +41,11 @@ export async function GET(request: Request) {
       ? d.failingIntents.map((i) => `  • ${i.intent} — ${i.aiRate}% AI of ${i.total} resolved`)
       : ["  • none flagged"]),
     "",
+    "Published articles to revise (used but not landing):",
+    ...(d.articlesToReview.length
+      ? d.articlesToReview.map((a) => `  • ${a.title} — ${a.resolveRate ?? 0}% resolved of ${a.cited} cited`)
+      : ["  • none"]),
+    "",
     `KB candidates awaiting review: ${d.kbReview.count}`,
     ...d.kbReview.titles.map((t) => `  • ${t}`),
     "",
