@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { getKbArticle, kbCounts, listKbArticles } from "@/lib/db/queries";
+import { getKbArticle, getKbEffectiveness, kbCounts, listKbArticles } from "@/lib/db/queries";
 import type { KbStatus } from "@/lib/db/types";
+import { kbArticleFlag, type KbEffectiveness } from "@/lib/kb-effectiveness";
 import { archiveArticleAction, publishArticleAction, saveArticleAction } from "./actions";
 
 const TABS: { key: KbStatus; label: string }[] = [
@@ -10,6 +11,25 @@ const TABS: { key: KbStatus; label: string }[] = [
   { key: "archived", label: "Archived" },
 ];
 
+// Effectiveness line under each article: how often it answered tickets, and
+// whether it lands (workhorse) or needs a look (review).
+function UsageLine({ e }: { e: KbEffectiveness | undefined }) {
+  if (!e || e.surfaced === 0) return null;
+  const flag = kbArticleFlag(e);
+  const cls =
+    flag === "review"
+      ? "text-amber-600 dark:text-amber-400"
+      : flag === "workhorse"
+        ? "text-emerald-600 dark:text-emerald-400"
+        : "text-ink-3";
+  const icon = flag === "review" ? "⚠ " : flag === "workhorse" ? "★ " : "";
+  const label =
+    e.cited > 0
+      ? `${icon}used ${e.cited}× · ${e.resolveRate}% resolved${e.avgCsat != null ? ` · CSAT ${e.avgCsat}` : ""}`
+      : `surfaced ${e.surfaced}×`;
+  return <p className={`mt-0.5 truncate text-xs ${cls}`}>{label}</p>;
+}
+
 export default async function KbPage({
   searchParams,
 }: {
@@ -18,10 +38,11 @@ export default async function KbPage({
   const { status: rawStatus, id, new: isNew } = await searchParams;
   const status: KbStatus = TABS.some((t) => t.key === rawStatus) ? (rawStatus as KbStatus) : "review";
 
-  const [articles, counts, selected] = await Promise.all([
+  const [articles, counts, selected, eff] = await Promise.all([
     listKbArticles(status),
     kbCounts(),
     id ? getKbArticle(id) : Promise.resolve(null),
+    getKbEffectiveness(),
   ]);
 
   const editing = isNew === "1" ? null : selected;
@@ -69,6 +90,7 @@ export default async function KbPage({
               <p className="mt-0.5 truncate text-xs text-ink-3">
                 {article.source} · {new Date(article.updated_at).toLocaleDateString("en-GB")}
               </p>
+              <UsageLine e={eff.get(article.id)} />
             </Link>
           ))}
         </div>

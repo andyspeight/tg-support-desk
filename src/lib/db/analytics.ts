@@ -1,5 +1,7 @@
 import "server-only";
 import { db } from "./client";
+import { getKbEffectiveness } from "./queries";
+import { kbArticleFlag } from "@/lib/kb-effectiveness";
 import { env } from "@/lib/env";
 import { ticketSla } from "@/lib/sla";
 import type { SlaPolicy, TicketPriority } from "./types";
@@ -199,6 +201,8 @@ export type WeeklyGapDigest = {
   topEscalationReasons: { reason: string; count: number }[];
   failingIntents: { intent: string; total: number; aiRate: number }[];
   kbReview: { count: number; titles: string[] };
+  /** Published articles that get used but don't resolve — flag for revision. */
+  articlesToReview: { title: string; cited: number; resolveRate: number | null }[];
 };
 
 type DigestRow = Pick<Row, "status" | "ai_resolved" | "intent" | "created_at" | "csat_score" | "escalation_reason">;
@@ -273,12 +277,33 @@ export async function getWeeklyGapDigest(): Promise<WeeklyGapDigest | null> {
 
     const titles = ((kbTitlesRes.data as { title: string }[] | null) ?? []).map((r) => r.title);
 
+    // Articles that get cited but don't resolve / draw negative CSAT — the
+    // self-correcting signal: fix or retire these.
+    const eff = await getKbEffectiveness();
+    const flagged = [...eff.values()].filter((e) => kbArticleFlag(e) === "review");
+    let articlesToReview: WeeklyGapDigest["articlesToReview"] = [];
+    if (flagged.length) {
+      const { data: titleRows } = await client
+        .from("kb_articles")
+        .select("id, title")
+        .in(
+          "id",
+          flagged.map((e) => e.article_id),
+        );
+      const titleById = new Map(((titleRows as { id: string; title: string }[] | null) ?? []).map((r) => [r.id, r.title]));
+      articlesToReview = flagged
+        .sort((a, b) => (a.resolveRate ?? 0) - (b.resolveRate ?? 0))
+        .slice(0, 5)
+        .map((e) => ({ title: titleById.get(e.article_id) ?? "(untitled)", cited: e.cited, resolveRate: e.resolveRate }));
+    }
+
     return {
       thisWeek: { created: thisWeekRows.length, resolved: tw.resolved, aiResolved: tw.aiResolved, aiRatePct: tw.ratePct },
       lastWeekAiRatePct: lw.ratePct,
       topEscalationReasons,
       failingIntents,
       kbReview: { count: kbCountRes.count ?? 0, titles },
+      articlesToReview,
     };
   } catch {
     return null;

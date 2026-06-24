@@ -220,6 +220,55 @@ export type Database = {
           },
         ]
       }
+      kb_article_usage: {
+        Row: {
+          article_id: string
+          cited: boolean
+          created_at: string
+          id: string
+          tenant_id: string
+          ticket_id: string
+        }
+        Insert: {
+          article_id: string
+          cited?: boolean
+          created_at?: string
+          id?: string
+          tenant_id?: string
+          ticket_id: string
+        }
+        Update: {
+          article_id?: string
+          cited?: boolean
+          created_at?: string
+          id?: string
+          tenant_id?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kb_article_usage_article_id_fkey"
+            columns: ["article_id"]
+            isOneToOne: false
+            referencedRelation: "kb_articles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kb_article_usage_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kb_article_usage_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       kb_articles: {
         Row: {
           body: string

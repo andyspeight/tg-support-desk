@@ -3,6 +3,7 @@ import { db } from "./client";
 import { env } from "@/lib/env";
 import type { Json, TablesInsert, TablesUpdate } from "./database.types";
 import { ticketSla, type TicketSla } from "@/lib/sla";
+import { aggregateKbEffectiveness, type KbEffectiveness, type KbUsageRow } from "@/lib/kb-effectiveness";
 import type {
   AiOutcome,
   CannedResponse,
@@ -552,6 +553,70 @@ export async function matchKbArticles(queryEmbedding: number[], count = 5): Prom
     p_tenant_id: env.tenantId,
   });
   return unwrap(result, "matchKbArticles");
+}
+
+// ── KB outcome attribution (self-correcting KB loop) ─────────────────────────
+
+/** Record which KB articles were surfaced on a ticket, and which were cited in
+ *  the reply actually sent. Upsert keyed on (article_id, ticket_id); "once
+ *  cited, stays cited" across re-runs of the same ticket. */
+export async function recordKbUsage(
+  ticketId: string,
+  items: { articleId: string; cited: boolean }[],
+): Promise<void> {
+  if (items.length === 0) return;
+  // Collapse duplicate ids from multiple search_kb calls in a single run.
+  const merged = new Map<string, boolean>();
+  for (const it of items) merged.set(it.articleId, (merged.get(it.articleId) ?? false) || it.cited);
+
+  // Don't let this run downgrade an article that a previous run cited.
+  const { data: existing } = await db()
+    .from("kb_article_usage")
+    .select("article_id, cited")
+    .eq("ticket_id", ticketId);
+  for (const row of existing ?? []) {
+    if (row.cited) merged.set(row.article_id, true);
+  }
+
+  const rows = [...merged].map(([article_id, cited]) => ({
+    tenant_id: env.tenantId,
+    article_id,
+    ticket_id: ticketId,
+    cited,
+  }));
+  const { error } = await db().from("kb_article_usage").upsert(rows, { onConflict: "article_id,ticket_id" });
+  if (error) throw new Error(`recordKbUsage: ${error.message}`);
+}
+
+/** Per-article effectiveness across all recorded usage, joined to the live
+ *  ticket state (so reopens/late CSAT are reflected). Powers the KB health line
+ *  and the weekly digest's "articles to review". */
+export async function getKbEffectiveness(): Promise<Map<string, KbEffectiveness>> {
+  const { data: usage, error } = await db()
+    .from("kb_article_usage")
+    .select("article_id, ticket_id, cited")
+    .eq("tenant_id", env.tenantId)
+    .limit(20000);
+  if (error) throw new Error(`getKbEffectiveness: ${error.message}`);
+  const rows = usage ?? [];
+  if (rows.length === 0) return new Map();
+
+  const ticketIds = [...new Set(rows.map((r) => r.ticket_id))];
+  const state = new Map<string, { ai_resolved: boolean | null; status: string | null; csat_score: number | null }>();
+  for (let i = 0; i < ticketIds.length; i += 500) {
+    const { data } = await db()
+      .from("tickets")
+      .select("id, ai_resolved, status, csat_score")
+      .in("id", ticketIds.slice(i, i + 500));
+    for (const t of data ?? []) state.set(t.id, { ai_resolved: t.ai_resolved, status: t.status, csat_score: t.csat_score });
+  }
+
+  const joined: KbUsageRow[] = rows.map((r) => ({
+    article_id: r.article_id,
+    cited: r.cited,
+    ticket: state.get(r.ticket_id) ?? null,
+  }));
+  return aggregateKbEffectiveness(joined);
 }
 
 export type PastTicketMatch = {
