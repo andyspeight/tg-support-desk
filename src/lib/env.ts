@@ -40,6 +40,12 @@ export const env = {
   get voyageApiKey() {
     return required("VOYAGE_API_KEY");
   },
+  // True when the embedding/RAG service is wired. Lets KB publish degrade
+  // gracefully (publish now, embed once the key lands) instead of crashing the
+  // publish click before go-live — checked with optional() so it never throws.
+  get voyageConfigured() {
+    return Boolean(optional("VOYAGE_API_KEY"));
+  },
   get embeddingModel() {
     return optional("EMBEDDING_MODEL", "voyage-3.5");
   },

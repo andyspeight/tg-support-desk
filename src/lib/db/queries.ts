@@ -498,9 +498,11 @@ export async function updateKbArticle(id: string, patch: TablesUpdate<"kb_articl
   return unwrap(result, "updateKbArticle");
 }
 
-// pgvector columns travel as JSON-encoded arrays through PostgREST.
-export async function publishKbArticle(id: string, embedding: number[]): Promise<KbArticle> {
-  return updateKbArticle(id, { status: "published", embedding: JSON.stringify(embedding) });
+// pgvector columns travel as JSON-encoded arrays through PostgREST. A null
+// embedding publishes the article unsearchable-but-live (pre-go-live, before the
+// embedding service is wired); it gets a vector once Voyage is available.
+export async function publishKbArticle(id: string, embedding: number[] | null): Promise<KbArticle> {
+  return updateKbArticle(id, { status: "published", embedding: embedding ? JSON.stringify(embedding) : null });
 }
 
 /** Human-resolved, previously-escalated tickets in a recent window — candidates
