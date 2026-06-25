@@ -21,6 +21,7 @@ import {
 import { applyCannedVars, type CannedVars } from "@/lib/canned";
 
 type CannedOption = { id: string; title: string; body: string };
+type ComposerResult = { ok: true; note?: string } | { ok: false; error: string };
 type CopilotResult = { ok: true; text: string } | { ok: false; error: string };
 type ReviewResult =
   | { ok: true; verdict: "ok" | "revise"; issues: string[]; rewrite: string }
@@ -29,8 +30,8 @@ type ReviewResult =
 type Props = {
   ticketId: string;
   canned: CannedOption[];
-  sendReply: (formData: FormData) => Promise<void>;
-  addNote: (formData: FormData) => Promise<void>;
+  sendReply: (formData: FormData) => Promise<ComposerResult>;
+  addNote: (formData: FormData) => Promise<ComposerResult>;
   vars?: CannedVars;
   copilot?: {
     draft: (ticketId: string) => Promise<CopilotResult>;
@@ -99,6 +100,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }
   const [summary, setSummary] = useState<string | null>(null);
   const [review, setReview] = useState<{ issues: string[]; rewrite: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
 
@@ -128,20 +130,32 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }
 
   const isEmpty = !editor || editor.getText().trim() === "";
 
-  async function buildAndSend(action: (formData: FormData) => Promise<void>) {
+  async function buildAndSend(action: (formData: FormData) => Promise<ComposerResult>) {
     if (!editor) return;
     const fd = new FormData();
     fd.set("ticketId", ticketId);
     fd.set("html", editor.getHTML());
     for (const f of files) fd.append("files", f);
-    await action(fd);
-    editor.commands.clearContent();
-    setFiles([]);
-    setSummary(null);
-    setReview(null);
+    setError(null);
+    setInfo(null);
+    try {
+      const res = await action(fd);
+      if (!res.ok) {
+        // Keep the draft + attachments so the agent can fix and retry.
+        setError(res.error);
+        return;
+      }
+      editor.commands.clearContent();
+      setFiles([]);
+      setSummary(null);
+      setReview(null);
+      if (res.note) setInfo(res.note);
+    } catch {
+      setError("Something went wrong and your reply wasn’t sent. Your message is still here — please try again.");
+    }
   }
 
-  function submit(action: (formData: FormData) => Promise<void>) {
+  function submit(action: (formData: FormData) => Promise<ComposerResult>) {
     if (!editor || isPending) return;
     if (isEmpty && files.length === 0) return;
     startTransition(() => buildAndSend(action));
@@ -298,6 +312,15 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }
       )}
 
       {error && <div className="mx-2.5 mb-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-300">{error}</div>}
+
+      {info && (
+        <div className="mx-2.5 mb-2 flex items-start justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
+          <span>{info}</span>
+          <button onClick={() => setInfo(null)} aria-label="Dismiss" className="shrink-0 text-amber-700/70 hover:text-amber-900 dark:text-amber-300/70 dark:hover:text-amber-100">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Pre-send quality check */}
       {review && (

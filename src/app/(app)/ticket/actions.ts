@@ -43,56 +43,82 @@ function refresh(ticketId: string) {
   revalidatePath("/inbox");
 }
 
-export async function sendReplyAction(formData: FormData): Promise<void> {
+/** Result surfaced to the composer so a failed/undeliverable reply shows an
+ *  inline message instead of crashing the request (and keeps the agent's draft). */
+export type ComposerResult = { ok: true; note?: string } | { ok: false; error: string };
+
+export async function sendReplyAction(formData: FormData): Promise<ComposerResult> {
   const session = await requireAgent();
   const { ticketId, html, text, files } = await composerInput(formData);
-  if (!text.trim() && files.length === 0) return;
-  const ticket = await getTicket(ticketId);
-  if (!ticket) throw new Error("Ticket not found");
+  if (!text.trim() && files.length === 0) return { ok: false, error: "Nothing to send." };
 
-  await sendTicketReply(ticket, text, {
-    role: "human",
-    author: session.email,
-    html: html || undefined,
-    attachments: files,
-  });
-  await updateTicket(ticketId, { status: "waiting_on_customer" });
-  refresh(ticketId);
+  try {
+    const ticket = await getTicket(ticketId);
+    if (!ticket) return { ok: false, error: "Ticket not found." };
+
+    const { delivery } = await sendTicketReply(ticket, text, {
+      role: "human",
+      author: session.email,
+      html: html || undefined,
+      attachments: files,
+    });
+    await updateTicket(ticketId, { status: "waiting_on_customer" });
+    refresh(ticketId);
+
+    return delivery === "stored"
+      ? {
+          ok: true,
+          note: "Saved to the ticket. The support mailbox isn’t connected yet, so this wasn’t emailed to the customer.",
+        }
+      : { ok: true };
+  } catch (error) {
+    console.error("sendReplyAction failed:", error);
+    return {
+      ok: false,
+      error: "We couldn’t send that reply — it hasn’t reached the customer. Your message is still here; please try again.",
+    };
+  }
 }
 
-export async function addNoteAction(formData: FormData): Promise<void> {
+export async function addNoteAction(formData: FormData): Promise<ComposerResult> {
   const session = await requireAgent();
   const { ticketId, html, text, files } = await composerInput(formData);
-  if (!text.trim() && files.length === 0) return;
+  if (!text.trim() && files.length === 0) return { ok: false, error: "Nothing to add." };
 
-  const message = await addMessage({
-    ticket_id: ticketId,
-    role: "internal_note",
-    author: session.email,
-    body_text: text,
-    body_html: html || null,
-  });
-  if (files.length > 0) {
-    const stored = await storeOutboundAttachments(ticketId, message.id, files);
-    await setMessageAttachments(message.id, stored as unknown as Json);
-  }
-  await audit("human", session.email, "note.added", { type: "ticket", id: ticketId });
-
-  // @mention in an internal note pings the colleague (without reassigning).
-  const mentioned = parseMentions(text, env.agentEmails);
-  if (mentioned.length > 0) {
-    const t = await getTicket(ticketId);
-    await notify({
-      recipients: mentioned,
-      skip: session.email,
-      type: "mention",
-      ticketId,
-      title: t ? `${session.email} mentioned you on #${t.reference}` : `${session.email} mentioned you`,
-      body: text.slice(0, 200),
-      actor: session.email,
+  try {
+    const message = await addMessage({
+      ticket_id: ticketId,
+      role: "internal_note",
+      author: session.email,
+      body_text: text,
+      body_html: html || null,
     });
+    if (files.length > 0) {
+      const stored = await storeOutboundAttachments(ticketId, message.id, files);
+      await setMessageAttachments(message.id, stored as unknown as Json);
+    }
+    await audit("human", session.email, "note.added", { type: "ticket", id: ticketId });
+
+    // @mention in an internal note pings the colleague (without reassigning).
+    const mentioned = parseMentions(text, env.agentEmails);
+    if (mentioned.length > 0) {
+      const t = await getTicket(ticketId);
+      await notify({
+        recipients: mentioned,
+        skip: session.email,
+        type: "mention",
+        ticketId,
+        title: t ? `${session.email} mentioned you on #${t.reference}` : `${session.email} mentioned you`,
+        body: text.slice(0, 200),
+        actor: session.email,
+      });
+    }
+    refresh(ticketId);
+    return { ok: true };
+  } catch (error) {
+    console.error("addNoteAction failed:", error);
+    return { ok: false, error: "We couldn’t save that note — please try again." };
   }
-  refresh(ticketId);
 }
 
 export async function updateTicketAction(formData: FormData): Promise<void> {
