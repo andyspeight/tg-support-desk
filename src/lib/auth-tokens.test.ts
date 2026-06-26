@@ -3,50 +3,59 @@ import { signToken, verifyToken, safeReturnPath } from "./auth-tokens";
 
 const SECRET = "test-secret-please-change";
 const now = 1_000_000_000_000;
+const claims = { email: "a@b.com", name: "A B", exp: now + 60_000, aud: "session" as const };
 
 describe("signToken / verifyToken", () => {
-  it("round-trips valid claims", () => {
-    const token = signToken({ email: "a@b.com", name: "A B", exp: now + 60_000 }, SECRET);
-    expect(verifyToken(token, SECRET, now)).toEqual({ email: "a@b.com", name: "A B", exp: now + 60_000 });
+  it("round-trips valid claims with the right audience", () => {
+    const token = signToken(claims, SECRET);
+    expect(verifyToken(token, SECRET, now, "session")).toEqual(claims);
   });
 
-  it("rejects an expired token", () => {
-    const token = signToken({ email: "a@b.com", name: "A", exp: now }, SECRET);
-    expect(verifyToken(token, SECRET, now)).toBeNull(); // exp == now is expired
-    expect(verifyToken(token, SECRET, now - 1)).not.toBeNull();
+  it("rejects an audience mismatch (handoff ≠ session)", () => {
+    const handoff = signToken({ ...claims, aud: "handoff" }, SECRET);
+    expect(verifyToken(handoff, SECRET, now, "session")).toBeNull();
+    expect(verifyToken(handoff, SECRET, now, "handoff")).not.toBeNull();
   });
 
-  it("rejects a wrong/empty secret", () => {
-    const token = signToken({ email: "a@b.com", name: "A", exp: now + 1000 }, SECRET);
-    expect(verifyToken(token, "other-secret", now)).toBeNull();
-    expect(verifyToken(token, "", now)).toBeNull();
+  it("rejects expired, wrong-secret, empty-secret and oversize tokens", () => {
+    expect(verifyToken(signToken({ ...claims, exp: now }, SECRET), SECRET, now, "session")).toBeNull();
+    expect(verifyToken(signToken(claims, SECRET), "other", now, "session")).toBeNull();
+    expect(verifyToken(signToken(claims, SECRET), "", now, "session")).toBeNull();
+    expect(verifyToken("x".repeat(5000) + ".y", SECRET, now, "session")).toBeNull();
   });
 
-  it("rejects a tampered payload", () => {
-    const token = signToken({ email: "a@b.com", name: "A", exp: now + 1000 }, SECRET);
+  it("rejects tampered payloads and malformed tokens", () => {
+    const token = signToken(claims, SECRET);
     const [body, mac] = token.split(".");
-    const forged = Buffer.from(JSON.stringify({ email: "evil@x.com", name: "E", exp: now + 1000 })).toString("base64url");
-    expect(verifyToken(`${forged}.${mac}`, SECRET, now)).toBeNull();
-    expect(verifyToken(`${body}.deadbeef`, SECRET, now)).toBeNull();
-  });
-
-  it("rejects malformed tokens", () => {
-    expect(verifyToken("", SECRET, now)).toBeNull();
-    expect(verifyToken("nodot", SECRET, now)).toBeNull();
-    expect(verifyToken(".justmac", SECRET, now)).toBeNull();
+    const forged = Buffer.from(JSON.stringify({ ...claims, email: "evil@x.com" })).toString("base64url");
+    expect(verifyToken(`${forged}.${mac}`, SECRET, now, "session")).toBeNull();
+    expect(verifyToken(`${body}.deadbeef`, SECRET, now, "session")).toBeNull();
+    expect(verifyToken("nodot", SECRET, now, "session")).toBeNull();
+    expect(verifyToken(".justmac", SECRET, now, "session")).toBeNull();
   });
 });
 
 describe("safeReturnPath", () => {
   it("keeps same-site paths", () => {
     expect(safeReturnPath("/inbox")).toBe("/inbox");
-    expect(safeReturnPath("/ticket/abc?x=1")).toBe("/ticket/abc?x=1");
+    expect(safeReturnPath("/ticket/abc?x=1#h")).toBe("/ticket/abc?x=1#h");
   });
-  it("blocks open redirects", () => {
-    expect(safeReturnPath("//evil.com")).toBe("/inbox");
-    expect(safeReturnPath("https://evil.com")).toBe("/inbox");
-    expect(safeReturnPath("/\\evil.com")).toBe("/inbox");
-    expect(safeReturnPath(null)).toBe("/inbox");
-    expect(safeReturnPath("")).toBe("/inbox");
+
+  it("blocks every cross-origin escape", () => {
+    for (const bad of [
+      "//evil.com",
+      "https://evil.com",
+      "/\\evil.com",
+      "/\t//evil.com",
+      "/\r\n//evil.com",
+      "/%2f%2fevil.com",
+      "/%5cevil.com",
+      "/javascript:alert(1)",
+      " //evil.com",
+      "",
+      null,
+    ]) {
+      expect(safeReturnPath(bad)).toBe("/inbox");
+    }
   });
 });
