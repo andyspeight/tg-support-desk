@@ -102,6 +102,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [afterStatus, setAfterStatus] = useState("waiting_on_customer"); // status to set when replying
   const fileInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
 
@@ -136,6 +137,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }
     const fd = new FormData();
     fd.set("ticketId", ticketId);
     fd.set("html", editor.getHTML());
+    fd.set("afterStatus", afterStatus);
     for (const f of files) fd.append("files", f);
     setError(null);
     setInfo(null);
@@ -402,8 +404,27 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }
           className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-40 dark:bg-brand-500 dark:hover:bg-brand-400"
         >
           {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />}
-          {busy === "review" ? "Checking…" : isPending ? "Working…" : "Reply to customer"}
+          {busy === "review"
+            ? "Checking…"
+            : isPending
+              ? "Working…"
+              : afterStatus === "resolved"
+                ? "Reply & resolve"
+                : afterStatus === "closed"
+                  ? "Reply & close"
+                  : "Reply to customer"}
         </button>
+        <select
+          value={afterStatus}
+          onChange={(e) => setAfterStatus(e.target.value)}
+          aria-label="Status after sending"
+          title="What to do with the ticket after you reply"
+          className="rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink-2 focus:border-ink-3 focus:outline-none"
+        >
+          <option value="waiting_on_customer">then → Waiting on customer</option>
+          <option value="resolved">then → Resolve</option>
+          <option value="closed">then → Close</option>
+        </select>
         <button
           onClick={() => submit(addNote)}
           disabled={isPending || (isEmpty && files.length === 0)}

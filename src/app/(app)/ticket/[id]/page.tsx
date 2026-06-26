@@ -132,6 +132,11 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   }).toString()}`;
   const clientPortalHref = `/portal?as=${encodeURIComponent(ticket.requester_email)}&from=${ticket.id}`;
 
+  // Lifecycle quick-actions (Zendesk-style): resolve/close/reopen by current state.
+  const lifecycleOpen = ["new", "ai_working", "waiting_on_customer", "escalated"].includes(ticket.status);
+  const lifecycleResolved = ticket.status === "resolved";
+  const lifecycleClosed = ticket.status === "closed";
+
   return (
     <div className="flex h-full flex-col">
       <TicketPresence ticketId={ticket.id} heartbeat={presenceHeartbeatAction} />
@@ -141,7 +146,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       {/* Conversation column */}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="border-b border-line bg-surface px-6 py-4">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Link href="/inbox" className="inline-flex items-center gap-1 text-sm text-ink-3 hover:text-ink">
               <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
               Inbox
@@ -149,6 +154,36 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             <span className="text-sm text-ink-3">#{ticket.reference}</span>
             <StatusBadge status={ticket.status} />
             <PriorityBadge priority={ticket.priority} />
+            <form action={updateTicketAction} className="ml-auto flex items-center gap-1.5">
+              <input type="hidden" name="ticketId" value={ticket.id} />
+              {lifecycleOpen && (
+                <button
+                  name="status"
+                  value="resolved"
+                  className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-emerald-700 active:translate-y-px"
+                >
+                  Resolve
+                </button>
+              )}
+              {!lifecycleClosed && (
+                <button
+                  name="status"
+                  value="closed"
+                  className="rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink active:translate-y-px"
+                >
+                  Close
+                </button>
+              )}
+              {(lifecycleResolved || lifecycleClosed) && (
+                <button
+                  name="status"
+                  value="new"
+                  className="rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink active:translate-y-px"
+                >
+                  Reopen
+                </button>
+              )}
+            </form>
           </div>
           <h1 className="mt-1 truncate text-base font-semibold">{ticket.subject}</h1>
           <p className="text-xs text-ink-2">

@@ -75,7 +75,17 @@ export async function sendReplyAction(formData: FormData): Promise<ComposerResul
       fromName: agentName ?? undefined,
       attachments: files,
     });
-    await updateTicket(ticketId, { status: "waiting_on_customer" });
+    // Zendesk-style "submit as": the composer says what state to leave the
+    // ticket in. Default keeps the old behaviour (waiting on the customer).
+    const afterRaw = String(formData.get("afterStatus") ?? "");
+    const after: "waiting_on_customer" | "resolved" | "closed" =
+      afterRaw === "resolved" || afterRaw === "closed" ? afterRaw : "waiting_on_customer";
+    const statusPatch: Parameters<typeof updateTicket>[1] = { status: after };
+    if (after === "resolved" || after === "closed") {
+      if (!ticket.resolved_at) statusPatch.resolved_at = new Date().toISOString();
+      statusPatch.ai_resolved = false; // human-resolved
+    }
+    await updateTicket(ticketId, statusPatch);
     refresh(ticketId);
 
     return delivery === "stored"
