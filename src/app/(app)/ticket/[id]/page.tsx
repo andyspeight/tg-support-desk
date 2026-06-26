@@ -7,7 +7,7 @@ import { getClientById } from "@/lib/integrations/airtable-clients";
 import { env } from "@/lib/env";
 import { sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
-import { AlertTriangle, ArrowLeft, Eye, EyeOff, LayoutDashboard, Paperclip, Users } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Eye, EyeOff, GitMerge, LayoutDashboard, Paperclip, Users } from "lucide-react";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
@@ -15,7 +15,7 @@ import { ClientPanel } from "@/components/client-panel";
 import { SupportHistoryPanel } from "@/components/support-history-panel";
 import { RunAiButton } from "@/components/run-ai-button";
 import { TicketPresence } from "@/components/ticket-presence";
-import { addNoteAction, mergeTicketAction, presenceHeartbeatAction, runAiAction, sendReplyAction, snoozeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
+import { addNoteAction, mergeTicketAction, presenceHeartbeatAction, runAiAction, sendReplyAction, snoozeTicketAction, unmergeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
 import {
   copilotDraftAction,
   copilotRephraseAction,
@@ -124,7 +124,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     ...(ticket.client_id ? { client: ticket.client_id } : {}),
     email: ticket.requester_email,
   }).toString()}`;
-  const clientPortalHref = `/portal?as=${encodeURIComponent(ticket.requester_email)}`;
+  const clientPortalHref = `/portal?as=${encodeURIComponent(ticket.requester_email)}&from=${ticket.id}`;
 
   return (
     <div className="flex h-full flex-col">
@@ -174,6 +174,34 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           )}
 
           {messages.map((message) => {
+            const mergeMeta =
+              message.role === "internal_note"
+                ? (message.channel_meta as { kind?: string; direction?: string; undone?: boolean } | null)
+                : null;
+            if (mergeMeta?.kind === "merge") {
+              const canUnmerge = mergeMeta.direction === "in" && !mergeMeta.undone;
+              return (
+                <div
+                  key={message.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface-2 px-3 py-2 text-xs text-ink-2"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <GitMerge className="h-3.5 w-3.5 shrink-0 text-ink-3" strokeWidth={1.75} />
+                    <span className="truncate">{message.body_text}</span>
+                    <span className="shrink-0 text-ink-3">· {formatDateTime(message.created_at)}</span>
+                  </span>
+                  {canUnmerge && (
+                    <form action={unmergeTicketAction} className="shrink-0">
+                      <input type="hidden" name="ticketId" value={ticket.id} />
+                      <input type="hidden" name="noteId" value={message.id} />
+                      <button className="rounded-md border border-line bg-surface px-2 py-1 font-medium text-ink-2 hover:bg-surface-2 hover:text-ink">
+                        Unmerge
+                      </button>
+                    </form>
+                  )}
+                </div>
+              );
+            }
             const style = ROLE_STYLES[message.role];
             return (
               <div key={message.id} className={`rounded-lg border p-3 ${style.className}`}>

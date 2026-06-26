@@ -101,6 +101,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }
   const [review, setReview] = useState<{ issues: string[]; rewrite: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
 
@@ -207,7 +208,28 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }
   };
 
   return (
-    <div className="rounded-xl border border-line bg-surface shadow-sm">
+    <div
+      className="relative rounded-xl border border-line bg-surface shadow-sm"
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!dragOver) setDragOver(true);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+        setDragOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        addFiles(e.dataTransfer.files);
+      }}
+    >
+      {dragOver && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-accent-400 bg-accent-50/85 text-sm font-medium text-accent-700 dark:bg-accent-500/15 dark:text-accent-200">
+          Drop files to attach
+        </div>
+      )}
       {/* Copilot row */}
       {copilot && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-line-soft px-2.5 py-2 text-xs">

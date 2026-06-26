@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Inbox, Plus } from "lucide-react";
+import { ArrowLeft, ChevronRight, Inbox, Plus } from "lucide-react";
 import { resolvePortalView } from "@/lib/auth";
 import { listRequesterTickets } from "@/lib/db/queries";
 import { AskBox } from "@/components/portal/ask-box";
@@ -18,12 +18,14 @@ function Stat({ label, value, accent }: { label: string; value: number; accent?:
   );
 }
 
-export default async function PortalHome({ searchParams }: { searchParams: Promise<{ as?: string }> }) {
-  const { as } = await searchParams;
+export default async function PortalHome({ searchParams }: { searchParams: Promise<{ as?: string; from?: string }> }) {
+  const { as, from } = await searchParams;
   const view = await resolvePortalView(as);
   const tickets = await listRequesterTickets(view.email);
   const firstName = view.name?.split(/\s+/)[0] || "there";
-  const suffix = view.previewing ? `?as=${encodeURIComponent(view.email)}` : "";
+  const fromParam = from && view.previewing ? `&from=${encodeURIComponent(from)}` : "";
+  const suffix = view.previewing ? `?as=${encodeURIComponent(view.email)}${fromParam}` : "";
+  const deskHref = from ? `/ticket/${from}` : "/inbox";
 
   const open = tickets.filter((t) => OPEN_STATUSES.has(t.status)).length;
   const awaiting = tickets.filter((t) => t.status === "waiting_on_customer").length;
@@ -32,9 +34,17 @@ export default async function PortalHome({ searchParams }: { searchParams: Promi
   return (
     <div className="space-y-8 sm:space-y-10">
       {view.previewing && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
-          <span className="font-medium">Agent preview.</span> This is the support portal as{" "}
-          <span className="font-medium">{view.email}</span> sees it — read-only, so replying and raising tickets are hidden.
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
+          <span>
+            <span className="font-medium">Agent preview.</span> The support portal as{" "}
+            <span className="font-medium">{view.email}</span> sees it — read-only.
+          </span>
+          <Link
+            href={deskHref}
+            className="inline-flex shrink-0 items-center gap-1 font-medium text-amber-900 underline-offset-2 hover:underline dark:text-amber-100"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} /> Back to the support desk
+          </Link>
         </div>
       )}
 
