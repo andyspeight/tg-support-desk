@@ -29,6 +29,7 @@ export async function getSession(): Promise<Session | null> {
     const res = await fetch(env.tgAuthSessionUrl, {
       headers: { cookie: `tg_session=${cookie.value}` },
       cache: "no-store",
+      signal: AbortSignal.timeout(8000), // SSO check gates every request — fail fast, never hang
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { user?: { email?: string; name?: string } };

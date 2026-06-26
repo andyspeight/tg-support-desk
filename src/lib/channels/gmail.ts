@@ -25,6 +25,7 @@ async function getAccessToken(): Promise<string> {
       refresh_token: env.gmailRefreshToken,
       grant_type: "refresh_token",
     }),
+    signal: AbortSignal.timeout(30000),
   });
   if (!res.ok) throw new Error(`Gmail token refresh failed: ${res.status} ${await res.text()}`);
   const data = (await res.json()) as { access_token: string; expires_in: number };
@@ -36,6 +37,7 @@ async function gmailFetch(path: string, init?: RequestInit): Promise<unknown> {
   const token = await getAccessToken();
   const res = await fetch(`${GMAIL_API}${path}`, {
     ...init,
+    signal: init?.signal ?? AbortSignal.timeout(30000),
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...init?.headers },
   });
   if (!res.ok) throw new Error(`Gmail ${path}: ${res.status} ${await res.text()}`);

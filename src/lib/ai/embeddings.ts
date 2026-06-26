@@ -21,6 +21,7 @@ export async function embed(texts: string[], inputType: "query" | "document"): P
       input_type: inputType,
       output_dimension: EMBEDDING_DIMENSIONS,
     }),
+    signal: AbortSignal.timeout(20000),
   });
   if (!res.ok) throw new Error(`Voyage embeddings: ${res.status} ${await res.text()}`);
   const data = (await res.json()) as { data: { embedding: number[]; index: number }[] };
@@ -50,6 +51,7 @@ export async function rerank(query: string, documents: string[]): Promise<{ inde
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ model: env.rerankModel, query, documents, top_k: documents.length }),
+    signal: AbortSignal.timeout(20000),
   });
   if (!res.ok) throw new Error(`Voyage rerank: ${res.status} ${await res.text()}`);
   const data = (await res.json()) as { data: { index: number; relevance_score: number }[] };

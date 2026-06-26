@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { resolveTicket } from "@/lib/ai/resolve";
-import { env } from "@/lib/env";
+import { requireCron } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -10,9 +10,8 @@ const bodySchema = z.object({ ticketId: z.string().uuid() });
 // Internal trigger for re-running resolution on a ticket programmatically.
 // Agents use the in-app "Run AI" action instead.
 export async function POST(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const unauthorised = requireCron(request);
+  if (unauthorised) return unauthorised;
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {

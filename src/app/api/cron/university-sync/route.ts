@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { env } from "@/lib/env";
+import { requireCron } from "@/lib/cron-auth";
 import { firecrawlMap, firecrawlScrape } from "@/lib/integrations/firecrawl";
 import { distilKbFromPage } from "@/lib/ai/copilot";
 import { audit, createKbArticle, existingKbSourceUrls, publishKbArticle } from "@/lib/db/queries";
@@ -16,9 +17,8 @@ const SKIP_PATHS = /^\/$|\/learning-path|\/what-s-new/i;
 // re-runnable. Bounded per run (UNIVERSITY_BATCH) to respect timeouts + cost.
 // Runs on a Vercel cron (Bearer CRON_SECRET). Dormant until FIRECRAWL_API_KEY is set.
 export async function GET(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const unauthorised = requireCron(request);
+  if (unauthorised) return unauthorised;
   if (!env.firecrawlConfigured) return Response.json({ skipped: "firecrawl not configured" });
 
   try {

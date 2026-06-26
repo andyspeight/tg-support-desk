@@ -9,6 +9,7 @@ async function firecrawl(path: string, body: unknown): Promise<unknown> {
     method: "POST",
     headers: { Authorization: `Bearer ${env.firecrawlApiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(60000),
   });
   if (!res.ok) throw new Error(`Firecrawl ${path}: ${res.status} ${await res.text()}`);
   return res.json();

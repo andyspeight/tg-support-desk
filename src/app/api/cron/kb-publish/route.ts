@@ -1,4 +1,4 @@
-import { env } from "@/lib/env";
+import { requireCron } from "@/lib/cron-auth";
 import { listKbArticles, publishKbArticle, audit } from "@/lib/db/queries";
 import { embed } from "@/lib/ai/embeddings";
 
@@ -17,9 +17,8 @@ const TIME_BUDGET_MS = 270_000;
 // Idempotent — only touches status='review', so re-runs drain whatever's left.
 // Bearer CRON_SECRET (Vercel cron). Remove the schedule once the queue is drained.
 export async function GET(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const unauthorised = requireCron(request);
+  if (unauthorised) return unauthorised;
 
   const started = Date.now();
   const review = await listKbArticles("review"); // up to 200, newest first

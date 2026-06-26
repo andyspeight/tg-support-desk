@@ -12,7 +12,7 @@ const BRAND_VOICE =
   "Travelgenix brand voice: warm, plain, professional UK English. Sound like a knowledgeable colleague, not a bot — no 'I hope this finds you well', no 'we sincerely apologise for any inconvenience', no exclamation-mark enthusiasm. Short paragraphs, specific, plain text only.";
 
 async function complete(model: string, system: string, prompt: string, maxTokens = 1500): Promise<string> {
-  const anthropic = new Anthropic({ apiKey: env.anthropicApiKey });
+  const anthropic = new Anthropic({ apiKey: env.anthropicApiKey, timeout: 30000 });
   const res = await anthropic.messages.create({
     model,
     max_tokens: maxTokens,

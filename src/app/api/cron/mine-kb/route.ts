@@ -1,4 +1,4 @@
-import { env } from "@/lib/env";
+import { requireCron } from "@/lib/cron-auth";
 import { audit, createKbArticle, existingKbSourceTicketIds, listHumanResolvedEscalated } from "@/lib/db/queries";
 import { copilotDraftKbArticle } from "@/lib/ai/copilot";
 
@@ -12,9 +12,8 @@ const PER_RUN = Number(process.env.KB_MINE_PER_RUN ?? "5");
 const WINDOW_HOURS = Number(process.env.KB_MINE_WINDOW_HOURS ?? "48");
 
 export async function GET(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const unauthorised = requireCron(request);
+  if (unauthorised) return unauthorised;
 
   try {
     const resolved = await listHumanResolvedEscalated(WINDOW_HOURS, 50);

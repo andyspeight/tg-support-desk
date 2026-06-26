@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { requireCron } from "@/lib/cron-auth";
 import { db } from "@/lib/db/client";
 import { awaitingResponse, getTicketsByIds, updateTicket } from "@/lib/db/queries";
 import { hasRecentNotification, notify, ticketRecipients } from "@/lib/db/notifications";
@@ -12,11 +13,10 @@ export const maxDuration = 120;
 const STALE_HOURS = Number(process.env.STALE_TICKET_HOURS ?? "24");
 
 export async function GET(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const unauthorised = requireCron(request);
+  if (unauthorised) return unauthorised;
   try {
-    const [staleAlerts, snoozeAlerts] = [await sweepStale(), await sweepSnoozed()];
+    const [staleAlerts, snoozeAlerts] = await Promise.all([sweepStale(), sweepSnoozed()]);
     return Response.json({ staleAlerts, snoozeAlerts });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
