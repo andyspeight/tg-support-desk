@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, CheckCircle2, Lightbulb, Loader2, ArrowUpRight } from "lucide-react";
+import { BookOpen, CheckCircle2, Lightbulb, Loader2, ArrowUpRight, Plus } from "lucide-react";
 import type { SubmitResult } from "@/app/submit/actions";
 import type { DraftAssist } from "@/lib/ai/copilot";
 import { AttachmentPicker } from "@/components/attachment-picker";
@@ -78,6 +78,17 @@ export function SubmitTicketForm({
     await doSubmit();
   }
 
+  // Reset back to a blank request — keep the name/email so the same person can
+  // raise another without retyping who they are.
+  function reset() {
+    setForm((f) => ({ ...f, subject: "", message: "", company: "" }));
+    setFiles([]);
+    setAssistResult(null);
+    setReviewed(false);
+    setError(null);
+    setDone(null);
+  }
+
   if (done) {
     return (
       <div className="rounded-2xl border border-line bg-surface p-8 text-center shadow-[0_20px_45px_-25px_rgba(27,43,91,0.4)]">
@@ -95,6 +106,13 @@ export function SubmitTicketForm({
             <>Your request has been received. We’ll reply to {form.email}.</>
           )}
         </p>
+        <button
+          type="button"
+          onClick={reset}
+          className="mt-5 inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-medium text-ink transition hover:bg-surface-2 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/30"
+        >
+          <Plus className="h-4 w-4" strokeWidth={2} /> Submit another request
+        </button>
       </div>
     );
   }
