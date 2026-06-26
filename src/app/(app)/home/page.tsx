@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Clock, Inbox, Star, Users, type LucideIcon } from "lucide-react";
 import { getSession } from "@/lib/auth";
+import { firstNameFrom } from "@/lib/names";
 import { awaitingResponse, getAgentScorecard, inboxCounts, listBreachingTickets, listTickets } from "@/lib/db/queries";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
@@ -64,7 +65,7 @@ function WaitingBadge({ since }: { since: string }) {
 
 export default async function HomePage() {
   const session = (await getSession())!;
-  const firstName = session.name?.split(/\s+/)[0] || "there";
+  const firstName = firstNameFrom(session.name);
 
   const [counts, myTickets, awaiting, scorecard, breaching] = await Promise.all([
     inboxCounts(session.email),
@@ -81,7 +82,7 @@ export default async function HomePage() {
   const queue = [...waitingOnMe, ...myTickets.filter((t) => !awaitingMap.has(t.id))].slice(0, 12);
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
+    <div className="mx-auto max-w-5xl p-4 sm:p-6">
       <RefreshPoller intervalMs={30000} />
 
       <div className="flex items-baseline justify-between">

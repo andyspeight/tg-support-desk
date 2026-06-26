@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { Nav } from "@/components/nav";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { MobileNav } from "@/components/mobile-nav";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -18,8 +19,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const isOwner = env.ownerEmails.includes(session.email);
 
   return (
-    <div className="flex h-screen bg-canvas text-ink">
-      <aside className="flex w-56 shrink-0 flex-col border-r border-line bg-surface">
+    <div className="flex h-[100dvh] bg-canvas text-ink">
+      {/* Desktop sidebar (md+). On mobile it lives in the drawer below. */}
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-surface md:flex">
         <div className="border-b border-line-soft px-4 py-4">
           <span className="text-sm font-semibold tracking-tight">TG Support Desk</span>
         </div>
@@ -34,7 +36,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           )}
         </div>
       </aside>
-      <main className="flex-1 overflow-y-auto">{children}</main>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Mobile top bar with the menu drawer. */}
+        <header className="flex items-center gap-2 border-b border-line bg-surface px-3 py-2 md:hidden">
+          <MobileNav isOwner={isOwner} name={session.name} email={session.email} />
+          <span className="text-sm font-semibold tracking-tight">TG Support Desk</span>
+        </header>
+        <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
+      </div>
     </div>
   );
 }

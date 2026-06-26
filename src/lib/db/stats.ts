@@ -47,7 +47,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
     const [open, escalated, waiting, breaching, resolvedToday, resolvedAll, aiResolved, kbPublished, kbReview, reasons, firstResponses] =
       await Promise.all([
-        tickets().in("status", ["new", "ai_working", "waiting_on_customer", "escalated"]),
+        tickets().in("status", ["new", "ai_working", "waiting_on_customer", "escalated", "pending"]),
         tickets().eq("status", "escalated"),
         tickets().eq("status", "waiting_on_customer"),
         listBreachingTickets(),

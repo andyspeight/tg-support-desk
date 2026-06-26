@@ -40,7 +40,7 @@ export default async function NotificationsPage() {
   const unread = items.filter((n) => !n.read_at).length;
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto max-w-3xl p-4 sm:p-6">
       <RefreshPoller />
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">

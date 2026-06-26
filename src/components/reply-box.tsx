@@ -397,7 +397,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }
       )}
 
       {/* Actions */}
-      <div className="flex items-center gap-2 border-t border-line-soft px-2.5 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-t border-line-soft px-2.5 py-2">
         <button
           onClick={reviewThenSend}
           disabled={isPending || (isEmpty && files.length === 0)}
@@ -422,6 +422,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }
           className="rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink-2 focus:border-ink-3 focus:outline-none"
         >
           <option value="waiting_on_customer">then → Waiting on customer</option>
+          <option value="pending">then → Pending</option>
           <option value="resolved">then → Resolve</option>
           <option value="closed">then → Close</option>
         </select>

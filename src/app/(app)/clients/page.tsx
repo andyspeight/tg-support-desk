@@ -31,7 +31,7 @@ export default async function ClientTicketsPage({
     : `All tickets from ${requesterEmail}.`;
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <div className="mx-auto max-w-4xl p-4 sm:p-6">
       <Link href="/inbox" className="inline-flex items-center gap-1 text-sm text-ink-3 hover:text-ink">
         <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
         Inbox

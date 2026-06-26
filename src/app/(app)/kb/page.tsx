@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { getKbArticle, getKbEffectiveness, kbCounts, listKbArticles } from "@/lib/db/queries";
 import type { KbStatus } from "@/lib/db/types";
 import { kbArticleFlag, type KbEffectiveness } from "@/lib/kb-effectiveness";
@@ -50,8 +51,11 @@ export default async function KbPage({
 
   return (
     <div className="flex h-full">
-      {/* Article list */}
-      <div className="w-96 shrink-0 overflow-y-auto border-r border-line p-4">
+      {/* Article list. On mobile it's full-width and gives way to the editor when
+          an article is open (master-detail → one pane at a time). */}
+      <div
+        className={`${showEditor ? "hidden lg:block" : "block"} w-full shrink-0 overflow-y-auto border-r border-line p-4 lg:w-96`}
+      >
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold">Knowledge base</h1>
           <Link
@@ -96,8 +100,9 @@ export default async function KbPage({
         </div>
       </div>
 
-      {/* Editor */}
-      <div className="flex-1 overflow-y-auto p-6">
+      {/* Editor. Hidden on mobile until an article is open, then full-width with
+          a back link to the list (which is hidden at that point on mobile). */}
+      <div className={`${showEditor ? "block" : "hidden lg:block"} flex-1 overflow-y-auto p-4 sm:p-6`}>
         {!showEditor ? (
           <p className="mt-16 text-center text-sm text-ink-3">
             Select an article, or create a new one. Approving an article in the review queue publishes
@@ -108,6 +113,12 @@ export default async function KbPage({
           // remount (and so reset to the selected article) on every selection —
           // without it, a <textarea defaultValue> keeps the first body shown.
           <div key={editing?.id ?? "new"} className="mx-auto max-w-2xl">
+            <Link
+              href={`/kb?status=${status}`}
+              className="mb-3 inline-flex items-center gap-1 text-sm text-ink-3 hover:text-ink lg:hidden"
+            >
+              <ArrowLeft className="h-4 w-4" strokeWidth={1.75} /> All articles
+            </Link>
             <form action={saveArticleAction} className="space-y-3">
               <input type="hidden" name="id" value={editing?.id ?? ""} />
               <input
