@@ -537,6 +537,45 @@ export type Database = {
         }
         Relationships: []
       }
+      ticket_presence: {
+        Row: {
+          agent_email: string
+          agent_name: string | null
+          last_seen: string
+          tenant_id: string
+          ticket_id: string
+        }
+        Insert: {
+          agent_email: string
+          agent_name?: string | null
+          last_seen?: string
+          tenant_id?: string
+          ticket_id: string
+        }
+        Update: {
+          agent_email?: string
+          agent_name?: string | null
+          last_seen?: string
+          tenant_id?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_presence_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_presence_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tickets: {
         Row: {
           ai_resolved: boolean

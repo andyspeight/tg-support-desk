@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { requireAgent } from "@/lib/auth";
-import { addMessage, audit, getTicket, getTicketByReference, mergeTickets, setMessageAttachments, updateTicket } from "@/lib/db/queries";
+import { addMessage, audit, getTicket, getTicketByReference, heartbeatPresence, mergeTickets, setMessageAttachments, updateTicket, type Viewer } from "@/lib/db/queries";
 import { notify } from "@/lib/db/notifications";
 import { parseMentions } from "@/lib/mentions";
 import { env } from "@/lib/env";
@@ -13,6 +13,10 @@ import { sanitizeEmailHtml, htmlToText } from "@/lib/channels/email-parse";
 import { storeOutboundAttachments, type OutboundFile } from "@/lib/channels/attachments";
 import type { Json } from "@/lib/db/database.types";
 import { resolveTicket } from "@/lib/ai/resolve";
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 /** Parse the rich composer: sanitised HTML, derived plain text, uploaded files. */
 async function composerInput(
@@ -56,10 +60,19 @@ export async function sendReplyAction(formData: FormData): Promise<ComposerResul
     const ticket = await getTicket(ticketId);
     if (!ticket) return { ok: false, error: "Ticket not found." };
 
-    const { delivery } = await sendTicketReply(ticket, text, {
+    // Sign the reply with the responding agent — their name on the email From
+    // line and a warm sign-off in the body — instead of the generic team name.
+    // Falls back to the team name when SSO hasn't given us a real display name.
+    const agentName = session.name && !session.name.includes("@") ? session.name.trim() : null;
+    const firstName = agentName?.split(/\s+/)[0] ?? null;
+    const signedText = firstName ? `${text}\n\nBest wishes,\n${firstName}` : text;
+    const signedHtml = html ? (firstName ? `${html}<p>Best wishes,<br>${escapeHtml(firstName)}</p>` : html) : "";
+
+    const { delivery } = await sendTicketReply(ticket, signedText, {
       role: "human",
       author: session.email,
-      html: html || undefined,
+      html: signedHtml || undefined,
+      fromName: agentName ?? undefined,
       attachments: files,
     });
     await updateTicket(ticketId, { status: "waiting_on_customer" });
@@ -227,6 +240,20 @@ export async function mergeTicketAction(formData: FormData): Promise<void> {
   await mergeTickets(ticketId, target.id, session.email);
   revalidatePath("/inbox");
   redirect(`/ticket/${target.id}`);
+}
+
+/** Collision detection heartbeat: mark me as viewing this ticket and return any
+ *  other agents currently here too. Polled by the ticket view; best-effort. */
+export async function presenceHeartbeatAction(ticketId: string): Promise<{ viewers: Viewer[] }> {
+  const session = await requireAgent();
+  const id = z.string().uuid().parse(ticketId);
+  const name = session.name && !session.name.includes("@") ? session.name : null;
+  try {
+    return { viewers: await heartbeatPresence(id, session.email, name) };
+  } catch (error) {
+    console.error("presenceHeartbeatAction failed:", error);
+    return { viewers: [] };
+  }
 }
 
 export async function runAiAction(formData: FormData): Promise<void> {

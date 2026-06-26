@@ -255,6 +255,25 @@ export async function getClientSupportHistory(opts: {
   };
 }
 
+/** Every ticket for a client — scoped by the matched Airtable client_id when we
+ *  have one (company-wide, all contacts), else the requester's own email. Powers
+ *  the agent-facing "all client tickets" page (search + sort happen client-side). */
+export async function listClientTickets(opts: {
+  clientId: string | null;
+  requesterEmail: string;
+}): Promise<Ticket[]> {
+  const q = db()
+    .from("tickets")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .order("updated_at", { ascending: false })
+    .limit(300);
+  const scoped = opts.clientId
+    ? q.eq("client_id", opts.clientId)
+    : q.eq("requester_email", opts.requesterEmail.toLowerCase());
+  return unwrap(await scoped, "listClientTickets");
+}
+
 /** Tickets awaiting an agent/AI reply (latest message is the customer's), with
  *  the time we've been waiting since. Powers the inbox badge + stale-ticket cron. */
 export async function awaitingResponse(): Promise<{ ticketId: string; waitingSince: string }[]> {
@@ -832,4 +851,36 @@ export async function listBreachingTickets(): Promise<Ticket[]> {
     const policy = policies.get(t.priority);
     return policy ? ticketSla(slaArgs(t, policy)).breaching : false;
   });
+}
+
+// ── Presence (collision detection) ───────────────────────────────────────────
+
+export type Viewer = { email: string; name: string | null };
+
+/** Heartbeat: record that an agent is viewing a ticket, then return the OTHER
+ *  agents seen within the last `freshSeconds`. One round-trip per poll. Rows go
+ *  stale on their own — no cleanup needed (a closed tab just stops refreshing). */
+export async function heartbeatPresence(
+  ticketId: string,
+  agentEmail: string,
+  agentName: string | null,
+  freshSeconds = 30,
+): Promise<Viewer[]> {
+  const client = db();
+  const me = agentEmail.toLowerCase();
+  const upsert = await client.from("ticket_presence").upsert(
+    { ticket_id: ticketId, tenant_id: env.tenantId, agent_email: me, agent_name: agentName, last_seen: new Date().toISOString() },
+    { onConflict: "ticket_id,agent_email" },
+  );
+  if (upsert.error) throw new Error(`heartbeatPresence(upsert): ${upsert.error.message}`);
+
+  const since = new Date(Date.now() - freshSeconds * 1000).toISOString();
+  const { data, error } = await client
+    .from("ticket_presence")
+    .select("agent_email, agent_name")
+    .eq("ticket_id", ticketId)
+    .neq("agent_email", me)
+    .gte("last_seen", since);
+  if (error) throw new Error(`heartbeatPresence(read): ${error.message}`);
+  return (data ?? []).map((r) => ({ email: r.agent_email, name: r.agent_name }));
 }
