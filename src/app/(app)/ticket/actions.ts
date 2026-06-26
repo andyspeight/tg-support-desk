@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { requireAgent } from "@/lib/auth";
-import { addMessage, audit, getTicket, getTicketByReference, heartbeatPresence, mergeTickets, setMessageAttachments, updateTicket, type Viewer } from "@/lib/db/queries";
+import { addMessage, audit, getTicket, getTicketByReference, heartbeatPresence, mergeTickets, setMessageAttachments, unmergeTickets, updateTicket, type Viewer } from "@/lib/db/queries";
 import { notify } from "@/lib/db/notifications";
 import { parseMentions } from "@/lib/mentions";
 import { env } from "@/lib/env";
@@ -254,6 +254,16 @@ export async function presenceHeartbeatAction(ticketId: string): Promise<{ viewe
     console.error("presenceHeartbeatAction failed:", error);
     return { viewers: [] };
   }
+}
+
+const unmergeSchema = z.object({ ticketId: z.string().uuid(), noteId: z.string().uuid() });
+
+/** Reverse a merge from the "Merged in" note on the target ticket. */
+export async function unmergeTicketAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const { ticketId, noteId } = unmergeSchema.parse(Object.fromEntries(formData));
+  await unmergeTickets(ticketId, noteId, session.email);
+  refresh(ticketId);
 }
 
 export async function runAiAction(formData: FormData): Promise<void> {

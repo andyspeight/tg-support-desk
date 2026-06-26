@@ -25,10 +25,10 @@ export default async function PortalTicketPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ as?: string }>;
+  searchParams: Promise<{ as?: string; from?: string }>;
 }) {
   const { id } = await params;
-  const { as } = await searchParams;
+  const { as, from } = await searchParams;
   const view = await resolvePortalView(as);
   const data = await getRequesterTicket(id, view.email);
   if (!data) notFound();
@@ -38,7 +38,9 @@ export default async function PortalTicketPage({
   const isClosed = ticket.status === "closed";
   const readOnly = view.previewing;
   const canRate = ticket.status === "resolved" && !ticket.csat_score && !readOnly;
-  const backHref = readOnly ? `/portal?as=${encodeURIComponent(view.email)}` : "/portal";
+  const fromParam = from ? `&from=${encodeURIComponent(from)}` : "";
+  const backHref = readOnly ? `/portal?as=${encodeURIComponent(view.email)}${fromParam}` : "/portal";
+  const deskHref = from ? `/ticket/${from}` : "/inbox";
   const custInitials = initialsOf(ticket.requester_name || ticket.requester_email);
 
   return (
@@ -50,8 +52,16 @@ export default async function PortalTicketPage({
       </Link>
 
       {readOnly && (
-        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
-          <span className="font-medium">Agent preview</span> — viewing as {view.email}. Read-only.
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
+          <span>
+            <span className="font-medium">Agent preview</span> — viewing as {view.email}. Read-only.
+          </span>
+          <Link
+            href={deskHref}
+            className="inline-flex shrink-0 items-center gap-1 font-medium text-amber-900 underline-offset-2 hover:underline dark:text-amber-100"
+          >
+            <ArrowLeft className="h-3 w-3" strokeWidth={1.75} /> Back to the support desk
+          </Link>
         </div>
       )}
 

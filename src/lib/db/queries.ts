@@ -324,7 +324,12 @@ export async function mergeTickets(sourceId: string, targetId: string, actor: st
   const [source, target] = await Promise.all([getTicket(sourceId), getTicket(targetId)]);
   if (!source || !target) throw new Error("mergeTickets: source or target not found");
 
-  // Move every message across, then carry tags + cc, then close the source.
+  // Capture exactly which messages we're about to move, so the merge is
+  // reversible (unmerge moves these same rows back and reopens the source).
+  const listed = await client.from("messages").select("id").eq("ticket_id", sourceId).eq("tenant_id", env.tenantId);
+  if (listed.error) throw new Error(`mergeTickets(list): ${listed.error.message}`);
+  const movedIds = (listed.data ?? []).map((m) => m.id);
+
   const moved = await client.from("messages").update({ ticket_id: targetId }).eq("ticket_id", sourceId).eq("tenant_id", env.tenantId);
   if (moved.error) throw new Error(`mergeTickets(move): ${moved.error.message}`);
 
@@ -332,11 +337,21 @@ export async function mergeTickets(sourceId: string, targetId: string, actor: st
   const cc = [...new Set([...target.cc_emails, ...source.cc_emails])];
   const merged = await updateTicket(targetId, { tags, cc_emails: cc });
 
+  const count = movedIds.length;
   await addMessage({
     ticket_id: targetId,
     role: "internal_note",
     author: actor,
-    body_text: `Merged in ticket #${source.reference} (${source.subject}).`,
+    body_text: `Merged in #${source.reference} “${source.subject}” — ${count} message${count === 1 ? "" : "s"} moved into this ticket.`,
+    channel_meta: {
+      kind: "merge",
+      direction: "in",
+      other_id: sourceId,
+      other_ref: source.reference,
+      other_subject: source.subject,
+      moved_ids: movedIds,
+      source_prior: { status: source.status, resolved_at: source.resolved_at, escalation_reason: source.escalation_reason },
+    } as Json,
   });
   await updateTicket(sourceId, {
     status: "closed",
@@ -347,10 +362,72 @@ export async function mergeTickets(sourceId: string, targetId: string, actor: st
     ticket_id: sourceId,
     role: "internal_note",
     author: actor,
-    body_text: `Merged into ticket #${target.reference}. Conversation continues there.`,
+    body_text: `Merged into #${target.reference} “${target.subject}”. The conversation continues there.`,
+    channel_meta: { kind: "merge", direction: "into", other_id: targetId, other_ref: target.reference } as Json,
   });
-  await audit("human", actor, "ticket.merged", { type: "ticket", id: sourceId }, { into: targetId });
+  await audit("human", actor, "ticket.merged", { type: "ticket", id: sourceId }, { into: targetId, moved: count });
   return merged;
+}
+
+type MergeMeta = {
+  kind?: string;
+  direction?: string;
+  other_id?: string;
+  other_ref?: number;
+  moved_ids?: string[];
+  undone?: boolean;
+  source_prior?: { status?: string; resolved_at?: string | null; escalation_reason?: string | null };
+};
+
+/** Reverse a merge: move the originally-merged messages back to the source
+ *  ticket, reopen it to its pre-merge state, and mark the merge note consumed.
+ *  Keyed on the "Merged in" note that carries the moved-message ids. */
+export async function unmergeTickets(targetId: string, noteId: string, actor: string): Promise<void> {
+  const client = db();
+  const note = await getMessageById(noteId);
+  if (!note || note.ticket_id !== targetId) throw new Error("unmergeTickets: merge note not found");
+  const meta = (note.channel_meta ?? {}) as MergeMeta;
+  if (meta.kind !== "merge" || meta.direction !== "in" || !meta.other_id || meta.undone) {
+    throw new Error("unmergeTickets: not an active merge");
+  }
+  const sourceId = meta.other_id;
+  const movedIds = Array.isArray(meta.moved_ids) ? meta.moved_ids : [];
+
+  if (movedIds.length > 0) {
+    const back = await client
+      .from("messages")
+      .update({ ticket_id: sourceId })
+      .in("id", movedIds)
+      .eq("ticket_id", targetId)
+      .eq("tenant_id", env.tenantId);
+    if (back.error) throw new Error(`unmergeTickets(move back): ${back.error.message}`);
+  }
+
+  // Reopen the source to its pre-merge state (fall back to a fresh ticket).
+  await updateTicket(sourceId, {
+    status: (meta.source_prior?.status as Ticket["status"] | undefined) ?? "new",
+    resolved_at: meta.source_prior?.resolved_at ?? null,
+    escalation_reason: meta.source_prior?.escalation_reason ?? null,
+  });
+
+  // Consume the merge note so the Unmerge button disappears and the trail reads true.
+  const { error: noteErr } = await client
+    .from("messages")
+    .update({
+      body_text: `${note.body_text} — unmerged; messages returned to #${meta.other_ref}.`,
+      channel_meta: { ...meta, undone: true } as Json,
+    })
+    .eq("id", noteId);
+  if (noteErr) throw new Error(`unmergeTickets(note): ${noteErr.message}`);
+
+  const target = await getTicket(targetId);
+  await addMessage({
+    ticket_id: sourceId,
+    role: "internal_note",
+    author: actor,
+    body_text: `Unmerged from #${target?.reference ?? "?"} — this ticket has been reopened.`,
+  });
+  await audit("human", actor, "ticket.unmerged", { type: "ticket", id: sourceId }, { from: targetId, moved: movedIds.length });
 }
 
 export type SearchResults = {
