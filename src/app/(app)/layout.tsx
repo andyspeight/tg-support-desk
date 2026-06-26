@@ -1,11 +1,20 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { Nav } from "@/components/nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
-  if (!session?.isAgent) redirect("/access-denied");
+  if (!session) {
+    // Not signed in. If the cross-domain SSO bridge is configured, start it;
+    // otherwise fall back to the access-denied page (current pre-SSO behaviour).
+    if (env.ssoBridgeUrl) {
+      redirect(`${env.ssoBridgeUrl}/api/sso/start?return=${encodeURIComponent("/inbox")}`);
+    }
+    redirect("/access-denied");
+  }
+  if (!session.isAgent) redirect("/access-denied");
 
   return (
     <div className="flex h-screen bg-canvas text-ink">
