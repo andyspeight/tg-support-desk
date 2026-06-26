@@ -101,6 +101,13 @@ export const env = {
   get supportFromName() {
     return optional("SUPPORT_FROM_NAME", "Travelgenix Support");
   },
+  // Extra addresses that are also "us" — e.g. the underlying Workspace mailbox
+  // when SUPPORT_EMAIL is a send-as alias (we send as help@travelgenix.io from
+  // the help@agendas.group account). Used by the inbound loop-guard so we never
+  // turn our own outbound into a ticket. Optional, comma-separated.
+  get supportEmailAliases() {
+    return csv("SUPPORT_EMAIL_ALIASES").map((e) => e.toLowerCase());
+  },
   // True when the Gmail send path is fully configured. Lets notification email
   // + the morning digest stay dormant (a no-op) until the mailbox is wired —
   // checked with optional() so it never throws when Gmail isn't set up yet.

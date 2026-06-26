@@ -31,8 +31,10 @@ export type IngestResult = {
 export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<IngestResult | null> {
   const parsed = parseGmailMessage(gmailMessage);
 
-  // Skip our own outbound mail and anything without a usable sender.
-  if (!parsed.fromEmail || parsed.fromEmail === env.supportEmail) return null;
+  // Skip our own outbound mail and anything without a usable sender. "Us" is
+  // SUPPORT_EMAIL plus any configured aliases (e.g. the underlying mailbox).
+  const selfAddresses = new Set([env.supportEmail, ...env.supportEmailAliases]);
+  if (!parsed.fromEmail || selfAddresses.has(parsed.fromEmail)) return null;
 
   // Spam control: drop blocklisted senders before a ticket is ever created.
   const blocked = await getBlockedPatterns();
