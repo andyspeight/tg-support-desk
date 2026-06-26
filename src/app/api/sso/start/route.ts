@@ -5,7 +5,7 @@ import { signToken, safeReturnPath } from "@/lib/auth-tokens";
 
 export const dynamic = "force-dynamic";
 
-const HANDOFF_TTL_MS = 60_000; // 60s — exchanged for the desk session immediately
+const HANDOFF_TTL_MS = 120_000; // 120s — exchanged for the desk session immediately; a touch of slack for a slow id.travelify.io hop
 
 // Cross-domain SSO bridge, step 1. Served on the *.travelify.io host (so the
 // browser sends the tg_session cookie). Validates the central session, then
