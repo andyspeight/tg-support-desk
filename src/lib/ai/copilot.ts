@@ -208,3 +208,45 @@ Answer ONLY from the knowledge base provided, in two to four sentences that dire
     .map((m) => ({ title: m.title, url: m.source_url as string }));
   return { answer, sources };
 }
+
+export type DraftAssist = { suggestions: string[]; article: { title: string; url: string } | null };
+
+/** Pre-submit assist for the contact form / new-ticket flow. Purely advisory —
+ *  it never blocks a submission. Returns (1) a KB article that might already
+ *  solve it, and (2) up to three concrete details that would make the request
+ *  actionable. Fail-open: any error yields empty guidance, so a hiccup can never
+ *  trap the user. */
+export async function assistTicketDraft(subject: string, body: string): Promise<DraftAssist> {
+  const subjectClean = subject.trim().slice(0, 200);
+  const bodyClean = body.trim().slice(0, 4000);
+  if (bodyClean.length < 15) return { suggestions: [], article: null };
+
+  // (1) Article suggestion — top published KB match that has a public link.
+  let article: DraftAssist["article"] = null;
+  try {
+    const matches = await searchKb(`${subjectClean}\n${bodyClean}`, 4);
+    const hit = matches.find((m) => m.source_url);
+    if (hit) article = { title: hit.title, url: hit.source_url as string };
+  } catch {
+    // KB/embeddings unavailable — simply no article suggestion.
+  }
+
+  // (2) Detail sufficiency — utility model, strict JSON, fail-open.
+  let suggestions: string[] = [];
+  try {
+    const system = `A Travelgenix client is about to send a support request. Judge whether it gives the team enough to investigate without a back-and-forth. ${BRAND_VOICE}
+Respond with ONLY minified JSON: {"enough":true|false,"missing":["short specific item"]}.
+When it's not enough, list up to 3 concrete things that would help — e.g. the page URL, the exact error text, what they expected to happen, the affected widget/booking reference, or a screenshot. Be generous: if it's already clear, return {"enough":true,"missing":[]}. Never ask for refunds, billing or contract details.`;
+    const prompt = `Subject: ${subjectClean || "(none)"}\n\nMessage: ${bodyClean}`;
+    const raw = await complete(env.utilityModel, system, prompt, 300);
+    const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+    const p = JSON.parse(json) as { enough?: boolean; missing?: unknown };
+    if (p.enough === false && Array.isArray(p.missing)) {
+      suggestions = p.missing.filter((s): s is string => typeof s === "string" && s.trim().length > 0).slice(0, 3);
+    }
+  } catch {
+    // fail-open — no suggestions
+  }
+
+  return { suggestions, article };
+}

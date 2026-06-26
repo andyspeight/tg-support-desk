@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireClient } from "@/lib/auth";
 import { raiseTicketAction } from "@/app/portal/actions";
 import { SubmitButton } from "@/components/portal/submit-button";
+import { AttachmentPicker } from "@/components/attachment-picker";
 
 export default async function NewTicketPage({
   searchParams,
@@ -39,16 +40,10 @@ export default async function NewTicketPage({
           placeholder="Describe what’s happening — include any error messages, the page you’re on, and what you expected."
           className="w-full resize-y rounded-md border border-line bg-surface p-3 text-sm leading-relaxed placeholder:text-ink-3 focus:border-ink-3 focus:outline-none"
         />
-        <label className="block text-xs text-ink-2">
-          Attach screenshots or files (optional)
-          <input
-            type="file"
-            name="files"
-            multiple
-            accept="image/*,.pdf,.txt,.csv,.log"
-            className="mt-1 block w-full text-xs text-ink-3 file:mr-3 file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink-2 hover:file:bg-line"
-          />
-        </label>
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-ink-2">Attach screenshots or files (optional)</label>
+          <AttachmentPicker />
+        </div>
         <SubmitButton pendingLabel="Submitting…">Submit ticket</SubmitButton>
       </form>
     </div>
