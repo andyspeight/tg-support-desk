@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { requireCron } from "@/lib/cron-auth";
 import { inboxCounts } from "@/lib/db/queries";
 import { sendEmail } from "@/lib/channels/gmail";
 
@@ -8,9 +9,8 @@ export const maxDuration = 120;
 // Daily per-agent triage email: open / unassigned / breaching at a glance.
 // Dormant (no-op) until Gmail is configured. Agents with nothing open are skipped.
 export async function GET(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const unauthorised = requireCron(request);
+  if (unauthorised) return unauthorised;
   if (!env.gmailConfigured) return Response.json({ skipped: "gmail not configured" });
 
   const agents = env.agentEmails;

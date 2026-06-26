@@ -31,7 +31,7 @@ export async function runResolutionAgent(
   executors: ToolExecutors,
   config: AgentConfig,
 ): Promise<AgentRunResult> {
-  const anthropic = new Anthropic({ apiKey: config.apiKey });
+  const anthropic = new Anthropic({ apiKey: config.apiKey, timeout: 60000 });
   const startedAt = Date.now();
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: buildTicketPrompt(ctx) }];
   const toolsCalled: ToolCallRecord[] = [];

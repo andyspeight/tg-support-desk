@@ -78,7 +78,7 @@ export async function classifyTicket(args: {
   model: string;
 }): Promise<TriageResult | null> {
   try {
-    const anthropic = new Anthropic({ apiKey: args.apiKey });
+    const anthropic = new Anthropic({ apiKey: args.apiKey, timeout: 20000 });
     const response = await anthropic.messages.create({
       model: args.model,
       max_tokens: 512,

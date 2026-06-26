@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { requireCron } from "@/lib/cron-auth";
 import { listUnemailedNotifications, markEmailed } from "@/lib/db/notifications";
 import { sendEmail } from "@/lib/channels/gmail";
 import type { Notification } from "@/lib/db/types";
@@ -18,9 +19,8 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export async function GET(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const unauthorised = requireCron(request);
+  if (unauthorised) return unauthorised;
   if (!env.gmailConfigured) return Response.json({ skipped: "gmail not configured" });
 
   try {

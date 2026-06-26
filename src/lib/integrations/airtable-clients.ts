@@ -45,6 +45,7 @@ async function airtableGet(path: string, params: Record<string, string>): Promis
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${env.airtablePat}` },
     cache: "no-store",
+    signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) throw new Error(`Airtable ${path}: ${res.status} ${await res.text()}`);
   return res.json();

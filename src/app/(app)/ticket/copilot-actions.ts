@@ -13,7 +13,8 @@ async function guard<T>(fn: () => Promise<T>): Promise<{ ok: true; text: string 
     const text = (await fn()) as unknown as string;
     return { ok: true, text };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Copilot failed" };
+    console.error("copilot action failed:", error);
+    return { ok: false, error: "Copilot failed — please try again." };
   }
 }
 
@@ -52,6 +53,7 @@ export async function copilotReviewAction(
     const review = await copilotReview(idSchema.parse(ticketId), textSchema.parse(text));
     return { ok: true, ...review };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Review failed" };
+    console.error("copilot review failed:", error);
+    return { ok: false, error: "Review failed — please try again." };
   }
 }

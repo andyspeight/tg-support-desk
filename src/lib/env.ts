@@ -40,6 +40,12 @@ export const env = {
   get voyageApiKey() {
     return required("VOYAGE_API_KEY");
   },
+  // True when the embedding/RAG service is wired. Lets KB publish degrade
+  // gracefully (publish now, embed once the key lands) instead of crashing the
+  // publish click before go-live — checked with optional() so it never throws.
+  get voyageConfigured() {
+    return Boolean(optional("VOYAGE_API_KEY"));
+  },
   get embeddingModel() {
     return optional("EMBEDDING_MODEL", "voyage-3.5");
   },
@@ -94,6 +100,13 @@ export const env = {
   },
   get supportFromName() {
     return optional("SUPPORT_FROM_NAME", "Travelgenix Support");
+  },
+  // Extra addresses that are also "us" — e.g. the underlying Workspace mailbox
+  // when SUPPORT_EMAIL is a send-as alias (we send as help@travelgenix.io from
+  // the help@agendas.group account). Used by the inbound loop-guard so we never
+  // turn our own outbound into a ticket. Optional, comma-separated.
+  get supportEmailAliases() {
+    return csv("SUPPORT_EMAIL_ALIASES").map((e) => e.toLowerCase());
   },
   // True when the Gmail send path is fully configured. Lets notification email
   // + the morning digest stay dormant (a no-op) until the mailbox is wired —

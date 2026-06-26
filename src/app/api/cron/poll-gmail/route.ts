@@ -1,5 +1,6 @@
 import { pollGmailInbox } from "@/lib/channels/poll-inbox";
 import { env } from "@/lib/env";
+import { requireCron } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -7,9 +8,8 @@ export const maxDuration = 300;
 // Vercel cron sends `Authorization: Bearer ${CRON_SECRET}` automatically when
 // the CRON_SECRET env var is set. Fail closed on anything else.
 export async function GET(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const unauthorised = requireCron(request);
+  if (unauthorised) return unauthorised;
   if (!env.gmailConfigured) return Response.json({ skipped: "gmail not configured" });
 
   try {

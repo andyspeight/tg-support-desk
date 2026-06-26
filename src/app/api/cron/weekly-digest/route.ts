@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { requireCron } from "@/lib/cron-auth";
 import { getWeeklyGapDigest } from "@/lib/db/analytics";
 import { sendEmail } from "@/lib/channels/gmail";
 
@@ -10,9 +11,8 @@ export const maxDuration = 120;
 // struggling with, and KB candidates waiting for review. Dormant until Gmail
 // is configured. Bearer CRON_SECRET; scheduled weekly in vercel.json.
 export async function GET(request: Request) {
-  if (request.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const unauthorised = requireCron(request);
+  if (unauthorised) return unauthorised;
   if (!env.gmailConfigured) return Response.json({ skipped: "gmail not configured" });
 
   const recipients = env.agentEmails;

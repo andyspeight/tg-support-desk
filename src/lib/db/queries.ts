@@ -4,6 +4,7 @@ import { env } from "@/lib/env";
 import type { Json, TablesInsert, TablesUpdate } from "./database.types";
 import { ticketSla, type TicketSla } from "@/lib/sla";
 import { aggregateKbEffectiveness, type KbEffectiveness, type KbUsageRow } from "@/lib/kb-effectiveness";
+import { sanitizeSearchTerm } from "./search-term";
 import type {
   AiOutcome,
   CannedResponse,
@@ -305,7 +306,7 @@ export async function mergeTickets(sourceId: string, targetId: string, actor: st
   if (!source || !target) throw new Error("mergeTickets: source or target not found");
 
   // Move every message across, then carry tags + cc, then close the source.
-  const moved = await client.from("messages").update({ ticket_id: targetId }).eq("ticket_id", sourceId);
+  const moved = await client.from("messages").update({ ticket_id: targetId }).eq("ticket_id", sourceId).eq("tenant_id", env.tenantId);
   if (moved.error) throw new Error(`mergeTickets(move): ${moved.error.message}`);
 
   const tags = [...new Set([...target.tags, ...source.tags])];
@@ -347,9 +348,17 @@ export async function searchAll(query: string): Promise<SearchResults> {
   const refMatch = trimmed.match(/^#?(\d+)$/);
 
   let ticketQuery = client.from("tickets").select().eq("tenant_id", tenant).limit(25);
-  ticketQuery = refMatch
-    ? ticketQuery.eq("reference", Number(refMatch[1]))
-    : ticketQuery.or(`subject.ilike.%${trimmed}%,requester_email.ilike.%${trimmed}%,requester_name.ilike.%${trimmed}%`);
+  if (refMatch) {
+    ticketQuery = ticketQuery.eq("reference", Number(refMatch[1]));
+  } else {
+    // PostgREST parses , ( ) as or()-filter grammar and % _ as LIKE wildcards —
+    // neutralise them (plus quote/backslash) so a search term can't restructure
+    // the filter. Behaviour-preserving for ordinary text search.
+    const safe = sanitizeSearchTerm(trimmed);
+    ticketQuery = safe
+      ? ticketQuery.or(`subject.ilike.%${safe}%,requester_email.ilike.%${safe}%,requester_name.ilike.%${safe}%`)
+      : ticketQuery.eq("reference", -1); // term was all metacharacters → no match
+  }
 
   const [tickets, messages, kb] = await Promise.all([
     ticketQuery,
@@ -498,9 +507,11 @@ export async function updateKbArticle(id: string, patch: TablesUpdate<"kb_articl
   return unwrap(result, "updateKbArticle");
 }
 
-// pgvector columns travel as JSON-encoded arrays through PostgREST.
-export async function publishKbArticle(id: string, embedding: number[]): Promise<KbArticle> {
-  return updateKbArticle(id, { status: "published", embedding: JSON.stringify(embedding) });
+// pgvector columns travel as JSON-encoded arrays through PostgREST. A null
+// embedding publishes the article unsearchable-but-live (pre-go-live, before the
+// embedding service is wired); it gets a vector once Voyage is available.
+export async function publishKbArticle(id: string, embedding: number[] | null): Promise<KbArticle> {
+  return updateKbArticle(id, { status: "published", embedding: embedding ? JSON.stringify(embedding) : null });
 }
 
 /** Human-resolved, previously-escalated tickets in a recent window — candidates

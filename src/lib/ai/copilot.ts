@@ -12,7 +12,7 @@ const BRAND_VOICE =
   "Travelgenix brand voice: warm, plain, professional UK English. Sound like a knowledgeable colleague, not a bot — no 'I hope this finds you well', no 'we sincerely apologise for any inconvenience', no exclamation-mark enthusiasm. Short paragraphs, specific, plain text only.";
 
 async function complete(model: string, system: string, prompt: string, maxTokens = 1500): Promise<string> {
-  const anthropic = new Anthropic({ apiKey: env.anthropicApiKey });
+  const anthropic = new Anthropic({ apiKey: env.anthropicApiKey, timeout: 30000 });
   const res = await anthropic.messages.create({
     model,
     max_tokens: maxTokens,
@@ -191,7 +191,16 @@ export async function askKb(question: string): Promise<AskResult> {
   const system = `You answer Travelgenix clients' questions in the self-serve help box. ${BRAND_VOICE}
 Answer ONLY from the knowledge base provided, in two to four sentences that directly solve the question. If the knowledge base doesn't actually answer it, say you're not sure and suggest raising a ticket — never guess. Never discuss refunds, credits, discounts or contract/billing changes; say the team will help with those. Do not add links or a sign-off — just the answer.`;
   const prompt = `Knowledge base:\n${kb}\n\nClient question: ${q}\n\nAnswer the client.`;
-  const answer = (await complete(env.resolutionModel, system, prompt, 700)).trim();
+
+  let answer: string;
+  try {
+    answer = (await complete(env.resolutionModel, system, prompt, 700)).trim();
+  } catch {
+    // The assistant model is unreachable — still hand back the matched articles
+    // (below) so the client isn't stuck, and nudge a ticket. Never throws.
+    answer =
+      "I couldn't generate an answer just now, but the help articles below look relevant. If they don't solve it, raise a ticket and the team will help.";
+  }
 
   const sources = matches
     .filter((m) => m.source_url)

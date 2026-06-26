@@ -16,6 +16,7 @@ import { env } from "@/lib/env";
 import { matchesBlocklist, parseGmailMessage, type GmailMessage } from "./email-parse";
 import { buildReplyMime, getAttachmentBytes, sendMessage } from "./gmail";
 import { storeAttachments, storeOutboundAttachments, type OutboundFile } from "./attachments";
+import { replyOutbound, type ReplyDelivery } from "./reply-plan";
 
 // Email channel: Gmail message → ticket/message rows, and ticket reply → email.
 
@@ -30,8 +31,10 @@ export type IngestResult = {
 export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<IngestResult | null> {
   const parsed = parseGmailMessage(gmailMessage);
 
-  // Skip our own outbound mail and anything without a usable sender.
-  if (!parsed.fromEmail || parsed.fromEmail === env.supportEmail) return null;
+  // Skip our own outbound mail and anything without a usable sender. "Us" is
+  // SUPPORT_EMAIL plus any configured aliases (e.g. the underlying mailbox).
+  const selfAddresses = new Set([env.supportEmail, ...env.supportEmailAliases]);
+  if (!parsed.fromEmail || selfAddresses.has(parsed.fromEmail)) return null;
 
   // Spam control: drop blocklisted senders before a ticket is ever created.
   const blocked = await getBlockedPatterns();
@@ -155,25 +158,47 @@ export async function sendTicketReply(
   ticket: Ticket,
   body: string,
   opts: { role: "ai" | "human"; author: string; html?: string; attachments?: OutboundFile[] },
-): Promise<Message> {
-  // Non-email channels (portal, widget) deliver in-app: store the reply as a
-  // message the client sees in their portal. No outbound email.
-  if (ticket.channel !== "email") {
+): Promise<{ message: Message; delivery: ReplyDelivery }> {
+  const plan = replyOutbound(ticket.channel, env.gmailConfigured);
+
+  // In-app channels (portal/widget) deliver in-app; an email ticket on an
+  // un-wired mailbox is stored but not sent. Both paths persist the reply
+  // WITHOUT touching the throwing Gmail env getters, so the reply flow can
+  // never crash before go-live (or if the mailbox is ever unset).
+  if (plan !== "email") {
     const message = await addMessage({
       ticket_id: ticket.id,
       role: opts.role,
       author: opts.author,
       body_text: body,
       body_html: opts.html ?? null,
-      channel_meta: { delivered: ticket.channel },
+      channel_meta: plan === "store" ? { outbound: true, delivery: "not_configured" } : { delivered: ticket.channel },
     });
-    if (!ticket.first_response_at) {
+
+    if (opts.attachments && opts.attachments.length > 0) {
+      const stored = await storeOutboundAttachments(ticket.id, message.id, opts.attachments);
+      await setMessageAttachments(message.id, stored as unknown as Json);
+      message.attachments = stored as unknown as Json;
+    }
+
+    // Only a reply that genuinely reached the customer starts the first-response
+    // clock; a stored-but-unsent one must not skew SLA/first-response metrics.
+    if (plan === "inapp" && !ticket.first_response_at) {
       await updateTicket(ticket.id, { first_response_at: new Date().toISOString() });
     }
-    await audit(opts.role === "ai" ? "ai" : "human", opts.author, "message.sent", { type: "ticket", id: ticket.id });
-    return message;
+
+    await audit(
+      opts.role === "ai" ? "ai" : "human",
+      opts.author,
+      plan === "store" ? "message.stored_undelivered" : "message.sent",
+      { type: "ticket", id: ticket.id },
+    );
+    return { message, delivery: plan === "store" ? "stored" : "delivered" };
   }
 
+  // Wired email: send for real. A transient send failure throws to the caller,
+  // which surfaces it without losing the draft — no message row is written
+  // here, so a retry cannot duplicate the reply.
   const { messageId, references } = await latestCustomerThreadMeta(ticket.id);
   const subject = /^re:/i.test(ticket.subject) ? ticket.subject : `Re: ${ticket.subject}`;
   const refs = [...references, ...(messageId ? [messageId] : [])];
@@ -216,5 +241,5 @@ export async function sendTicketReply(
     id: ticket.id,
   });
 
-  return message;
+  return { message, delivery: "delivered" };
 }
