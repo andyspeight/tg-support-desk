@@ -13,8 +13,8 @@ import {
 } from "lucide-react";
 import { NotificationsNavItem } from "@/components/notifications-nav";
 
-const LINKS: { href: string; label: string; icon: LucideIcon }[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+const LINKS: { href: string; label: string; icon: LucideIcon; ownerOnly?: boolean }[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, ownerOnly: true },
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/search", label: "Search", icon: Search },
   { href: "/kb", label: "Knowledge base", icon: BookOpen },
@@ -22,11 +22,11 @@ const LINKS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function Nav() {
+export function Nav({ isOwner }: { isOwner: boolean }) {
   const pathname = usePathname();
   return (
     <nav className="flex flex-col gap-0.5 p-2">
-      {LINKS.map((link) => {
+      {LINKS.filter((link) => isOwner || !link.ownerOnly).map((link) => {
         const active = pathname === link.href || pathname.startsWith(`${link.href}/`) || (link.href === "/inbox" && pathname.startsWith("/ticket"));
         const Icon = link.icon;
         return (

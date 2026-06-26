@@ -137,6 +137,11 @@ export const env = {
   get agentEmails() {
     return csv("AGENT_EMAILS").map((e) => e.toLowerCase());
   },
+  // Owner-only surfaces (the build/progress dashboard). Defaults to the CEO;
+  // override with OWNER_EMAILS (comma-separated) to widen access.
+  get ownerEmails() {
+    return csv("OWNER_EMAILS", "andy.speight@agendas.group").map((e) => e.toLowerCase());
+  },
   get authDevBypass() {
     // Local dev convenience (next dev). Plus a deliberately narrow preview escape
     // hatch: PREVIEW_NO_SSO lets the team click through a PRIVATE Vercel *preview*

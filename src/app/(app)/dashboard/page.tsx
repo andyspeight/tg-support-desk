@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Check, ChevronRight } from "lucide-react";
+import { getSession } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { getDashboardStats } from "@/lib/db/stats";
 import { RESOLUTION_MILESTONES, ROADMAP, stageStatus, type RoadmapItemStatus } from "@/lib/roadmap";
 import { RefreshPoller } from "@/components/refresh-poller";
@@ -29,6 +32,10 @@ function StatCard({ label, value, accent, href }: { label: string; value: string
 }
 
 export default async function DashboardPage() {
+  // Owner-only view (the build/progress roadmap). Other agents are sent to the inbox.
+  const session = await getSession();
+  if (!session || !env.ownerEmails.includes(session.email)) redirect("/inbox");
+
   const stats = await getDashboardStats();
   const rate = stats.aiResolutionPct ?? 0;
 

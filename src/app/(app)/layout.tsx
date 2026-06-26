@@ -15,6 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/access-denied");
   }
   if (!session.isAgent) redirect("/access-denied");
+  const isOwner = env.ownerEmails.includes(session.email);
 
   return (
     <div className="flex h-screen bg-canvas text-ink">
@@ -22,7 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="border-b border-line-soft px-4 py-4">
           <span className="text-sm font-semibold tracking-tight">TG Support Desk</span>
         </div>
-        <Nav />
+        <Nav isOwner={isOwner} />
         <div className="mt-auto border-t border-line-soft p-2">
           <ThemeToggle />
         </div>
