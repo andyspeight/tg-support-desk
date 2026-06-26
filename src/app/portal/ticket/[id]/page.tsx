@@ -5,6 +5,7 @@ import { resolvePortalView } from "@/lib/auth";
 import { getRequesterTicket } from "@/lib/db/queries";
 import { replyAction, rateAction } from "@/app/portal/actions";
 import { SubmitButton } from "@/components/portal/submit-button";
+import { AttachmentPicker } from "@/components/attachment-picker";
 import { AutoRefresh } from "@/components/portal/auto-refresh";
 import { clientStatus } from "@/lib/portal-status";
 import type { StoredAttachment } from "@/lib/channels/attachment-rules";
@@ -151,7 +152,7 @@ export default async function PortalTicketPage({
       ) : null}
 
       {readOnly ? null : !isClosed ? (
-        <form action={replyAction} className="mt-6 space-y-2.5 rounded-2xl border border-line bg-surface p-4 shadow-sm">
+        <form action={replyAction} className="mt-6 space-y-3 rounded-2xl border border-line bg-surface p-4 shadow-sm">
           <input type="hidden" name="ticketId" value={ticket.id} />
           <textarea
             name="body"
@@ -161,14 +162,8 @@ export default async function PortalTicketPage({
             placeholder="Add a reply…"
             className="w-full resize-y rounded-xl border border-line bg-canvas p-3 text-sm leading-relaxed placeholder:text-ink-3 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20"
           />
-          <div className="flex items-center justify-between gap-3">
-            <input
-              type="file"
-              name="files"
-              multiple
-              accept="image/*,.pdf,.txt,.csv,.log"
-              className="block w-full text-xs text-ink-3 file:mr-3 file:rounded-md file:border file:border-line file:bg-surface-2 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink-2 hover:file:bg-line"
-            />
+          <AttachmentPicker />
+          <div className="flex justify-end">
             <SubmitButton pendingLabel="Sending…">Send reply</SubmitButton>
           </div>
         </form>
