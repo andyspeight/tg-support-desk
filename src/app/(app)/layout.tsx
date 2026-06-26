@@ -10,7 +10,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // Not signed in. If the cross-domain SSO bridge is configured, start it;
     // otherwise fall back to the access-denied page (current pre-SSO behaviour).
     if (env.ssoBridgeUrl) {
-      redirect(`/api/sso/login?return=${encodeURIComponent("/inbox")}`);
+      redirect(`/api/sso/login?return=${encodeURIComponent("/home")}`);
     }
     redirect("/access-denied");
   }

@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getClientSupportHistory, getTicketSla, getTicketWithMessages, listCannedResponses } from "@/lib/db/queries";
+import { getClientSupportHistory, getTicketSla, getTicketWithMessages, listCannedResponses, searchPastTickets } from "@/lib/db/queries";
 import { getSession } from "@/lib/auth";
 import type { ClockState } from "@/lib/sla";
 import { getClientById } from "@/lib/integrations/airtable-clients";
 import { env } from "@/lib/env";
 import { sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
-import { AlertTriangle, ArrowLeft, Eye, EyeOff, GitMerge, LayoutDashboard, Paperclip, Users } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Eye, EyeOff, GitMerge, LayoutDashboard, Lightbulb, Paperclip, Users } from "lucide-react";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
@@ -103,7 +103,10 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     ticket: `#${ticket.reference}`,
   };
 
-  const [canned, clientRecord, sla, supportHistory] = await Promise.all([
+  const latestCustomer = [...messages].reverse().find((m) => m.role === "customer");
+  const pastQuery = (latestCustomer?.body_text || ticket.subject).slice(0, 500);
+
+  const [canned, clientRecord, sla, supportHistory, pastTickets] = await Promise.all([
     listCannedResponses().catch(() => []),
     ticket.client_id ? getClientById(ticket.client_id) : Promise.resolve(null),
     getTicketSla(ticket).catch(() => null),
@@ -112,7 +115,10 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       requesterEmail: ticket.requester_email,
       excludeTicketId: ticket.id,
     }).catch(() => null),
+    searchPastTickets(pastQuery, ticket.client_id, 4).catch(() => []),
   ]);
+  // "How we solved this before" — similar resolved tickets, current one excluded.
+  const solvedBefore = pastTickets.filter((p) => p.ticket_id !== ticket.id).slice(0, 3);
 
   const handover = [...messages]
     .reverse()
@@ -266,6 +272,27 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <div>
             <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Support history</h2>
             <SupportHistoryPanel history={supportHistory} />
+          </div>
+        )}
+
+        {solvedBefore.length > 0 && (
+          <div>
+            <h2 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-3">
+              <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.75} /> How we solved this before
+            </h2>
+            <ul className="space-y-2">
+              {solvedBefore.map((p) => (
+                <li key={p.ticket_id}>
+                  <Link
+                    href={`/ticket/${p.ticket_id}`}
+                    className="block rounded-lg border border-line bg-surface p-3 transition hover:border-ink-3"
+                  >
+                    <p className="truncate text-xs font-medium text-ink">{p.subject}</p>
+                    <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-ink-3">{p.snippet}</p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
