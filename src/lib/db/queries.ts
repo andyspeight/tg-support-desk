@@ -29,7 +29,7 @@ function unwrap<T>(result: { data: T | null; error: { message: string } | null }
 
 export type InboxView = "mine" | "unassigned" | "escalated" | "waiting" | "breaching" | "open" | "all";
 
-const OPEN_STATUSES = ["new", "ai_working", "waiting_on_customer", "escalated"] as const;
+const OPEN_STATUSES = ["new", "ai_working", "waiting_on_customer", "escalated", "pending"] as const;
 
 export async function createTicket(input: Omit<TablesInsert<"tickets">, "tenant_id">): Promise<Ticket> {
   const result = await db()

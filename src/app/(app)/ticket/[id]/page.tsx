@@ -133,19 +133,19 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const clientPortalHref = `/portal?as=${encodeURIComponent(ticket.requester_email)}&from=${ticket.id}`;
 
   // Lifecycle quick-actions (Zendesk-style): resolve/close/reopen by current state.
-  const lifecycleOpen = ["new", "ai_working", "waiting_on_customer", "escalated"].includes(ticket.status);
+  const lifecycleOpen = ["new", "ai_working", "waiting_on_customer", "escalated", "pending"].includes(ticket.status);
   const lifecycleResolved = ticket.status === "resolved";
   const lifecycleClosed = ticket.status === "closed";
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-col lg:h-full">
       <TicketPresence ticketId={ticket.id} heartbeat={presenceHeartbeatAction} />
-      <div className="flex min-h-0 flex-1">
+      <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row">
         <RefreshPoller />
 
       {/* Conversation column */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="border-b border-line bg-surface px-6 py-4">
+        <div className="border-b border-line bg-surface px-4 py-4 sm:px-6">
           <div className="flex flex-wrap items-center gap-3">
             <Link href="/inbox" className="inline-flex items-center gap-1 text-sm text-ink-3 hover:text-ink">
               <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
@@ -206,7 +206,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
+        <div className="flex-1 space-y-3 px-4 py-4 sm:px-6 lg:overflow-y-auto">
           {ticket.status === "escalated" && handover && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/25 dark:bg-red-500/10">
               <p className="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">AI handover</p>
@@ -267,7 +267,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           })}
         </div>
 
-        <div className="border-t border-line bg-surface-2 p-4">
+        <div className="border-t border-line bg-surface-2 p-3 sm:p-4">
           <ReplyBox
             ticketId={ticket.id}
             canned={canned}
@@ -286,7 +286,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       </div>
 
       {/* Controls column — Customer 360 (client record + support history) up top */}
-      <aside className="w-[27rem] shrink-0 space-y-5 overflow-y-auto border-l border-line bg-surface-2/40 p-5">
+      <aside className="w-full shrink-0 space-y-5 border-t border-line bg-surface-2/40 p-4 sm:p-5 lg:w-[27rem] lg:border-l lg:border-t-0 lg:overflow-y-auto">
         <form action={runAiAction}>
           <input type="hidden" name="ticketId" value={ticket.id} />
           <RunAiButton />
@@ -339,6 +339,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               <option value="new">New</option>
               <option value="ai_working">AI working</option>
               <option value="waiting_on_customer">Waiting on customer</option>
+              <option value="pending">Pending</option>
               <option value="escalated">Escalated</option>
               <option value="resolved">Resolved</option>
               <option value="closed">Closed</option>
@@ -396,7 +397,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             <p className="text-[11px] text-ink-3">Watching: {ticket.watchers.join(", ")}</p>
           )}
 
-          <form action={snoozeTicketAction} className="flex items-center gap-1">
+          <form action={snoozeTicketAction} className="flex flex-wrap items-center gap-1">
             <input type="hidden" name="ticketId" value={ticket.id} />
             <span className="mr-1 text-xs text-ink-2">Snooze</span>
             {(["1h", "3h", "tomorrow", "3d"] as const).map((u) => (

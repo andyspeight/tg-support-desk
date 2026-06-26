@@ -40,7 +40,7 @@ export default async function AnalyticsPage() {
   );
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <div className="mx-auto max-w-4xl p-4 sm:p-6">
       <h1 className="text-lg font-semibold">Analytics</h1>
       <p className="mt-1 text-sm text-ink-2">
         True AI resolution = resolved with no human reply, not reopened, CSAT not negative.

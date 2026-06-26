@@ -27,7 +27,7 @@ export default async function SettingsPage() {
     .filter(Boolean);
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
+    <div className="mx-auto max-w-2xl p-4 sm:p-6">
       <h1 className="text-lg font-semibold">Settings</h1>
       <p className="mt-1 text-sm text-ink-2">
         Channel, AI and SLA values come from environment configuration. Canned responses and tags are

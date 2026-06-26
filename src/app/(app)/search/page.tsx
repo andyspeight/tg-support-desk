@@ -8,7 +8,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const results = query ? await searchAll(query).catch(() => null) : null;
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto max-w-3xl p-4 sm:p-6">
       <h1 className="text-lg font-semibold">Search</h1>
 
       <form method="get" className="mt-3">
@@ -39,9 +39,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                   href={`/ticket/${t.id}`}
                   className="flex items-center gap-2 rounded-md border border-line-soft bg-surface p-2.5 text-sm hover:border-ink-3"
                 >
-                  <span className="text-ink-3">#{t.reference}</span>
+                  <span className="shrink-0 text-ink-3">#{t.reference}</span>
                   <span className="min-w-0 flex-1 truncate font-medium text-ink">{t.subject}</span>
-                  <span className="truncate text-xs text-ink-3">{t.requester_email}</span>
+                  <span className="hidden max-w-[12rem] shrink-0 truncate text-xs text-ink-3 sm:inline">{t.requester_email}</span>
                   <StatusBadge status={t.status} />
                 </Link>
               ))}

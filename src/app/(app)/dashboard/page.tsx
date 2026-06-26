@@ -40,7 +40,7 @@ export default async function DashboardPage() {
   const rate = stats.aiResolutionPct ?? 0;
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
+    <div className="mx-auto max-w-5xl p-4 sm:p-6">
       <RefreshPoller intervalMs={30000} />
 
       <div className="flex items-baseline justify-between">
@@ -176,7 +176,7 @@ export default async function DashboardPage() {
           })}
         </div>
 
-        <div className="mt-3 flex items-center gap-4 text-xs text-ink-3">
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-ink-3">
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> done</span>
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-accent-500" /> in progress</span>
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" /> blocked — needs Andy</span>

@@ -73,20 +73,49 @@ export function ClientTicketsView({ tickets }: { tickets: Ticket[] }) {
       {rows.length === 0 ? (
         <p className="mt-10 text-center text-sm text-ink-3">No tickets match.</p>
       ) : (
-        <table className="mt-2 w-full table-fixed text-sm">
+        <>
+        {/* Mobile (<sm): a tappable stacked list; the table takes over from sm up. */}
+        <ul className="mt-2 divide-y divide-line-soft sm:hidden">
+          {rows.map((t) => (
+            <li key={t.id}>
+              <Link href={`/ticket/${t.id}`} className="flex items-start gap-3 py-3">
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-sm font-medium text-ink">{t.subject}</span>
+                    {t.ai_resolved && (
+                      <span className="shrink-0 rounded bg-accent-50 px-1.5 py-0.5 text-[10px] font-medium text-accent-700 dark:bg-accent-500/10 dark:text-accent-300">
+                        AI
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
+                    <span className="tabular-nums">#{t.reference}</span>
+                    <span>{formatDate(t.updated_at)}</span>
+                  </span>
+                </span>
+                <span className="flex shrink-0 flex-col items-end gap-1">
+                  <StatusBadge status={t.status} />
+                  <PriorityBadge priority={t.priority} />
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+
+        <table className="mt-2 hidden w-full table-fixed text-sm sm:table">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-ink-3">
-              <th className="w-14 py-2 font-medium">#</th>
+              <th className="hidden w-14 py-2 font-medium sm:table-cell">#</th>
               <th className="py-2 font-medium">Subject</th>
-              <th className="w-36 py-2 font-medium">Status</th>
-              <th className="w-12 py-2 font-medium">Pri</th>
-              <th className="w-28 py-2 font-medium">Updated</th>
+              <th className="w-32 py-2 font-medium sm:w-36">Status</th>
+              <th className="hidden w-12 py-2 font-medium sm:table-cell">Pri</th>
+              <th className="hidden w-28 py-2 font-medium sm:table-cell">Updated</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((t) => (
               <tr key={t.id} className="border-t border-line-soft hover:bg-surface-2">
-                <td className="py-2.5 text-ink-3">#{t.reference}</td>
+                <td className="hidden py-2.5 text-ink-3 sm:table-cell">#{t.reference}</td>
                 <td className="truncate py-2.5 pr-4">
                   <Link href={`/ticket/${t.id}`} className="font-medium text-ink hover:underline">
                     {t.subject}
@@ -100,14 +129,15 @@ export function ClientTicketsView({ tickets }: { tickets: Ticket[] }) {
                 <td className="py-2.5">
                   <StatusBadge status={t.status} />
                 </td>
-                <td className="py-2.5">
+                <td className="hidden py-2.5 sm:table-cell">
                   <PriorityBadge priority={t.priority} />
                 </td>
-                <td className="py-2.5 text-ink-3">{formatDate(t.updated_at)}</td>
+                <td className="hidden py-2.5 text-ink-3 sm:table-cell">{formatDate(t.updated_at)}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </>
       )}
     </div>
   );

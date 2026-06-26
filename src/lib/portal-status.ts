@@ -14,6 +14,8 @@ export function clientStatus(status: string): { label: string; tone: string } {
       return { label: "Resolved", tone: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300" };
     case "closed":
       return { label: "Closed", tone: "bg-surface-2 text-ink-3" };
+    case "pending":
+      return { label: "In progress", tone: "bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300" };
     default:
       return { label: status, tone: "bg-surface-2 text-ink-2" };
   }

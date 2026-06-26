@@ -148,7 +148,7 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
 
   return (
     <div className="mt-2">
-      <div className="flex items-center gap-2 border-b border-line-soft py-2 text-xs text-ink-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line-soft py-2 text-xs text-ink-2">
         {count > 0 ? (
           <>
             <span className="font-medium text-ink">{count} selected</span>
@@ -192,24 +192,55 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
             </button>
           </>
         ) : (
-          <span className="text-ink-3">
+          <span className="hidden text-ink-3 sm:inline">
             Keyboard: <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>x</kbd> select · <kbd>↵</kbd> open · <kbd>a</kbd> assign me ·{" "}
             <kbd>r</kbd> resolve · <kbd>e</kbd> escalate
           </span>
         )}
       </div>
 
-      <table className="w-full table-fixed text-sm">
+      {/* Mobile (<sm): a tappable stacked list. Tables don't fit a phone, and
+          weekend triage is mostly open-and-reply, so selection/keyboard stays
+          desktop-only. The table below takes over from sm up. */}
+      <ul className="divide-y divide-line-soft sm:hidden">
+        {tickets.map((ticket) => (
+          <li key={ticket.id}>
+            <Link href={`/ticket/${ticket.id}`} className="flex items-start gap-3 py-3">
+              <span className="min-w-0 flex-1">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-sm font-medium text-ink">{ticket.subject}</span>
+                  {ticket.ai_resolved && (
+                    <span className="shrink-0 rounded bg-accent-50 px-1.5 py-0.5 text-[10px] font-medium text-accent-700 dark:bg-accent-500/10 dark:text-accent-300">
+                      AI
+                    </span>
+                  )}
+                </span>
+                <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
+                  <span className="tabular-nums">#{ticket.reference}</span>
+                  <span className="min-w-0 truncate">{ticket.requester_name ?? ticket.requester_email}</span>
+                  {awaiting?.[ticket.id] && <WaitingBadge since={awaiting[ticket.id]} />}
+                </span>
+              </span>
+              <span className="flex shrink-0 flex-col items-end gap-1">
+                <StatusBadge status={ticket.status} />
+                <PriorityBadge priority={ticket.priority} />
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+
+      <table className="hidden w-full table-fixed text-sm sm:table">
         <thead>
           <tr className="text-left text-xs uppercase tracking-wide text-ink-3">
             <th className="w-8 py-2"></th>
-            <th className="w-14 py-2 font-medium">#</th>
+            <th className="hidden w-14 py-2 font-medium sm:table-cell">#</th>
             <th className="py-2 font-medium">Subject</th>
-            <th className="w-44 py-2 font-medium">Requester</th>
-            <th className="w-36 py-2 font-medium">Status</th>
-            <th className="w-12 py-2 font-medium">Pri</th>
-            <th className="w-32 py-2 font-medium">Assignee</th>
-            <th className="w-20 py-2 font-medium">Updated</th>
+            <th className="hidden w-44 py-2 font-medium md:table-cell">Requester</th>
+            <th className="w-32 py-2 font-medium sm:w-36">Status</th>
+            <th className="hidden w-12 py-2 font-medium sm:table-cell">Pri</th>
+            <th className="hidden w-32 py-2 font-medium md:table-cell">Assignee</th>
+            <th className="hidden w-20 py-2 font-medium sm:table-cell">Updated</th>
           </tr>
         </thead>
         <tbody>
@@ -232,7 +263,7 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
                   aria-label={`Select ticket ${ticket.reference}`}
                 />
               </td>
-              <td className="py-2.5 text-ink-3">#{ticket.reference}</td>
+              <td className="hidden py-2.5 text-ink-3 sm:table-cell">#{ticket.reference}</td>
               <td className="truncate py-2.5 pr-4">
                 <Link href={`/ticket/${ticket.id}`} className="font-medium text-ink hover:underline">
                   {ticket.subject}
@@ -242,14 +273,14 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
                 )}
                 {awaiting?.[ticket.id] && <WaitingBadge since={awaiting[ticket.id]} />}
               </td>
-              <td className="truncate py-2.5 text-ink-2">{ticket.requester_name ?? ticket.requester_email}</td>
+              <td className="hidden truncate py-2.5 text-ink-2 md:table-cell">{ticket.requester_name ?? ticket.requester_email}</td>
               <td className="py-2.5">
                 <StatusBadge status={ticket.status} />
               </td>
-              <td className="py-2.5">
+              <td className="hidden py-2.5 sm:table-cell">
                 <PriorityBadge priority={ticket.priority} />
               </td>
-              <td className="py-2.5" onClick={(e) => e.stopPropagation()}>
+              <td className="hidden py-2.5 md:table-cell" onClick={(e) => e.stopPropagation()}>
                 {agents && agents.length > 0 ? (
                   <select
                     key={ticket.assignee ?? "none"}
@@ -273,7 +304,7 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
                   <span className="text-ink-2">{ticket.assignee ?? "—"}</span>
                 )}
               </td>
-              <td className="py-2.5 text-ink-3">{timeAgo(ticket.updated_at)}</td>
+              <td className="hidden py-2.5 text-ink-3 sm:table-cell">{timeAgo(ticket.updated_at)}</td>
             </tr>
           ))}
         </tbody>

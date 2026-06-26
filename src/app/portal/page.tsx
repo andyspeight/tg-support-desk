@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { ArrowLeft, ChevronRight, Inbox, Plus } from "lucide-react";
 import { resolvePortalView } from "@/lib/auth";
+import { firstNameFrom } from "@/lib/names";
 import { listRequesterTickets } from "@/lib/db/queries";
 import { AskBox } from "@/components/portal/ask-box";
 import { clientStatus } from "@/lib/portal-status";
 
-const OPEN_STATUSES = new Set(["new", "ai_working", "waiting_on_customer", "escalated"]);
+const OPEN_STATUSES = new Set(["new", "ai_working", "waiting_on_customer", "escalated", "pending"]);
 
 function Stat({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
   return (
@@ -22,7 +23,7 @@ export default async function PortalHome({ searchParams }: { searchParams: Promi
   const { as, from } = await searchParams;
   const view = await resolvePortalView(as);
   const tickets = await listRequesterTickets(view.email);
-  const firstName = view.name?.split(/\s+/)[0] || "there";
+  const firstName = firstNameFrom(view.name);
   const fromParam = from && view.previewing ? `&from=${encodeURIComponent(from)}` : "";
   const suffix = view.previewing ? `?as=${encodeURIComponent(view.email)}${fromParam}` : "";
   const deskHref = from ? `/ticket/${from}` : "/inbox";

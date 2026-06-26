@@ -36,7 +36,7 @@ async function composerInput(
 
 const updateSchema = z.object({
   ticketId: z.string().uuid(),
-  status: z.enum(["new", "ai_working", "waiting_on_customer", "escalated", "resolved", "closed"]).optional(),
+  status: z.enum(["new", "ai_working", "waiting_on_customer", "escalated", "pending", "resolved", "closed"]).optional(),
   priority: z.enum(["p1", "p2", "p3"]).optional(),
   assignee: z.string().optional(),
   tags: z.string().optional(),
@@ -78,8 +78,8 @@ export async function sendReplyAction(formData: FormData): Promise<ComposerResul
     // Zendesk-style "submit as": the composer says what state to leave the
     // ticket in. Default keeps the old behaviour (waiting on the customer).
     const afterRaw = String(formData.get("afterStatus") ?? "");
-    const after: "waiting_on_customer" | "resolved" | "closed" =
-      afterRaw === "resolved" || afterRaw === "closed" ? afterRaw : "waiting_on_customer";
+    const after: "waiting_on_customer" | "resolved" | "closed" | "pending" =
+      afterRaw === "resolved" || afterRaw === "closed" || afterRaw === "pending" ? afterRaw : "waiting_on_customer";
     const statusPatch: Parameters<typeof updateTicket>[1] = { status: after };
     if (after === "resolved" || after === "closed") {
       if (!ticket.resolved_at) statusPatch.resolved_at = new Date().toISOString();

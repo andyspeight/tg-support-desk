@@ -123,3 +123,8 @@ body {
   .tg-fade-up { animation: none; }
   .tg-shimmer::after { animation: none; }
 }
+
+/* Horizontal scroll strips (e.g. inbox view tabs on mobile) without a visible
+   scrollbar — the row scrolls on touch, the chrome stays clean. */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
