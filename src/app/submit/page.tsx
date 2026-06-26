@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 const STEPS = [
   { icon: MessageSquarePlus, title: "Send us the details", body: "The more you tell us, the faster we can help — the assistant will flag anything useful to add." },
   { icon: Search, title: "We take a look", body: "Your request goes straight into the support queue and we investigate." },
-  { icon: Mail, title: "We reply by email", body: "You’ll hear back at the address you give us — usually within a few hours." },
+  { icon: Mail, title: "We reply by email", body: "You’ll hear back at the address you give us." },
 ];
 
 export default function SubmitPage() {
@@ -33,14 +33,7 @@ export default function SubmitPage() {
 
       <main className="mx-auto max-w-5xl px-4 py-10 sm:py-14">
         <div className="max-w-2xl">
-          <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-ink-2">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-400 opacity-75 motion-reduce:hidden" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-accent-400" />
-            </span>
-            Typically replies within a few hours
-          </span>
-          <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">How can we help?</h1>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">How can we help?</h1>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-2 sm:text-base">
             Send us a request and the team will pick it up. We’ll reply by email, so there’s nothing to log in to.
           </p>
