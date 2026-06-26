@@ -99,3 +99,27 @@ body {
 [data-theme="dark"] .tg-prose { color: var(--ink); }
 [data-theme="dark"] .tg-prose blockquote { color: var(--ink-2); }
 [data-theme="dark"] .tg-prose a { color: #34c2de; }
+
+/* Portal micro-motion (travelgenix-taste: motion 4 — CSS only, no framer-motion).
+   Staggered list reveal + a teal shimmer for the assistant's thinking state. */
+@keyframes tg-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.tg-fade-up { animation: tg-fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@keyframes tg-shimmer { 100% { transform: translateX(100%); } }
+.tg-shimmer { position: relative; overflow: hidden; }
+.tg-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(0, 180, 216, 0.14), transparent);
+  animation: tg-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-fade-up { animation: none; }
+  .tg-shimmer::after { animation: none; }
+}
