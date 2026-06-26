@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireClient } from "@/lib/auth";
-import { askKb, type AskResult } from "@/lib/ai/copilot";
+import { askKb, assistTicketDraft, type AskResult, type DraftAssist } from "@/lib/ai/copilot";
 import {
   addMessage,
   audit,
@@ -47,6 +47,32 @@ export async function askAction(question: string): Promise<AskResult> {
   }
   await audit("human", session.email, "portal.ask");
   return askKb(String(question ?? ""));
+}
+
+const assistSchema = z.object({
+  subject: z.string().max(200).optional(),
+  message: z.string().max(8000).optional(),
+});
+
+/** Advisory pre-submit help for the portal's raise-a-ticket flow: a KB article
+ *  that might already solve it + any missing detail. Rate-limited per client,
+ *  never blocks a submission, fails open. */
+export async function assistDraftAction(input: unknown): Promise<DraftAssist> {
+  const session = await requireClient();
+  const parsed = assistSchema.safeParse(input);
+  if (!parsed.success) return { suggestions: [], article: null };
+  const subject = (parsed.data.subject ?? "").trim();
+  const message = (parsed.data.message ?? "").trim();
+  if (message.length < 15) return { suggestions: [], article: null };
+  if ((await recentActionCount(session.email, "portal.assist", 60)) >= 20) {
+    return { suggestions: [], article: null };
+  }
+  await audit("human", session.email, "portal.assist");
+  try {
+    return await assistTicketDraft(subject, message);
+  } catch {
+    return { suggestions: [], article: null };
+  }
 }
 
 const raiseSchema = z.object({
