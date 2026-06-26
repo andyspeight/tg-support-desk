@@ -1,14 +1,14 @@
 # Gmail setup for TG Support Desk
 
 **For:** whoever administers the Travelgenix Google Workspace / Google Cloud
-**Goal:** let the support desk read new mail arriving at `support@…` and send replies from it.
+**Goal:** let the support desk read new mail arriving at `help@travelgenix.io` and send replies from it.
 **Effort:** ~15 minutes, mostly clicking. No code.
 
 ---
 
 ## What this enables
 
-The desk connects to the **one `support@` mailbox** through the Gmail API:
+The desk connects to the **one `help@travelgenix.io` mailbox** through the Gmail API:
 
 - it **reads** new incoming mail (to turn each into a ticket), and
 - it **sends** replies back out from the same address.
@@ -19,22 +19,23 @@ other mailbox** in the Workspace.
 
 ## How it authenticates
 
-Standard **OAuth 2.0 refresh-token flow**, authorised once against the `support@`
-mailbox. You create a Google Cloud OAuth client and authorise it as `support@`;
+Standard **OAuth 2.0 refresh-token flow**, authorised once against the
+`help@travelgenix.io` mailbox. You create a Google Cloud OAuth client and authorise it as `help@travelgenix.io`;
 that produces **three secret values** we drop into the app's hosting. The token
 is bound to that one mailbox and is revocable at any time.
 
 > ⚠️ Please use **this** OAuth flow — **not** a service account / domain-wide
 > delegation. The app is built specifically for the refresh-token flow.
 
-## What we need back from you (3 values + 1 confirmation)
+## What we need back from you (3 secret values)
+
+The mailbox is confirmed: **`help@travelgenix.io`**. We need the three OAuth values:
 
 | Value | Looks like |
 |---|---|
 | **Client ID** | `…apps.googleusercontent.com` |
 | **Client secret** | `GOCSPX-…` |
 | **Refresh token** | `1//…` |
-| **The exact address** | e.g. `support@travelgenix.io` — confirm which |
 
 Send these **securely** (a password manager share / 1Password / not plain email).
 
@@ -65,7 +66,7 @@ step 3). https://console.cloud.google.com → project picker → New project if 
 - Create → copy the **Client ID** and **Client secret**. *(Values 1 and 2.)*
 
 ### 5. Mint the refresh token (Google's OAuth Playground — no code)
-1. In a browser **signed in as the `support@` mailbox** (an incognito window is
+1. In a browser **signed in as `help@travelgenix.io`** (an incognito window is
    easiest), go to **https://developers.google.com/oauthplayground**.
 2. Click the **gear icon** (top-right) → tick **"Use your own OAuth credentials"**
    → paste the **Client ID** and **Client secret** from step 4.
@@ -74,7 +75,7 @@ step 3). https://console.cloud.google.com → project picker → New project if 
    ```
    https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send
    ```
-4. Choose the **`support@`** account → **Allow**.
+4. Choose the **`help@travelgenix.io`** account → **Allow**.
 5. Back in the Playground, click **"Exchange authorization code for tokens"**.
 6. Copy the **Refresh token** (starts `1//…`). *(Value 3.)*
 
@@ -83,8 +84,8 @@ step 3). https://console.cloud.google.com → project picker → New project if 
 > redo step 5.
 
 ### 6. Hand the four items back
-Client ID, Client secret, Refresh token, and the confirmed `support@` address —
-shared securely. We do the rest.
+Client ID, Client secret, and Refresh token (the `help@travelgenix.io` address is
+already confirmed) — shared securely. We do the rest.
 
 ---
 
@@ -99,6 +100,10 @@ shared securely. We do the rest.
   Security → API controls → App access control): because this is a *first-party
   Internal* app in your own Cloud project it's generally covered, but you may need
   to add its Client ID as **Trusted**.
+- **Deliverability:** so replies from `help@travelgenix.io` don't land in spam,
+  make sure `travelgenix.io` has SPF + DKIM set up for Google Workspace (Admin
+  console → Apps → Google Workspace → Gmail → Authenticate email). Sending goes
+  through Google, so this is the same setup as normal Workspace mail.
 
 ---
 
