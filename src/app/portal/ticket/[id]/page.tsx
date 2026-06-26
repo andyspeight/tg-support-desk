@@ -51,10 +51,18 @@ export default async function PortalTicketPage({
         {readOnly ? "Their tickets" : "Your tickets"}
       </Link>
 
-      {readOnly && (
+      {view.isAgent && (
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
           <span>
-            <span className="font-medium">Agent preview</span> — viewing as {view.email}. Read-only.
+            {readOnly ? (
+              <>
+                <span className="font-medium">Agent preview</span> — viewing as {view.email}. Read-only.
+              </>
+            ) : (
+              <>
+                <span className="font-medium">Support desk</span> — you’re viewing the client support portal.
+              </>
+            )}
           </span>
           <Link
             href={deskHref}
