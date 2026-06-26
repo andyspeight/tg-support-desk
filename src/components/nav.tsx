@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   BookOpen,
+  House,
   Inbox,
   LayoutDashboard,
   Search,
@@ -14,6 +15,7 @@ import {
 import { NotificationsNavItem } from "@/components/notifications-nav";
 
 const LINKS: { href: string; label: string; icon: LucideIcon; ownerOnly?: boolean }[] = [
+  { href: "/home", label: "My day", icon: House },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, ownerOnly: true },
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/search", label: "Search", icon: Search },

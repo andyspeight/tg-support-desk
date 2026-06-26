@@ -274,6 +274,40 @@ export async function listClientTickets(opts: {
   return unwrap(await scoped, "listClientTickets");
 }
 
+/** Personal scorecard for an agent's "My day" home: tickets they resolved today
+ *  and their CSAT across tickets assigned to them. */
+export async function getAgentScorecard(
+  agentEmail: string,
+): Promise<{ resolvedToday: number; csatAvg: number | null; csatCount: number }> {
+  const client = db();
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const [resolved, csat] = await Promise.all([
+    client
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", env.tenantId)
+      .eq("assignee", agentEmail)
+      .in("status", ["resolved", "closed"])
+      .gte("resolved_at", startOfDay.toISOString()),
+    client
+      .from("tickets")
+      .select("csat_score")
+      .eq("tenant_id", env.tenantId)
+      .eq("assignee", agentEmail)
+      .not("csat_score", "is", null)
+      .limit(500),
+  ]);
+  if (resolved.error) throw new Error(`getAgentScorecard(resolved): ${resolved.error.message}`);
+  if (csat.error) throw new Error(`getAgentScorecard(csat): ${csat.error.message}`);
+  const scores = (csat.data ?? []).map((r) => r.csat_score).filter((s): s is number => typeof s === "number");
+  return {
+    resolvedToday: resolved.count ?? 0,
+    csatAvg: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null,
+    csatCount: scores.length,
+  };
+}
+
 /** Tickets awaiting an agent/AI reply (latest message is the customer's), with
  *  the time we've been waiting since. Powers the inbox badge + stale-ticket cron. */
 export async function awaitingResponse(): Promise<{ ticketId: string; waitingSince: string }[]> {
