@@ -122,6 +122,18 @@ export const env = {
   get tgAuthSessionUrl() {
     return optional("TG_AUTH_SESSION_URL");
   },
+  // Cross-domain SSO bridge — lets the desk run on help.travelgenix.io even
+  // though the tg_session cookie is .travelify.io-scoped. All optional; the
+  // bridge is dormant until AUTH_SESSION_SECRET + SSO_BRIDGE_URL are set.
+  get authSessionSecret() {
+    return optional("AUTH_SESSION_SECRET"); // HMAC key for handoff + desk-session tokens
+  },
+  get ssoBridgeUrl() {
+    return optional("SSO_BRIDGE_URL").replace(/\/$/, ""); // *.travelify.io host of this app, e.g. https://auth.travelify.io
+  },
+  get ssoLoginUrl() {
+    return optional("SSO_LOGIN_URL"); // id.travelify.io login page for users with no session yet
+  },
   get agentEmails() {
     return csv("AGENT_EMAILS").map((e) => e.toLowerCase());
   },
