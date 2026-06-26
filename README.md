@@ -13,7 +13,7 @@ and decisions live there. Live project state is tracked in the Projects Airtable
 - Supabase Postgres (`tg-support-desk`, eu-west-2) — tickets, messages, KB with pgvector, RLS everywhere
 - Airtable Clients base — read-only source of truth for client identity
 - Anthropic API (server-side only) — resolution agent on `claude-fable-5`; Voyage AI embeddings
-- Gmail API polling on the `help@travelgenix.io` Workspace mailbox (every minute via Vercel cron)
+- Gmail API polling on the `help@agendas.group` Workspace mailbox (every minute via Vercel cron)
 - Auth: Travelgenix SSO (`tg_session` cookie) + `AGENT_EMAILS` seat allowlist
 
 ## Development
