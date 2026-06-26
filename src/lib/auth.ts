@@ -13,8 +13,11 @@ export type Session = {
  * auth-session endpoint (Luna Chat pattern) — no password system here.
  * Agent seats come from the AGENT_EMAILS env allowlist for Phase 1.
  *
- * NOTE: the response shape `{ user: { email, name } }` is the assumed seam;
- * align it with the live /api/auth-session contract when wiring SSO up.
+ * Validation endpoint (set TG_AUTH_SESSION_URL): id.travelify.io/api/auth/me —
+ * the Luna Chat pattern. It returns { ok, user: { email, name? }, client } when
+ * the request carries a valid tg_session cookie. This only works on a
+ * *.travelify.io host, where the browser sends that cookie; a non-travelify.io
+ * domain needs the cross-domain token bridge instead.
  */
 export async function getSession(): Promise<Session | null> {
   if (env.authDevBypass) {
@@ -32,12 +35,14 @@ export async function getSession(): Promise<Session | null> {
       signal: AbortSignal.timeout(8000), // SSO check gates every request — fail fast, never hang
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as { user?: { email?: string; name?: string } };
-    const email = data.user?.email?.toLowerCase();
-    if (!email) return null;
+    const data = (await res.json().catch(() => null)) as
+      | { ok?: boolean; user?: { email?: string; name?: string } }
+      | null;
+    if (!data?.ok || !data.user?.email) return null; // id returns { ok:false } when invalid
+    const email = data.user.email.toLowerCase();
     return {
       email,
-      name: data.user?.name ?? email,
+      name: data.user.name ?? email,
       isAgent: env.agentEmails.includes(email),
     };
   } catch {
