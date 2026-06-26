@@ -86,3 +86,21 @@ export async function requireClient(): Promise<Session> {
   if (!session) throw new Error("Not authorised: sign in required");
   return session;
 }
+
+/** Resolve whose support portal to render. An agent may preview a client's
+ *  portal read-only via ?as=<email> — so they can see exactly what the client
+ *  sees — but everyone else (and any non-agent passing ?as=) only ever gets
+ *  their own. Fails closed to self. */
+export async function resolvePortalView(asEmail?: string): Promise<{
+  email: string;
+  name: string;
+  previewing: boolean;
+}> {
+  const session = await getSession();
+  if (!session) throw new Error("Not authorised: sign in required");
+  const as = asEmail?.trim().toLowerCase();
+  if (as && session.isAgent && as !== session.email.toLowerCase()) {
+    return { email: as, name: as, previewing: true };
+  }
+  return { email: session.email, name: session.name, previewing: false };
+}

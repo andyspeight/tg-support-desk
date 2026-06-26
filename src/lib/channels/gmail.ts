@@ -73,12 +73,15 @@ export async function buildReplyMime(input: {
   subject: string;
   text: string;
   html?: string;
+  fromName?: string;
   attachments?: OutboundAttachment[];
   inReplyTo?: string | null;
   references?: string[];
 }): Promise<Buffer> {
   const mail = new MailComposer({
-    from: { name: env.supportFromName, address: env.supportEmail },
+    // Display name shows the responding agent when we have one, so the customer
+    // sees a person; falls back to the team name (AI replies, unattributed sends).
+    from: { name: input.fromName || env.supportFromName, address: env.supportEmail },
     to: input.to,
     cc: input.cc && input.cc.length ? input.cc : undefined,
     subject: input.subject,

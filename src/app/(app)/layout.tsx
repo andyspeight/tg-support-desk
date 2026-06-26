@@ -27,8 +27,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="mt-auto border-t border-line-soft p-2">
           <ThemeToggle />
         </div>
-        <div className="truncate border-t border-line-soft px-4 py-3 text-xs text-ink-2">
-          {session.email}
+        <div className="border-t border-line-soft px-4 py-3">
+          <p className="truncate text-xs font-medium text-ink">{session.name}</p>
+          {session.name.toLowerCase() !== session.email.toLowerCase() && (
+            <p className="truncate text-[11px] text-ink-3">{session.email}</p>
+          )}
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto">{children}</main>

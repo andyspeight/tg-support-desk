@@ -76,6 +76,25 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
     [selected, tickets, focus, bulkUpdate],
   );
 
+  // Inline per-row assignment — no need to open the ticket. Reuses the same
+  // single-id bulk action (which notifies the new owner).
+  const assign = useCallback(
+    (id: string, value: string) => {
+      const fd = new FormData();
+      fd.set("ids", id);
+      if (value) {
+        fd.set("op", "assign");
+        fd.set("value", value);
+      } else {
+        fd.set("op", "unassign");
+      }
+      startTransition(async () => {
+        await bulkUpdate(fd);
+      });
+    },
+    [bulkUpdate],
+  );
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement;
@@ -230,7 +249,30 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
               <td className="py-2.5">
                 <PriorityBadge priority={ticket.priority} />
               </td>
-              <td className="truncate py-2.5 text-ink-2">{ticket.assignee ?? "—"}</td>
+              <td className="py-2.5" onClick={(e) => e.stopPropagation()}>
+                {agents && agents.length > 0 ? (
+                  <select
+                    key={ticket.assignee ?? "none"}
+                    defaultValue={ticket.assignee ?? ""}
+                    disabled={isPending}
+                    onChange={(e) => assign(ticket.id, e.target.value)}
+                    aria-label={`Assign ticket ${ticket.reference}`}
+                    className="w-full max-w-[8rem] truncate rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-ink-2 hover:border-line focus:border-line focus:outline-none disabled:opacity-50"
+                  >
+                    <option value="">Unassigned</option>
+                    {ticket.assignee && !agents.includes(ticket.assignee) && (
+                      <option value={ticket.assignee}>{ticket.assignee.split("@")[0]}</option>
+                    )}
+                    {agents.map((a) => (
+                      <option key={a} value={a}>
+                        {a.split("@")[0]}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-ink-2">{ticket.assignee ?? "—"}</span>
+                )}
+              </td>
               <td className="py-2.5 text-ink-3">{timeAgo(ticket.updated_at)}</td>
             </tr>
           ))}

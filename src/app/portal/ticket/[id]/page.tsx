@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Paperclip } from "lucide-react";
-import { requireClient } from "@/lib/auth";
+import { resolvePortalView } from "@/lib/auth";
 import { getRequesterTicket } from "@/lib/db/queries";
 import { replyAction, rateAction } from "@/app/portal/actions";
 import { SubmitButton } from "@/components/portal/submit-button";
@@ -9,23 +9,37 @@ import { AutoRefresh } from "@/components/portal/auto-refresh";
 import { clientStatus } from "@/lib/portal-status";
 import type { StoredAttachment } from "@/lib/channels/attachment-rules";
 
-export default async function PortalTicketPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PortalTicketPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ as?: string }>;
+}) {
   const { id } = await params;
-  const session = await requireClient();
-  const data = await getRequesterTicket(id, session.email);
+  const { as } = await searchParams;
+  const view = await resolvePortalView(as);
+  const data = await getRequesterTicket(id, view.email);
   if (!data) notFound();
 
   const { ticket, messages } = data;
   const s = clientStatus(ticket.status);
   const isClosed = ticket.status === "closed";
-  const canRate = ticket.status === "resolved" && !ticket.csat_score;
+  const readOnly = view.previewing;
+  const canRate = ticket.status === "resolved" && !ticket.csat_score && !readOnly;
+  const backHref = readOnly ? `/portal?as=${encodeURIComponent(view.email)}` : "/portal";
 
   return (
     <div className="mx-auto max-w-2xl">
       {!isClosed && <AutoRefresh />}
-      <Link href="/portal" className="text-xs text-ink-3 hover:underline">
-        ← Your tickets
+      <Link href={backHref} className="text-xs text-ink-3 hover:underline">
+        ← {readOnly ? "Their tickets" : "Your tickets"}
       </Link>
+      {readOnly && (
+        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
+          <span className="font-medium">Agent preview</span> — viewing as {view.email}. Read-only.
+        </div>
+      )}
 
       <div className="mt-2 flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -101,7 +115,7 @@ export default async function PortalTicketPage({ params }: { params: Promise<{ i
         </p>
       ) : null}
 
-      {!isClosed ? (
+      {readOnly ? null : !isClosed ? (
         <form action={replyAction} className="mt-6 space-y-2">
           <input type="hidden" name="ticketId" value={ticket.id} />
           <textarea

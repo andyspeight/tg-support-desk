@@ -157,7 +157,7 @@ async function latestCustomerThreadMeta(ticketId: string): Promise<{ messageId: 
 export async function sendTicketReply(
   ticket: Ticket,
   body: string,
-  opts: { role: "ai" | "human"; author: string; html?: string; attachments?: OutboundFile[] },
+  opts: { role: "ai" | "human"; author: string; html?: string; fromName?: string; attachments?: OutboundFile[] },
 ): Promise<{ message: Message; delivery: ReplyDelivery }> {
   const plan = replyOutbound(ticket.channel, env.gmailConfigured);
 
@@ -210,6 +210,7 @@ export async function sendTicketReply(
       subject,
       text: body,
       html: opts.html,
+      fromName: opts.fromName,
       attachments: opts.attachments,
       inReplyTo: messageId,
       references: refs,

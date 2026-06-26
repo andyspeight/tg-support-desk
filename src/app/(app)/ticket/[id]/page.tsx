@@ -7,14 +7,15 @@ import { getClientById } from "@/lib/integrations/airtable-clients";
 import { env } from "@/lib/env";
 import { sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
-import { AlertTriangle, ArrowLeft, Eye, EyeOff, Paperclip } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Eye, EyeOff, LayoutDashboard, Paperclip, Users } from "lucide-react";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
 import { ClientPanel } from "@/components/client-panel";
 import { SupportHistoryPanel } from "@/components/support-history-panel";
 import { RunAiButton } from "@/components/run-ai-button";
-import { addNoteAction, mergeTicketAction, runAiAction, sendReplyAction, snoozeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
+import { TicketPresence } from "@/components/ticket-presence";
+import { addNoteAction, mergeTicketAction, presenceHeartbeatAction, runAiAction, sendReplyAction, snoozeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
 import {
   copilotDraftAction,
   copilotRephraseAction,
@@ -117,9 +118,19 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     .reverse()
     .find((m) => m.role === "internal_note" && (m.channel_meta as { kind?: string })?.kind === "handover");
 
+  // Customer shortcuts: all of this client's tickets (agent view), and the
+  // client's own support portal as they see it (agent read-only preview).
+  const clientTicketsHref = `/clients?${new URLSearchParams({
+    ...(ticket.client_id ? { client: ticket.client_id } : {}),
+    email: ticket.requester_email,
+  }).toString()}`;
+  const clientPortalHref = `/portal?as=${encodeURIComponent(ticket.requester_email)}`;
+
   return (
-    <div className="flex h-full">
-      <RefreshPoller />
+    <div className="flex h-full flex-col">
+      <TicketPresence ticketId={ticket.id} heartbeat={presenceHeartbeatAction} />
+      <div className="flex min-h-0 flex-1">
+        <RefreshPoller />
 
       {/* Conversation column */}
       <div className="flex min-w-0 flex-1 flex-col">
@@ -138,6 +149,20 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             {ticket.requester_name ? `${ticket.requester_name} · ` : ""}
             {ticket.requester_email} · opened {formatDateTime(ticket.created_at)}
           </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Link
+              href={clientTicketsHref}
+              className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink-2 hover:bg-surface-2 hover:text-ink"
+            >
+              <Users className="h-3.5 w-3.5" strokeWidth={1.75} /> All client tickets
+            </Link>
+            <Link
+              href={clientPortalHref}
+              className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink-2 hover:bg-surface-2 hover:text-ink"
+            >
+              <LayoutDashboard className="h-3.5 w-3.5" strokeWidth={1.75} /> Client&apos;s dashboard
+            </Link>
+          </div>
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
@@ -352,6 +377,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           {ticket.cc_emails.length > 0 && <p>CC: {ticket.cc_emails.join(", ")}</p>}
         </div>
       </aside>
+      </div>
     </div>
   );
 }
