@@ -95,12 +95,13 @@ export async function resolvePortalView(asEmail?: string): Promise<{
   email: string;
   name: string;
   previewing: boolean;
+  isAgent: boolean;
 }> {
   const session = await getSession();
   if (!session) throw new Error("Not authorised: sign in required");
   const as = asEmail?.trim().toLowerCase();
   if (as && session.isAgent && as !== session.email.toLowerCase()) {
-    return { email: as, name: as, previewing: true };
+    return { email: as, name: as, previewing: true, isAgent: true };
   }
-  return { email: session.email, name: session.name, previewing: false };
+  return { email: session.email, name: session.name, previewing: false, isAgent: session.isAgent };
 }

@@ -33,11 +33,19 @@ export default async function PortalHome({ searchParams }: { searchParams: Promi
 
   return (
     <div className="space-y-8 sm:space-y-10">
-      {view.previewing && (
+      {view.isAgent && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
           <span>
-            <span className="font-medium">Agent preview.</span> The support portal as{" "}
-            <span className="font-medium">{view.email}</span> sees it — read-only.
+            {view.previewing ? (
+              <>
+                <span className="font-medium">Agent preview.</span> The support portal as{" "}
+                <span className="font-medium">{view.email}</span> sees it — read-only.
+              </>
+            ) : (
+              <>
+                <span className="font-medium">Support desk.</span> You’re viewing the client support portal.
+              </>
+            )}
           </span>
           <Link
             href={deskHref}
