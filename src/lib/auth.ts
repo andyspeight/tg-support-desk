@@ -53,7 +53,7 @@ export async function getSession(): Promise<Session | null> {
   //    signed, verified locally with no network round-trip.
   const desk = store.get("desk_session")?.value;
   if (desk && env.authSessionSecret) {
-    const claims = verifyToken(desk, env.authSessionSecret, Date.now());
+    const claims = verifyToken(desk, env.authSessionSecret, Date.now(), "session");
     if (claims) {
       return { email: claims.email, name: claims.name, isAgent: env.agentEmails.includes(claims.email) };
     }
