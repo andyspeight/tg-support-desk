@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Paperclip } from "lucide-react";
+import { ArrowLeft, Paperclip } from "lucide-react";
 import { resolvePortalView } from "@/lib/auth";
 import { getRequesterTicket } from "@/lib/db/queries";
 import { replyAction, rateAction } from "@/app/portal/actions";
@@ -8,6 +8,16 @@ import { SubmitButton } from "@/components/portal/submit-button";
 import { AutoRefresh } from "@/components/portal/auto-refresh";
 import { clientStatus } from "@/lib/portal-status";
 import type { StoredAttachment } from "@/lib/channels/attachment-rules";
+
+function initialsOf(value: string): string {
+  return (value.match(/\b\w/g) ?? []).slice(0, 2).join("").toUpperCase() || "Y";
+}
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+}
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
 
 export default async function PortalTicketPage({
   params,
@@ -28,62 +38,86 @@ export default async function PortalTicketPage({
   const readOnly = view.previewing;
   const canRate = ticket.status === "resolved" && !ticket.csat_score && !readOnly;
   const backHref = readOnly ? `/portal?as=${encodeURIComponent(view.email)}` : "/portal";
+  const custInitials = initialsOf(ticket.requester_name || ticket.requester_email);
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-3xl">
       {!isClosed && <AutoRefresh />}
-      <Link href={backHref} className="text-xs text-ink-3 hover:underline">
-        ← {readOnly ? "Their tickets" : "Your tickets"}
+      <Link href={backHref} className="inline-flex items-center gap-1 text-xs text-ink-3 hover:text-ink">
+        <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
+        {readOnly ? "Their tickets" : "Your tickets"}
       </Link>
+
       {readOnly && (
         <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
           <span className="font-medium">Agent preview</span> — viewing as {view.email}. Read-only.
         </div>
       )}
 
-      <div className="mt-2 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold">{ticket.subject}</h1>
-          <p className="text-xs text-ink-3">#{ticket.reference}</p>
+      {/* Ticket header */}
+      <div className="mt-3 rounded-2xl border border-line bg-surface p-5 shadow-[0_16px_36px_-24px_rgba(27,43,91,0.3)]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold leading-snug">{ticket.subject}</h1>
+            <p className="mt-1 text-xs tabular-nums text-ink-3">
+              #{ticket.reference} · opened {fmtDate(ticket.created_at)}
+            </p>
+          </div>
+          <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${s.tone}`}>{s.label}</span>
         </div>
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${s.tone}`}>{s.label}</span>
       </div>
 
-      <div className="mt-5 space-y-3">
+      {/* Conversation */}
+      <div className="mt-6 space-y-4">
         {messages.map((m) => {
           const mine = m.role === "customer";
           const atts = ((m.attachments as unknown as StoredAttachment[] | null) ?? [])
             .map((a, i) => ({ a, i }))
             .filter((x) => x.a.stored);
           return (
-            <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+            <div key={m.id} className={`flex items-end gap-2.5 ${mine ? "flex-row-reverse" : ""}`}>
               <div
-                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                  mine ? "bg-brand-600 text-white" : "border border-line-soft bg-surface text-ink"
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                  mine ? "bg-surface-2 text-ink-2" : "bg-brand-600 text-white"
                 }`}
+                aria-hidden
               >
-                <p className={`mb-1 text-xs font-medium ${mine ? "text-white/70" : "text-ink-3"}`}>
-                  {mine ? "You" : "Travelgenix Support"}
-                </p>
-                <p className="whitespace-pre-wrap">{m.body_text}</p>
-                {atts.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {atts.map(({ a, i }) => (
-                      <a
-                        key={i}
-                        href={`/api/attachments/${m.id}/${i}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
-                          mine ? "bg-white/15 text-white hover:bg-white/25" : "border border-line bg-canvas text-ink-2 hover:bg-surface-2"
-                        }`}
-                      >
-                        <Paperclip className="h-3 w-3" strokeWidth={1.75} />
-                        {a.filename}
-                      </a>
-                    ))}
-                  </div>
-                )}
+                {mine ? custInitials : "T"}
+              </div>
+              <div className="min-w-0 max-w-[82%]">
+                <div className={`mb-1 flex items-center gap-2 text-[11px] text-ink-3 ${mine ? "flex-row-reverse" : ""}`}>
+                  <span className="font-medium text-ink-2">{mine ? "You" : "Travelgenix Support"}</span>
+                  <span className="tabular-nums">{fmtTime(m.created_at)}</span>
+                </div>
+                <div
+                  className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                    mine
+                      ? "rounded-br-md bg-brand-600 text-white"
+                      : "rounded-bl-md border border-line-soft bg-surface text-ink"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap">{m.body_text}</p>
+                  {atts.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {atts.map(({ a, i }) => (
+                        <a
+                          key={i}
+                          href={`/api/attachments/${m.id}/${i}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
+                            mine
+                              ? "bg-white/15 text-white hover:bg-white/25"
+                              : "border border-line bg-canvas text-ink-2 hover:bg-surface-2"
+                          }`}
+                        >
+                          <Paperclip className="h-3 w-3" strokeWidth={1.75} />
+                          {a.filename}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -91,32 +125,33 @@ export default async function PortalTicketPage({
       </div>
 
       {canRate && (
-        <form action={rateAction} className="mt-6 rounded-lg border border-line-soft bg-surface p-4">
+        <form action={rateAction} className="mt-6 rounded-2xl border border-line bg-surface p-5 text-center shadow-sm">
           <input type="hidden" name="ticketId" value={ticket.id} />
           <p className="text-sm font-medium">How did we do?</p>
-          <div className="mt-2 flex gap-2">
+          <p className="mt-0.5 text-xs text-ink-3">1 = poor · 5 = great</p>
+          <div className="mt-3 flex justify-center gap-2">
             {[1, 2, 3, 4, 5].map((n) => (
               <button
                 key={n}
                 name="score"
                 value={n}
-                className="h-9 w-9 rounded-md border border-line text-sm font-medium hover:border-brand-600 hover:bg-brand-50 dark:hover:bg-brand-500/15"
+                aria-label={`Rate ${n} out of 5`}
+                className="h-10 w-10 rounded-xl border border-line text-sm font-semibold text-ink-2 transition hover:border-brand-600 hover:bg-brand-50 hover:text-brand-700 active:translate-y-px dark:hover:bg-brand-500/15 dark:hover:text-brand-200"
               >
                 {n}
               </button>
             ))}
           </div>
-          <p className="mt-1 text-xs text-ink-3">1 = poor · 5 = great</p>
         </form>
       )}
       {ticket.csat_score ? (
-        <p className="mt-6 rounded-lg border border-line-soft bg-surface px-4 py-3 text-sm text-ink-2">
+        <p className="mt-6 rounded-2xl border border-line bg-surface px-4 py-3 text-center text-sm text-ink-2">
           Thanks for rating this {ticket.csat_score}/5.
         </p>
       ) : null}
 
       {readOnly ? null : !isClosed ? (
-        <form action={replyAction} className="mt-6 space-y-2">
+        <form action={replyAction} className="mt-6 space-y-2.5 rounded-2xl border border-line bg-surface p-4 shadow-sm">
           <input type="hidden" name="ticketId" value={ticket.id} />
           <textarea
             name="body"
@@ -124,7 +159,7 @@ export default async function PortalTicketPage({
             rows={4}
             maxLength={8000}
             placeholder="Add a reply…"
-            className="w-full resize-y rounded-md border border-line bg-surface p-3 text-sm placeholder:text-ink-3 focus:border-ink-3 focus:outline-none"
+            className="w-full resize-y rounded-xl border border-line bg-canvas p-3 text-sm leading-relaxed placeholder:text-ink-3 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20"
           />
           <div className="flex items-center justify-between gap-3">
             <input
@@ -138,7 +173,13 @@ export default async function PortalTicketPage({
           </div>
         </form>
       ) : (
-        <p className="mt-6 text-center text-xs text-ink-3">This ticket is closed. Raise a new one if you need more help.</p>
+        <p className="mt-6 rounded-2xl border border-dashed border-line bg-surface px-4 py-5 text-center text-xs text-ink-3">
+          This ticket is closed.{" "}
+          <Link href="/portal/new" className="font-medium text-brand-600 hover:underline dark:text-brand-300">
+            Raise a new one
+          </Link>{" "}
+          if you need more help.
+        </p>
       )}
     </div>
   );
