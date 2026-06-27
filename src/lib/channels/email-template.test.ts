@@ -18,10 +18,10 @@ describe("textToEmailHtml", () => {
   });
 
   it("linkifies bare URLs without swallowing trailing punctuation", () => {
-    const html = textToEmailHtml("Rate us: https://help.travelgenix.io/csat/abc123.");
-    expect(html).toContain('<a href="https://help.travelgenix.io/csat/abc123"');
+    const html = textToEmailHtml("More detail here: https://help.travelgenix.io/articles/deeplinks.");
+    expect(html).toContain('<a href="https://help.travelgenix.io/articles/deeplinks"');
     // the trailing full stop stays outside the link
-    expect(html).toContain("abc123</a>.");
+    expect(html).toContain("deeplinks</a>.");
   });
 });
 

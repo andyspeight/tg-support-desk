@@ -19,7 +19,6 @@ import { notify, ticketRecipients } from "@/lib/db/notifications";
 import type { Message, Ticket } from "@/lib/db/types";
 import { getClientById, matchClientByEmail, summariseClient } from "@/lib/integrations/airtable-clients";
 import { sendTicketReply } from "@/lib/channels/email";
-import { csatSurveyUrl } from "@/lib/csat";
 import { env } from "@/lib/env";
 
 // The resolution pipeline: every inbound customer message ends in exactly one
@@ -274,12 +273,8 @@ async function applyOutcome(
 
   if (outcome.kind === "answered" || outcome.kind === "clarified") {
     // Strip any "Want to know more?" link the agent didn't actually retrieve
-    // (no hallucinated sources), then invite a one-tap CSAT rating on a
-    // resolving answer (when a public base URL + signing secret are configured).
-    let body = sanitiseReplyLinks(outcome.reply, retrievedLinks);
-    if (outcome.kind === "answered" && env.appBaseUrl && env.csatSecret) {
-      body += `\n\nHow did we do? Rate this support in one tap: ${csatSurveyUrl(env.appBaseUrl, ticket.id, env.csatSecret)}`;
-    }
+    // (no hallucinated sources). We don't append a CSAT "rate us" prompt.
+    const body = sanitiseReplyLinks(outcome.reply, retrievedLinks);
     await sendTicketReply(ticket, body, { role: "ai", author: AI_ACTOR });
     sentBody = body;
     await updateTicket(ticket.id, {
