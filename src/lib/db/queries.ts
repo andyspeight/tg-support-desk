@@ -623,6 +623,59 @@ export async function getKbArticle(id: string): Promise<KbArticle | null> {
   return data;
 }
 
+/** A published article for the public help page. Returns null for any
+ *  missing/draft/internal article so unpublished knowledge can never leak. */
+export async function getPublishedKbArticle(id: string): Promise<KbArticle | null> {
+  const { data, error } = await db()
+    .from("kb_articles")
+    .select()
+    .eq("id", id)
+    .eq("tenant_id", env.tenantId)
+    .eq("status", "published")
+    .maybeSingle();
+  if (error) throw new Error(`getPublishedKbArticle: ${error.message}`);
+  return data;
+}
+
+export type KbPickerItem = { id: string; title: string; source_url: string | null };
+
+/** Slim list of published articles for the reply-box "Link KB article" picker —
+ *  title + id only, no bodies. */
+export async function listPublishedKbForPicker(): Promise<KbPickerItem[]> {
+  const { data, error } = await db()
+    .from("kb_articles")
+    .select("id, title, source_url")
+    .eq("tenant_id", env.tenantId)
+    .eq("status", "published")
+    .order("title", { ascending: true })
+    .limit(500);
+  if (error) throw new Error(`listPublishedKbForPicker: ${error.message}`);
+  return data ?? [];
+}
+
+/** Published articles the AI already surfaced on this ticket (free, accurate
+ *  suggestions for the agent — no fresh embedding call). Most-relevant first:
+ *  cited articles ahead of merely-retrieved ones. */
+export async function getSurfacedKbForTicket(ticketId: string): Promise<KbPickerItem[]> {
+  const { data: usage, error } = await db()
+    .from("kb_article_usage")
+    .select("article_id, cited")
+    .eq("tenant_id", env.tenantId)
+    .eq("ticket_id", ticketId);
+  if (error) throw new Error(`getSurfacedKbForTicket: ${error.message}`);
+  const rows = usage ?? [];
+  if (rows.length === 0) return [];
+
+  const cited = new Map(rows.map((r) => [r.article_id, r.cited]));
+  const { data: articles, error: aErr } = await db()
+    .from("kb_articles")
+    .select("id, title, source_url")
+    .in("id", [...cited.keys()])
+    .eq("status", "published");
+  if (aErr) throw new Error(`getSurfacedKbForTicket articles: ${aErr.message}`);
+  return (articles ?? []).sort((a, b) => Number(cited.get(b.id)) - Number(cited.get(a.id)));
+}
+
 export async function createKbArticle(input: Omit<TablesInsert<"kb_articles">, "tenant_id">): Promise<KbArticle> {
   const result = await db()
     .from("kb_articles")
