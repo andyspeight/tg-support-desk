@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getClientSupportHistory, getTicketSla, getTicketWithMessages, listCannedResponses, searchPastTickets } from "@/lib/db/queries";
+import { getClientSupportHistory, getSurfacedKbForTicket, getTicketSla, getTicketWithMessages, listCannedResponses, listPublishedKbForPicker, searchPastTickets } from "@/lib/db/queries";
+import { kbBestUrl } from "@/lib/kb-links";
 import { getSession } from "@/lib/auth";
 import type { ClockState } from "@/lib/sla";
 import { getClientById } from "@/lib/integrations/airtable-clients";
@@ -13,6 +14,7 @@ import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
 import { ClientPanel } from "@/components/client-panel";
 import { SupportHistoryPanel } from "@/components/support-history-panel";
+import { RelevantKbPanel } from "@/components/relevant-kb-panel";
 import { RunAiButton } from "@/components/run-ai-button";
 import { TicketPresence } from "@/components/ticket-presence";
 import { addNoteAction, mergeTicketAction, presenceHeartbeatAction, runAiAction, sendReplyAction, snoozeTicketAction, unmergeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
@@ -106,7 +108,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const latestCustomer = [...messages].reverse().find((m) => m.role === "customer");
   const pastQuery = (latestCustomer?.body_text || ticket.subject).slice(0, 500);
 
-  const [canned, clientRecord, sla, supportHistory, pastTickets] = await Promise.all([
+  const [canned, clientRecord, sla, supportHistory, pastTickets, kbPickerRaw, surfacedKb] = await Promise.all([
     listCannedResponses().catch(() => []),
     ticket.client_id ? getClientById(ticket.client_id) : Promise.resolve(null),
     getTicketSla(ticket).catch(() => null),
@@ -116,9 +118,16 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       excludeTicketId: ticket.id,
     }).catch(() => null),
     searchPastTickets(pastQuery, ticket.client_id, 4).catch(() => []),
+    listPublishedKbForPicker().catch(() => []),
+    getSurfacedKbForTicket(ticket.id).catch(() => []),
   ]);
   // "How we solved this before" — similar resolved tickets, current one excluded.
   const solvedBefore = pastTickets.filter((p) => p.ticket_id !== ticket.id).slice(0, 3);
+
+  // KB referencing: every published article is available to link from the reply
+  // box; the ones the AI already surfaced on this ticket are suggested up front.
+  const kbArticles = kbPickerRaw.map((a) => ({ id: a.id, title: a.title, url: kbBestUrl(env.appBaseUrl, a) }));
+  const relevantKb = surfacedKb.map((a) => ({ id: a.id, title: a.title, url: kbBestUrl(env.appBaseUrl, a) }));
 
   const handover = [...messages]
     .reverse()
@@ -271,6 +280,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <ReplyBox
             ticketId={ticket.id}
             canned={canned}
+            kbArticles={kbArticles}
             vars={cannedVars}
             sendReply={sendReplyAction}
             addNote={addNoteAction}
@@ -330,6 +340,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             </ul>
           </div>
         )}
+
+        <RelevantKbPanel articles={relevantKb} />
 
         <form action={updateTicketAction} className="space-y-3 text-sm">
           <input type="hidden" name="ticketId" value={ticket.id} />

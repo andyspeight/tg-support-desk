@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
@@ -19,6 +19,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { applyCannedVars, type CannedVars } from "@/lib/canned";
+import { KbPicker, type KbPickerItem } from "@/components/kb-picker";
+import { KB_INSERT_EVENT, kbLinkHtml, type KbLinkRef } from "@/lib/kb-links";
 
 type CannedOption = { id: string; title: string; body: string };
 type ComposerResult = { ok: true; note?: string } | { ok: false; error: string };
@@ -33,6 +35,7 @@ type Props = {
   sendReply: (formData: FormData) => Promise<ComposerResult>;
   addNote: (formData: FormData) => Promise<ComposerResult>;
   vars?: CannedVars;
+  kbArticles?: KbPickerItem[];
   copilot?: {
     draft: (ticketId: string) => Promise<CopilotResult>;
     summarise: (ticketId: string) => Promise<CopilotResult>;
@@ -93,7 +96,7 @@ function ToolbarButton({
   );
 }
 
-export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }: Props) {
+export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, kbArticles }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [isPending, startTransition] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
@@ -120,6 +123,17 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }
       },
     },
   });
+
+  // Insert a KB reference from the side-panel suggestions or the in-box picker
+  // (both fire KB_INSERT_EVENT) at the cursor in the reply.
+  useEffect(() => {
+    function onInsert(e: Event) {
+      const ref = (e as CustomEvent<KbLinkRef>).detail;
+      if (ref && editor) editor.chain().focus().insertContent(kbLinkHtml(ref)).run();
+    }
+    window.addEventListener(KB_INSERT_EVENT, onInsert);
+    return () => window.removeEventListener(KB_INSERT_EVENT, onInsert);
+  }, [editor]);
 
   function addFiles(list: FileList | null) {
     if (!list) return;
@@ -433,6 +447,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot }
         >
           Internal note
         </button>
+        <KbPicker articles={kbArticles ?? []} />
         {canned.length > 0 && (
           <select
             className="ml-auto rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink-2"
