@@ -15,6 +15,7 @@ import type { Json } from "@/lib/db/database.types";
 import { env } from "@/lib/env";
 import { matchesBlocklist, parseGmailMessage, type GmailMessage } from "./email-parse";
 import { buildReplyMime, getAttachmentBytes, sendMessage } from "./gmail";
+import { renderCustomerEmail, textToEmailHtml } from "./email-template";
 import { storeAttachments, storeOutboundAttachments, type OutboundFile } from "./attachments";
 import { replyOutbound, type ReplyDelivery } from "./reply-plan";
 
@@ -203,13 +204,22 @@ export async function sendTicketReply(
   const subject = /^re:/i.test(ticket.subject) ? ticket.subject : `Re: ${ticket.subject}`;
   const refs = [...references, ...(messageId ? [messageId] : [])];
 
+  // Frame the reply in the Travelgenix shell so the customer gets a branded
+  // email, not a bare line. AI replies arrive as text (no html) — promote those
+  // to HTML so they're styled too; the plain `body` stays as the text/plain part.
+  const brandedHtml = renderCustomerEmail({
+    bodyHtml: opts.html ?? textToEmailHtml(body),
+    reference: ticket.reference,
+    helpUrl: env.appBaseUrl || undefined,
+  });
+
   const sent = await sendMessage(
     await buildReplyMime({
       to: ticket.requester_email,
       cc: ticket.cc_emails.filter((e) => e !== ticket.requester_email && e !== env.supportEmail),
       subject,
       text: body,
-      html: opts.html,
+      html: brandedHtml,
       fromName: opts.fromName,
       attachments: opts.attachments,
       inReplyTo: messageId,
