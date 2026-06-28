@@ -13,6 +13,7 @@ import { notify, ticketRecipients } from "@/lib/db/notifications";
 import type { Message, Ticket } from "@/lib/db/types";
 import type { Json } from "@/lib/db/database.types";
 import { env } from "@/lib/env";
+import { firstNameFrom } from "@/lib/names";
 import { matchesBlocklist, parseGmailMessage, type GmailMessage } from "./email-parse";
 import { buildReplyMime, getAttachmentBytes, sendMessage } from "./gmail";
 import { renderCustomerEmail, textToEmailHtml } from "./email-template";
@@ -139,7 +140,71 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
     }
   }
 
+  // Instant receipt on a brand-new email ticket so the customer isn't left in
+  // silence (especially while the AI is in shadow mode). Skipped for auto-replies
+  // (loop/backscatter risk) and spoof-failed senders. Best-effort — a failed
+  // receipt must never block ingest.
+  if (createdTicket && !parsed.isAutoReply && parsed.senderVerified !== "fail") {
+    await sendAutoAck(ticket);
+  }
+
   return { ticket, message, createdTicket, suppressAi: parsed.isAutoReply };
+}
+
+/**
+ * Auto-acknowledgement: a brief branded "we've got it, ticket #N" sent the
+ * moment a new email ticket is created. Email channel only (web-form and portal
+ * tickets already get an on-screen confirmation, and a web-form email is
+ * unverified — we never send to it). Threads into the conversation, and captures
+ * the Gmail thread id so the customer's reply to the receipt lands on the ticket.
+ */
+export async function sendAutoAck(ticket: Ticket): Promise<void> {
+  if (replyOutbound(ticket.channel, env.gmailConfigured) !== "email") return;
+
+  const name = firstNameFrom(ticket.requester_name);
+  const greeting = name === "there" ? "Hello," : `Hi ${name},`;
+  const text =
+    `${greeting}\n\n` +
+    `Thanks for getting in touch — we've received your message and opened ticket #${ticket.reference}. ` +
+    `A member of the team will get back to you by email as soon as we can.\n\n` +
+    `There's nothing you need to do in the meantime. If you'd like to add anything, just reply to this email.\n\n` +
+    `— Travelgenix Support`;
+  const html = renderCustomerEmail({
+    bodyHtml: textToEmailHtml(text),
+    reference: ticket.reference,
+    helpUrl: env.appBaseUrl || undefined,
+  });
+
+  try {
+    const { messageId, references } = await latestCustomerThreadMeta(ticket.id);
+    const subject = /^re:/i.test(ticket.subject) ? ticket.subject : `Re: ${ticket.subject}`;
+    const sent = await sendMessage(
+      await buildReplyMime({
+        to: ticket.requester_email,
+        subject,
+        text,
+        html,
+        inReplyTo: messageId,
+        references: [...references, ...(messageId ? [messageId] : [])],
+      }),
+      ticket.email_thread_key,
+    );
+    // Stored as plain text so the agent thread shows a tidy "System" line (not the
+    // full email document). The branded HTML goes to the customer, not the store.
+    await addMessage({
+      ticket_id: ticket.id,
+      role: "system",
+      author: "auto-ack",
+      body_text: text,
+      channel_meta: { kind: "auto_ack", outbound: true, gmail_message_id: sent.id, gmail_thread_id: sent.threadId },
+    });
+    if (!ticket.email_thread_key && sent.threadId) {
+      await updateTicket(ticket.id, { email_thread_key: sent.threadId });
+    }
+    await audit("system", "auto-ack", "message.auto_ack_sent", { type: "ticket", id: ticket.id });
+  } catch (error) {
+    console.error("sendAutoAck failed:", error);
+  }
 }
 
 async function latestCustomerThreadMeta(ticketId: string): Promise<{ messageId: string | null; references: string[] }> {
