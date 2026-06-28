@@ -1,11 +1,15 @@
 import { X } from "lucide-react";
+import { getSession } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { listBlockedSenders, listCannedResponses, listSlaPolicies, listTags } from "@/lib/db/queries";
+import { GdprPanel } from "@/components/gdpr-panel";
 import {
   addBlockedAction,
   createCannedAction,
   createTagAction,
   deleteCannedAction,
   deleteTagAction,
+  eraseCustomerDataAction,
   removeBlockedAction,
   updateCannedAction,
 } from "./actions";
@@ -25,6 +29,8 @@ export default async function SettingsPage() {
     .split(",")
     .map((e) => e.trim())
     .filter(Boolean);
+  const session = await getSession();
+  const isOwner = !!session && env.ownerEmails.includes(session.email);
 
   return (
     <div className="mx-auto max-w-2xl p-4 sm:p-6">
@@ -247,6 +253,8 @@ export default async function SettingsPage() {
           Business-hours targets for humans — the AI responds instantly regardless.
         </p>
       </section>
+
+      {isOwner && <GdprPanel erase={eraseCustomerDataAction} />}
     </div>
   );
 }

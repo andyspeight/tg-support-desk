@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAgent } from "@/lib/auth";
+import { env } from "@/lib/env";
+import { eraseCustomerData } from "@/lib/gdpr";
 import {
   addBlockedSender,
   audit,
@@ -13,6 +15,27 @@ import {
   removeBlockedSender,
   updateCannedResponse,
 } from "@/lib/db/queries";
+
+export type EraseResult = { ok: boolean; message: string };
+
+// GDPR right-to-erasure. Owner-only (destructive); requires the email typed
+// twice as a confirmation guard.
+export async function eraseCustomerDataAction(formData: FormData): Promise<EraseResult> {
+  const session = await requireAgent();
+  if (!env.ownerEmails.includes(session.email)) {
+    return { ok: false, message: "Only an owner can erase customer data." };
+  }
+  const email = String(formData.get("email") ?? "").trim();
+  const confirm = String(formData.get("confirm") ?? "").trim();
+  if (!email) return { ok: false, message: "Enter the customer's email address." };
+  if (confirm.toLowerCase() !== email.toLowerCase()) {
+    return { ok: false, message: "Type the same email in the confirm box to proceed." };
+  }
+  const res = await eraseCustomerData(email, session.email);
+  revalidatePath("/settings");
+  if (res.tickets === 0) return { ok: false, message: `No tickets found for ${email}.` };
+  return { ok: true, message: `Erased ${res.tickets} ticket(s) and ${res.attachments} attachment(s) for ${email}.` };
+}
 
 const cannedSchema = z.object({
   title: z.string().trim().min(1).max(200),
