@@ -191,10 +191,11 @@ export async function isKnownSender(email: string): Promise<boolean> {
 
 /**
  * Auto-acknowledgement: a brief branded "we've got it, ticket #N" sent the
- * moment a new email ticket is created. Email channel only (web-form and portal
- * tickets already get an on-screen confirmation, and a web-form email is
- * unverified — we never send to it). Threads into the conversation, and captures
- * the Gmail thread id so the customer's reply to the receipt lands on the ticket.
+ * moment a ticket is created, on any channel that resolves to email delivery
+ * (email + portal once the mailbox is wired). Skipped when the reply plan isn't
+ * "email" (e.g. Gmail not configured — portal still shows an on-screen receipt).
+ * Threads into the conversation and captures the Gmail thread id, so the
+ * customer's reply to the receipt lands back on this ticket.
  */
 export async function sendAutoAck(ticket: Ticket): Promise<void> {
   if (replyOutbound(ticket.channel, env.gmailConfigured) !== "email") return;
@@ -346,9 +347,13 @@ export async function sendTicketReply(
     message.attachments = stored as unknown as Json;
   }
 
-  if (!ticket.first_response_at) {
-    await updateTicket(ticket.id, { first_response_at: new Date().toISOString() });
-  }
+  // Capture the Gmail thread on first send (portal/web-form tickets have none
+  // yet) so the customer's email reply threads back to THIS ticket instead of
+  // opening a new one. Fold in the first-response stamp to keep it one write.
+  const patch: Parameters<typeof updateTicket>[1] = {};
+  if (!ticket.first_response_at) patch.first_response_at = new Date().toISOString();
+  if (!ticket.email_thread_key && sent.threadId) patch.email_thread_key = sent.threadId;
+  if (Object.keys(patch).length > 0) await updateTicket(ticket.id, patch);
 
   await audit(opts.role === "ai" ? "ai" : "human", opts.author, "message.sent", {
     type: "ticket",

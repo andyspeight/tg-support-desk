@@ -2,13 +2,20 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { getSession } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 // Client support portal — any authenticated Travelgenix user (same tg_session
 // SSO as the agent app). All data is scoped to the signed-in client's email.
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
-  if (!session) redirect("/access-denied");
+  if (!session) {
+    // Not signed in. Take them through the cross-domain SSO bridge (so a client
+    // arriving from a public KB link can sign in and land back here), falling
+    // back to access-denied only when SSO isn't configured.
+    if (env.ssoBridgeUrl) redirect(`/api/sso/login?return=${encodeURIComponent("/portal")}`);
+    redirect("/access-denied");
+  }
 
   const initials = (session.name.match(/\b\w/g) ?? []).slice(0, 2).join("").toUpperCase() || "U";
   const hasName = session.name.toLowerCase() !== session.email.toLowerCase();

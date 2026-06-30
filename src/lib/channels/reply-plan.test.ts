@@ -13,9 +13,14 @@ describe("replyOutbound", () => {
     expect(replyOutbound("email", false)).toBe("store");
   });
 
-  it("delivers non-email channels in-app regardless of mailbox config", () => {
+  it("emails the customer on any channel once the mailbox is wired", () => {
+    // The client always gets an email reply, whatever channel they came in on.
+    expect(replyOutbound("portal", true)).toBe("email");
+    expect(replyOutbound("widget", true)).toBe("email");
+  });
+
+  it("falls back to in-app for non-email channels when Gmail is not configured", () => {
     expect(replyOutbound("portal", false)).toBe("inapp");
-    expect(replyOutbound("portal", true)).toBe("inapp");
     expect(replyOutbound("widget", false)).toBe("inapp");
   });
 });
