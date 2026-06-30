@@ -181,4 +181,19 @@ export const env = {
   get gmailPollBatch() {
     return Number(optional("GMAIL_POLL_BATCH", "10"));
   },
+  // Inactivity chase on "waiting on customer" tickets: after REMIND_DAYS business
+  // days of client silence send one reminder, after CLOSE_DAYS auto-close (reply
+  // reopens). Templated system emails, so they run regardless of AI shadow mode.
+  // Set INACTIVITY_CHASE=false to switch the whole thing off without a deploy.
+  get inactivityChase() {
+    return optional("INACTIVITY_CHASE", "true") !== "false";
+  },
+  get inactivityRemindDays() {
+    const n = Number(optional("INACTIVITY_REMIND_DAYS", "3"));
+    return Number.isFinite(n) && n > 0 ? n : 3;
+  },
+  get inactivityCloseDays() {
+    const n = Number(optional("INACTIVITY_CLOSE_DAYS", "7"));
+    return Number.isFinite(n) && n > 0 ? n : 7;
+  },
 };
