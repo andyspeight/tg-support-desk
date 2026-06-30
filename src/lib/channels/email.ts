@@ -5,10 +5,12 @@ import {
   audit,
   createTicket,
   findTicketByThreadKey,
+  getAllowedPatterns,
   getBlockedPatterns,
   setMessageAttachments,
   updateTicket,
 } from "@/lib/db/queries";
+import { matchClientByEmail } from "@/lib/integrations/airtable-clients";
 import { notify, ticketRecipients } from "@/lib/db/notifications";
 import type { Message, Ticket } from "@/lib/db/types";
 import type { Json } from "@/lib/db/database.types";
@@ -47,6 +49,9 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
 
   let ticket = await findTicketByThreadKey(gmailMessage.threadId);
   let createdTicket = false;
+  // Held = unknown-sender ticket parked for human approval; the AI stays out
+  // and no auto-ack goes out until an agent approves the sender.
+  let held = false;
 
   if (!ticket) {
     const tags: string[] = [];
@@ -55,6 +60,15 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
     const unverified = parsed.senderVerified === "fail";
     if (unverified) tags.push("unverified-sender");
     if (parsed.isAutoReply) tags.push("auto-notification");
+
+    // Spam gate: a first-time sender who is neither allow-listed nor a known
+    // Airtable client is parked in the approval queue. Skipped for spoof-failed
+    // senders (already escalated above) and machine auto-notifications (no human
+    // to approve — the existing auto-reply suppression handles those).
+    if (!unverified && !parsed.isAutoReply && !(await isKnownSender(parsed.fromEmail))) {
+      held = true;
+      tags.push("unknown-sender");
+    }
 
     ticket = await createTicket({
       requester_email: parsed.fromEmail,
@@ -66,14 +80,20 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
       tags,
       ...(unverified
         ? { status: "escalated" as const, escalation_reason: "sender_verification_failed" }
-        : {}),
+        : held
+          ? { status: "awaiting_approval" as const }
+          : {}),
     });
     createdTicket = true;
     await audit("system", "email-channel", "ticket.created", { type: "ticket", id: ticket.id }, {
       channel: "email",
       sender_verified: parsed.senderVerified,
       auto_reply: parsed.isAutoReply,
+      held_for_approval: held,
     });
+  } else if (ticket.status === "awaiting_approval") {
+    // A held sender wrote again before approval — keep it parked, don't reopen.
+    held = true;
   } else if (!parsed.isAutoReply && (ticket.status === "resolved" || ticket.status === "closed")) {
     // Customer replied after resolution — reopen. (An OOO bouncing back off
     // our own resolution reply must NOT reopen the ticket.)
@@ -144,11 +164,29 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
   // silence (especially while the AI is in shadow mode). Skipped for auto-replies
   // (loop/backscatter risk) and spoof-failed senders. Best-effort — a failed
   // receipt must never block ingest.
-  if (createdTicket && !parsed.isAutoReply && parsed.senderVerified !== "fail") {
+  if (createdTicket && !parsed.isAutoReply && parsed.senderVerified !== "fail" && !held) {
     await sendAutoAck(ticket);
   }
 
-  return { ticket, message, createdTicket, suppressAi: parsed.isAutoReply };
+  return { ticket, message, createdTicket, suppressAi: parsed.isAutoReply || held };
+}
+
+/**
+ * Is this sender trusted enough to skip the approval queue? True when the
+ * address (or its domain) is on the allow-list, or when it ties to a live
+ * Airtable client record. The allow-list is checked first: it's the cheaper
+ * lookup and keeps working even if Airtable is unreachable. Any failure fails
+ * closed (treated as unknown → held), which is the safe default for a spam gate.
+ */
+export async function isKnownSender(email: string): Promise<boolean> {
+  try {
+    const allowed = await getAllowedPatterns();
+    if (matchesBlocklist(email, allowed)) return true;
+    return (await matchClientByEmail(email)) !== null;
+  } catch (error) {
+    console.error("isKnownSender failed, holding for approval:", error);
+    return false;
+  }
 }
 
 /**

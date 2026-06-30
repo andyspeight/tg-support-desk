@@ -37,10 +37,12 @@ export async function pollGmailInbox(): Promise<PollSummary> {
       summary.ingested += 1;
 
       if (result.suppressAi) {
-        await audit("system", "email-channel", "ai.suppressed_auto_reply", {
+        // Held for approval, or a machine auto-reply — either way the AI sits out.
+        const reason = result.ticket.status === "awaiting_approval" ? "awaiting_approval" : "auto_reply";
+        await audit("system", "email-channel", "ai.suppressed", {
           type: "ticket",
           id: result.ticket.id,
-        });
+        }, { reason });
         continue;
       }
 

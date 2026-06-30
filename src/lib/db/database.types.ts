@@ -77,6 +77,38 @@ export type Database = {
           },
         ]
       }
+      allowed_senders: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          pattern: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          pattern: string
+          tenant_id?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          pattern?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "allowed_senders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -745,6 +777,7 @@ export type Database = {
         | "resolved"
         | "closed"
         | "pending"
+        | "awaiting_approval"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -894,6 +927,7 @@ export const Constants = {
         "resolved",
         "closed",
         "pending",
+        "awaiting_approval",
       ],
     },
   },

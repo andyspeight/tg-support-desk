@@ -6,7 +6,7 @@ import { getSession } from "@/lib/auth";
 import type { ClockState } from "@/lib/sla";
 import { getClientById } from "@/lib/integrations/airtable-clients";
 import { env } from "@/lib/env";
-import { sanitizeEmailHtml } from "@/lib/channels/email-parse";
+import { allowPatternFor, sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
 import { AlertTriangle, ArrowLeft, Eye, EyeOff, GitMerge, LayoutDashboard, Lightbulb, Paperclip, Users } from "lucide-react";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
@@ -17,7 +17,7 @@ import { SupportHistoryPanel } from "@/components/support-history-panel";
 import { RelevantKbPanel } from "@/components/relevant-kb-panel";
 import { RunAiButton } from "@/components/run-ai-button";
 import { TicketPresence } from "@/components/ticket-presence";
-import { addNoteAction, mergeTicketAction, presenceHeartbeatAction, runAiAction, sendReplyAction, snoozeTicketAction, unmergeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
+import { addNoteAction, approveSenderAction, blockSenderAction, mergeTicketAction, presenceHeartbeatAction, runAiAction, sendReplyAction, snoozeTicketAction, unmergeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
 import {
   copilotDraftAction,
   copilotRephraseAction,
@@ -216,6 +216,37 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         </div>
 
         <div className="flex-1 space-y-3 px-4 py-4 sm:px-6 lg:overflow-y-auto">
+          {ticket.status === "awaiting_approval" && (
+            <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 dark:border-violet-500/25 dark:bg-violet-500/10">
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                Pending approval — unknown sender
+              </p>
+              <p className="mt-1.5 text-sm text-ink-2">
+                <span className="font-medium text-ink">{ticket.requester_email}</span> isn’t on the allow-list and
+                isn’t matched to a client, so the AI hasn’t replied and no acknowledgement has gone out. Approve to add
+                them to the allow-list and let the AI take it from here, or block them as spam.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <form action={approveSenderAction}>
+                  <input type="hidden" name="ticketId" value={ticket.id} />
+                  <button className="rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-700 active:translate-y-px">
+                    Approve sender &amp; respond
+                  </button>
+                </form>
+                <form action={blockSenderAction}>
+                  <input type="hidden" name="ticketId" value={ticket.id} />
+                  <button className="rounded-md border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink-2 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 active:translate-y-px dark:hover:bg-red-500/10 dark:hover:text-red-300">
+                    Block as spam
+                  </button>
+                </form>
+              </div>
+              <p className="mt-2 text-xs text-ink-3">
+                Approving allow-lists <span className="font-mono">{allowPatternFor(ticket.requester_email)}</span>; blocking
+                drops future email from this exact address.
+              </p>
+            </div>
+          )}
+
           {ticket.status === "escalated" && handover && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/25 dark:bg-red-500/10">
               <p className="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">AI handover</p>

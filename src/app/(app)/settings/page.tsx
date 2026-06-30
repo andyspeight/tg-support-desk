@@ -1,15 +1,18 @@
 import { X } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { listBlockedSenders, listCannedResponses, listSlaPolicies, listTags } from "@/lib/db/queries";
+import { listAllowedSenders, listBlockedSenders, listCannedResponses, listSlaPolicies, listTags } from "@/lib/db/queries";
 import { GdprPanel } from "@/components/gdpr-panel";
 import {
+  addAllowedAction,
   addBlockedAction,
   createCannedAction,
   createTagAction,
   deleteCannedAction,
   deleteTagAction,
   eraseCustomerDataAction,
+  importAllowedAction,
+  removeAllowedAction,
   removeBlockedAction,
   updateCannedAction,
 } from "./actions";
@@ -19,11 +22,12 @@ function show(value: string | undefined): string {
 }
 
 export default async function SettingsPage() {
-  const [slaPolicies, canned, tags, blocked] = await Promise.all([
+  const [slaPolicies, canned, tags, blocked, allowed] = await Promise.all([
     listSlaPolicies().catch(() => []),
     listCannedResponses().catch(() => []),
     listTags().catch(() => []),
     listBlockedSenders().catch(() => []),
+    listAllowedSenders().catch(() => []),
   ]);
   const agents = (process.env.AGENT_EMAILS ?? "")
     .split(",")
@@ -146,6 +150,57 @@ export default async function SettingsPage() {
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="mt-4 rounded-lg border border-line bg-surface p-4">
+        <h2 className="text-sm font-semibold">Allowed senders {allowed.length > 0 && <span className="font-normal text-ink-3">({allowed.length})</span>}</h2>
+        <p className="mt-1 text-xs text-ink-3">
+          First-time senders who aren’t on this list and aren’t matched to a client are held in{" "}
+          <span className="font-medium">Pending approval</span> — the AI won’t reply until an agent approves them. Use an
+          exact address, or <code className="rounded bg-surface-2 px-1">@domain.com</code> to trust a whole company.
+          Known clients in Airtable are trusted automatically.
+        </p>
+        <div className="mt-2 flex max-h-56 flex-wrap gap-2 overflow-y-auto">
+          {allowed.length === 0 && <p className="text-sm text-ink-3">None yet.</p>}
+          {allowed.map((a) => (
+            <span key={a.id} className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs text-ink">
+              {a.pattern}
+              <form action={removeAllowedAction} className="inline">
+                <input type="hidden" name="id" value={a.id} />
+                <button className="text-ink-3 hover:text-red-600 dark:hover:text-red-400" aria-label={`Remove ${a.pattern}`}>
+                  <X className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </form>
+            </span>
+          ))}
+        </div>
+        <form action={addAllowedAction} className="mt-3 flex gap-2 border-t border-line-soft pt-3">
+          <input
+            name="pattern"
+            required
+            placeholder="client@example.com or @example.com"
+            className="flex-1 rounded-md border border-line bg-surface px-2 py-1.5 text-sm placeholder:text-ink-3 focus:border-ink-3 focus:outline-none"
+          />
+          <button className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-surface-2 dark:text-ink dark:hover:bg-line">
+            Allow
+          </button>
+        </form>
+        <form action={importAllowedAction} className="mt-3 border-t border-line-soft pt-3">
+          <label htmlFor="allow-import" className="text-xs text-ink-3">
+            Bulk import — paste addresses and/or <code className="rounded bg-surface-2 px-1">@domain.com</code> rules,
+            separated by new lines, commas, or spaces. Duplicates are skipped.
+          </label>
+          <textarea
+            id="allow-import"
+            name="patterns"
+            rows={3}
+            placeholder={"@acme-travel.com\njane@example.com, @another-client.co.uk"}
+            className="mt-1.5 w-full rounded-md border border-line bg-surface px-2 py-1.5 font-mono text-xs placeholder:text-ink-3 focus:border-ink-3 focus:outline-none"
+          />
+          <button className="mt-2 rounded-md border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink">
+            Import to allow-list
+          </button>
+        </form>
       </section>
 
       <section className="mt-4 rounded-lg border border-line bg-surface p-4">

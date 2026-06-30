@@ -184,6 +184,57 @@ export function matchesBlocklist(email: string, patterns: string[]): boolean {
   return false;
 }
 
+// Free/ISP mailbox domains that must never be allow-listed (or matched) at the
+// domain level — allow-listing "@gmail.com" would wave through the whole world.
+// Senders on these domains are only ever allow-listed by their exact address.
+export const FREE_MAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "outlook.com",
+  "hotmail.com",
+  "hotmail.co.uk",
+  "live.com",
+  "live.co.uk",
+  "msn.com",
+  "yahoo.com",
+  "yahoo.co.uk",
+  "ymail.com",
+  "rocketmail.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "aol.com",
+  "btinternet.com",
+  "sky.com",
+  "talktalk.net",
+  "virginmedia.com",
+  "f2s.com",
+  "protonmail.com",
+  "proton.me",
+  "pm.me",
+  "gmx.com",
+  "gmx.co.uk",
+  "mail.com",
+  "yandex.com",
+  "zoho.com",
+  "fastmail.com",
+  "tutanota.com",
+  "hey.com",
+]);
+
+/**
+ * The allow-list pattern to store when a human approves a sender. Corporate
+ * addresses are allow-listed by domain ("@acme.com") so the rest of that client
+ * is auto-trusted from then on; free-mail addresses are allow-listed exactly
+ * (the individual address only). Returns an empty string for an unusable input.
+ */
+export function allowPatternFor(email: string): string {
+  const lower = email.toLowerCase().trim();
+  const domain = lower.split("@")[1] ?? "";
+  if (!domain) return lower; // malformed — store as-is rather than "@"
+  return FREE_MAIL_DOMAINS.has(domain) ? lower : `@${domain}`;
+}
+
 export function normaliseSubject(subject: string): string {
   return subject
     .replace(/^(\s*(re|fwd?|aw|sv)\s*:\s*)+/i, "")

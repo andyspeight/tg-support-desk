@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  allowPatternFor,
   detectAutoReply,
+  FREE_MAIL_DOMAINS,
   matchesBlocklist,
   normaliseSubject,
   parseAddress,
@@ -73,6 +75,34 @@ describe("matchesBlocklist", () => {
 
   it("does not match when blocklist is empty", () => {
     expect(matchesBlocklist("anyone@anywhere.com", [])).toBe(false);
+  });
+});
+
+describe("allowPatternFor", () => {
+  it("allow-lists a corporate sender by domain", () => {
+    expect(allowPatternFor("jane@acme-travel.co.uk")).toBe("@acme-travel.co.uk");
+    expect(allowPatternFor("Bob@Acme-Travel.CO.UK")).toBe("@acme-travel.co.uk");
+  });
+
+  it("allow-lists a free-mail sender by exact address only", () => {
+    expect(allowPatternFor("someone@gmail.com")).toBe("someone@gmail.com");
+    expect(allowPatternFor("Person@Outlook.com")).toBe("person@outlook.com");
+    // Apple legacy + a legacy ISP domain must be treated as free-mail, not domains.
+    expect(allowPatternFor("eivind2@mac.com")).toBe("eivind2@mac.com");
+    expect(allowPatternFor("user@f2s.com")).toBe("user@f2s.com");
+  });
+
+  it("never returns a bare '@' for malformed input", () => {
+    expect(allowPatternFor("not-an-email")).toBe("not-an-email");
+    expect(allowPatternFor("")).toBe("");
+  });
+
+  it("free-mail set and matcher stay consistent — a domain rule can't trust free-mail", () => {
+    for (const d of FREE_MAIL_DOMAINS) {
+      const pattern = allowPatternFor(`anyone@${d}`);
+      expect(pattern).not.toBe(`@${d}`); // exact address, never the whole provider
+      expect(pattern).toBe(`anyone@${d}`);
+    }
   });
 });
 

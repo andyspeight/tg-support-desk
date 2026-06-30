@@ -51,9 +51,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         tickets().eq("status", "escalated"),
         tickets().eq("status", "waiting_on_customer"),
         listBreachingTickets(),
-        tickets().in("status", ["resolved", "closed"]).gte("resolved_at", startOfDay.toISOString()),
-        tickets().in("status", ["resolved", "closed"]),
-        tickets().in("status", ["resolved", "closed"]).eq("ai_resolved", true),
+        // Exclude human-blocked spam (closed + tagged) so it can't drag the
+        // resolution counts or the AI-resolution rate.
+        tickets().in("status", ["resolved", "closed"]).not("tags", "cs", "{spam}").gte("resolved_at", startOfDay.toISOString()),
+        tickets().in("status", ["resolved", "closed"]).not("tags", "cs", "{spam}"),
+        tickets().in("status", ["resolved", "closed"]).not("tags", "cs", "{spam}").eq("ai_resolved", true),
         kb("published"),
         kb("review"),
         client
