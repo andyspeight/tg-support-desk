@@ -15,6 +15,7 @@ import {
   updateTicket,
 } from "@/lib/db/queries";
 import { resolveTicket } from "@/lib/ai/resolve";
+import { sendAutoAck } from "@/lib/channels/email";
 import { isValidScore } from "@/lib/csat";
 import { storeOutboundAttachments, type OutboundFile } from "@/lib/channels/attachments";
 import type { Json } from "@/lib/db/database.types";
@@ -102,6 +103,11 @@ export async function raiseTicketAction(formData: FormData): Promise<void> {
   const message = await addMessage({ ticket_id: ticket.id, role: "customer", author: session.email, body_text: body });
   await attachTo(ticket.id, message.id, files);
   await audit("human", session.email, "ticket.created", { type: "ticket", id: ticket.id }, { channel: "portal" });
+
+  // Email the client an acknowledgement (best-effort) so they get a receipt by
+  // email, not just on screen — and so the Gmail thread is captured up front,
+  // letting their email reply thread straight back to this ticket.
+  await sendAutoAck(ticket);
 
   // Fire the AI immediately. Respects shadow mode (drafts for a human) and
   // fail-safe-escalates internally, so we never block the client on it.

@@ -55,7 +55,7 @@ export async function copilotDraft(ticketId: string): Promise<string> {
     // embeddings/KB unavailable — draft from the thread alone, still useful.
   }
 
-  const system = `You are drafting a support reply for a Travelgenix agent to review and edit before sending. ${BRAND_VOICE} Ground factual claims in the knowledge base provided; if the KB doesn't cover it, write what you safely can and leave a [bracketed note] where the agent must confirm details. Never promise refunds, credits, discounts or contract changes. Open with the customer's first name and sign off as "Travelgenix Support".`;
+  const system = `You are drafting a support reply for a Travelgenix agent to review and edit before sending. ${BRAND_VOICE} Ground factual claims in the knowledge base provided; if the KB doesn't cover it, write what you safely can and leave a [bracketed note] where the agent must confirm details. Never promise refunds, credits, discounts or contract changes. Open with the customer's first name and end with your closing sentence — do NOT add a sign-off line, as the sending agent's name is appended automatically.`;
   const prompt = `Knowledge base:\n${kb || "(no relevant articles found)"}\n\nConversation so far:\n${threadText(loaded.messages)}\n\nDraft the next reply to the customer.`;
   return complete(env.resolutionModel, system, prompt);
 }

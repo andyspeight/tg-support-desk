@@ -5,14 +5,16 @@
 export type ReplyDelivery = "delivered" | "stored";
 
 /**
- * Decide how a reply is delivered:
- *  - "email":  an email-channel ticket on a wired mailbox → send for real.
- *  - "store":  an email-channel ticket with Gmail NOT configured → persist the
- *              reply on the ticket but send nothing. Pre-go-live demos and a
- *              missing mailbox must never crash the reply flow.
- *  - "inapp":  any non-email channel (portal, widget) → delivered in-app.
+ * Decide how a reply is delivered. The client should always hear back by email,
+ * whatever channel they came in on (a portal/web-form submitter gives an email
+ * and expects a reply there — they don't live in the portal). The in-app copy is
+ * a bonus: the message row is stored regardless, so the portal still shows it.
+ *  - "email":  Gmail is wired → email the customer (and store the message row).
+ *  - "inapp":  non-email channel with Gmail NOT configured → store + show in-app.
+ *  - "store":  email-channel ticket with Gmail NOT configured → persist only,
+ *              send nothing (a missing mailbox must never crash the reply flow).
  */
 export function replyOutbound(channel: string, gmailConfigured: boolean): "email" | "inapp" | "store" {
-  if (channel !== "email") return "inapp";
-  return gmailConfigured ? "email" : "store";
+  if (gmailConfigured) return "email";
+  return channel === "email" ? "store" : "inapp";
 }

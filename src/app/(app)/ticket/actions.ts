@@ -18,6 +18,26 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+const TEAM_SIGNOFF = "Travelgenix Support";
+
+// Customer-facing replies are signed with the sending agent's first name over
+// the team name — "Andy\nTravelgenix Support". A trailing team line the draft may
+// already carry (e.g. a pasted AI draft) is stripped first so it isn't doubled.
+function signOffText(text: string, firstName: string | null): string {
+  const base = text
+    .replace(/(?:\n+\s*(?:best wishes|kind regards|regards|many thanks|thanks)[,!.]*)?\s*\n+\s*travelgenix support\s*$/i, "")
+    .replace(/\s+$/, "");
+  return firstName ? `${base}\n\n${firstName}\n${TEAM_SIGNOFF}` : `${base}\n\n${TEAM_SIGNOFF}`;
+}
+
+function signOffHtml(html: string, firstName: string | null): string {
+  const base = html
+    .replace(/(?:\s*<p>(?:\s|<br\s*\/?>)*(?:best wishes|kind regards|regards|many thanks|thanks)?[,!.]*(?:\s|<br\s*\/?>)*travelgenix support(?:\s|<br\s*\/?>)*<\/p>)+\s*$/i, "")
+    .replace(/\s+$/, "");
+  const inner = firstName ? `${escapeHtml(firstName)}<br>${TEAM_SIGNOFF}` : TEAM_SIGNOFF;
+  return `${base}<p>${inner}</p>`;
+}
+
 /** Parse the rich composer: sanitised HTML, derived plain text, uploaded files. */
 async function composerInput(
   formData: FormData,
@@ -61,12 +81,13 @@ export async function sendReplyAction(formData: FormData): Promise<ComposerResul
     if (!ticket) return { ok: false, error: "Ticket not found." };
 
     // Sign the reply with the responding agent — their name on the email From
-    // line and a warm sign-off in the body — instead of the generic team name.
-    // Falls back to the team name when SSO hasn't given us a real display name.
+    // line and "{first name} / Travelgenix Support" in the body — instead of the
+    // bare team name. Falls back to the team name when SSO hasn't given us a real
+    // display name.
     const agentName = session.name && !session.name.includes("@") ? session.name.trim() : null;
     const firstName = agentName?.split(/\s+/)[0] ?? null;
-    const signedText = firstName ? `${text}\n\nBest wishes,\n${firstName}` : text;
-    const signedHtml = html ? (firstName ? `${html}<p>Best wishes,<br>${escapeHtml(firstName)}</p>` : html) : "";
+    const signedText = signOffText(text, firstName);
+    const signedHtml = html ? signOffHtml(html, firstName) : "";
 
     const { delivery } = await sendTicketReply(ticket, signedText, {
       role: "human",
