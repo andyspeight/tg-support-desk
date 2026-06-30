@@ -133,6 +133,29 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     .reverse()
     .find((m) => m.role === "internal_note" && (m.channel_meta as { kind?: string })?.kind === "handover");
 
+  // The AI's shadow-mode draft, if one is still waiting for a human to send it
+  // (no reply has gone out since). Surfaced into the composer so an agent can
+  // accept it, edit, and send — not just read it. The team sign-off is trimmed
+  // (the agent's own sign-off is added on send).
+  let aiDraft: string | null = null;
+  if (ticket.status !== "resolved" && ticket.status !== "closed") {
+    let shadowIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === "internal_note" && (m.channel_meta as { kind?: string })?.kind === "shadow_draft") {
+        shadowIdx = i;
+        break;
+      }
+    }
+    if (shadowIdx >= 0 && !messages.slice(shadowIdx + 1).some((m) => m.role === "human" || m.role === "ai")) {
+      const meta = messages[shadowIdx].channel_meta as { draft_text?: string; would_be?: string };
+      const sendable = meta.would_be === "answered" || meta.would_be === "clarified";
+      const body = messages[shadowIdx].body_text;
+      const raw = meta.draft_text ?? (sendable ? body.slice(body.indexOf("\n\n") + 2) : null);
+      if (raw) aiDraft = raw.replace(/\n*\s*travelgenix support\s*$/i, "").trim() || null;
+    }
+  }
+
   // Customer shortcuts: all of this client's tickets (agent view), and the
   // client's own support portal as they see it (agent read-only preview).
   const clientTicketsHref = `/clients?${new URLSearchParams({
@@ -313,6 +336,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             canned={canned}
             kbArticles={kbArticles}
             vars={cannedVars}
+            aiDraft={aiDraft}
             sendReply={sendReplyAction}
             addNote={addNoteAction}
             copilot={{
