@@ -42,6 +42,14 @@ export async function validateTgSession(tgSession: string): Promise<{ email: str
   }
 }
 
+// Owners are implicit agents: the CEO/owner works the desk too, and (before
+// AGENT_EMAILS is populated) is the only recipient the approval-queue nudge can
+// reach. Owner-only surfaces (dashboard, GDPR export, data erase) gate on
+// ownerEmails separately, so this widens desk access without over-granting them.
+function isDeskAgent(email: string): boolean {
+  return env.agentEmails.includes(email) || env.ownerEmails.includes(email);
+}
+
 export async function getSession(): Promise<Session | null> {
   if (env.authDevBypass) {
     return { email: "dev@travelgenix.local", name: "Dev Agent", isAgent: true };
@@ -55,7 +63,7 @@ export async function getSession(): Promise<Session | null> {
   if (desk && env.authSessionSecret) {
     const claims = verifyToken(desk, env.authSessionSecret, Date.now(), "session");
     if (claims) {
-      return { email: claims.email, name: claims.name, isAgent: env.agentEmails.includes(claims.email) };
+      return { email: claims.email, name: claims.name, isAgent: isDeskAgent(claims.email) };
     }
   }
 
@@ -65,7 +73,7 @@ export async function getSession(): Promise<Session | null> {
   if (tg) {
     const user = await validateTgSession(tg);
     if (user) {
-      return { email: user.email, name: user.name, isAgent: env.agentEmails.includes(user.email) };
+      return { email: user.email, name: user.name, isAgent: isDeskAgent(user.email) };
     }
   }
 

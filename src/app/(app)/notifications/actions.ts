@@ -15,13 +15,21 @@ export async function markAllReadAction(): Promise<void> {
 const openSchema = z.object({
   id: z.string().uuid(),
   ticketId: z.string().uuid().optional().or(z.literal("")),
+  type: z.string().optional(),
 });
 
-/** Mark one notification read, then jump to its ticket (if any). */
+/** Mark one notification read, then jump where it points: the ticket if it has
+ *  one, the Pending approval queue for the (ticket-less) approval nudge, else
+ *  back to the list. */
 export async function openNotificationAction(formData: FormData): Promise<void> {
   const session = await requireAgent();
-  const { id, ticketId } = openSchema.parse(Object.fromEntries(formData));
+  const { id, ticketId, type } = openSchema.parse(Object.fromEntries(formData));
   await markRead(id, session.email).catch(() => {});
   revalidatePath("/notifications");
-  redirect(ticketId ? `/ticket/${ticketId}` : "/notifications");
+  const dest = ticketId
+    ? `/ticket/${ticketId}`
+    : type === "pending_approval"
+      ? "/inbox?view=approval"
+      : "/notifications";
+  redirect(dest);
 }

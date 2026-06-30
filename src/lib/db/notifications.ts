@@ -12,7 +12,8 @@ export type NotificationType =
   | "escalated"
   | "mention"
   | "stale"
-  | "snooze_due";
+  | "snooze_due"
+  | "pending_approval";
 
 type NotifyInput = {
   recipients: string[];
@@ -123,6 +124,27 @@ export async function hasRecentNotification(
     return true; // fail safe: assume already notified, never spam
   }
   return (count ?? 0) > 0;
+}
+
+/** When did this recipient last get a notification of this type (any ticket)?
+ *  Used by ticket-less aggregate sweeps to both rate-limit (don't re-ping within
+ *  a window) AND fire on genuinely-new activity (something newer than this).
+ *  Throws on DB error so callers can fail safe (skip) rather than risk spamming. */
+export async function lastTypeNotificationAt(
+  recipient: string,
+  type: NotificationType,
+): Promise<string | null> {
+  const { data, error } = await db()
+    .from("notifications")
+    .select("created_at")
+    .eq("tenant_id", env.tenantId)
+    .eq("recipient", recipient.toLowerCase())
+    .eq("type", type)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`lastTypeNotificationAt: ${error.message}`);
+  return data?.created_at ?? null;
 }
 
 /** Unread + not-yet-emailed notifications within a recent window — the source
