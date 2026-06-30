@@ -220,17 +220,20 @@ async function applyShadowOutcome(
   result: AgentRunResult | null,
   retrieved: RetrievedArticle[],
 ): Promise<void> {
-  const draft =
-    outcome.kind === "answered" || outcome.kind === "clarified"
-      ? outcome.reply
-      : `Category: ${outcome.category}\nReason: ${outcome.reason}\n\nSuggested reply:\n${outcome.suggestedReply || "(none drafted)"}`;
+  // A sendable draft (answered/clarified) carries a clean customer-ready reply;
+  // escalations carry a diagnosis block instead. Stash the sendable reply in
+  // channel_meta so the agent can load it straight into the composer to edit/send.
+  const sendable = outcome.kind === "answered" || outcome.kind === "clarified";
+  const draft = sendable
+    ? outcome.reply
+    : `Category: ${outcome.category}\nReason: ${outcome.reason}\n\nSuggested reply:\n${outcome.suggestedReply || "(none drafted)"}`;
 
   await addMessage({
     ticket_id: ticket.id,
     role: "internal_note",
     author: AI_ACTOR,
     body_text: `AI SHADOW DRAFT — not sent (shadow mode on).\nWould have: ${outcome.kind}.\n\n${draft}`,
-    channel_meta: { kind: "shadow_draft", would_be: outcome.kind },
+    channel_meta: { kind: "shadow_draft", would_be: outcome.kind, ...(sendable ? { draft_text: outcome.reply } : {}) },
   });
   await updateTicket(ticket.id, {
     status: "escalated",

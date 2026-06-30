@@ -36,6 +36,8 @@ type Props = {
   addNote: (formData: FormData) => Promise<ComposerResult>;
   vars?: CannedVars;
   kbArticles?: KbPickerItem[];
+  /** The AI's shadow-mode draft, ready to load into the composer to edit/send. */
+  aiDraft?: string | null;
   copilot?: {
     draft: (ticketId: string) => Promise<CopilotResult>;
     summarise: (ticketId: string) => Promise<CopilotResult>;
@@ -96,7 +98,7 @@ function ToolbarButton({
   );
 }
 
-export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, kbArticles }: Props) {
+export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, kbArticles, aiDraft }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [isPending, startTransition] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
@@ -247,43 +249,57 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
         </div>
       )}
       {/* Copilot row */}
-      {copilot && (
+      {(copilot || aiDraft) && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-line-soft px-2.5 py-2 text-xs">
           <span className="flex items-center gap-1 font-medium text-accent-700 dark:text-accent-300">
             <Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} /> Copilot
           </span>
-          <button
-            onClick={() => runCopilot("draft", () => copilot.draft(ticketId), (t) => editor?.commands.setContent(textToHtml(t)))}
-            disabled={!!busy || isPending}
-            className="rounded border border-accent-200 bg-accent-50 px-2 py-1 text-accent-700 hover:bg-accent-100 disabled:opacity-40 dark:border-accent-500/25 dark:bg-accent-500/10 dark:text-accent-300 dark:hover:bg-accent-500/20"
-          >
-            {busy === "draft" ? "Drafting…" : "Draft reply"}
-          </button>
-          <button
-            onClick={() => runCopilot("summary", () => copilot.summarise(ticketId), setSummary)}
-            disabled={!!busy || isPending}
-            className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
-          >
-            {busy === "summary" ? "Summarising…" : "Summarise"}
-          </button>
-          <button
-            onClick={() => editor && !isEmpty && runCopilot("rephrase", () => copilot.rephrase(editor.getText()), (t) => editor.commands.setContent(textToHtml(t)))}
-            disabled={!!busy || isPending || isEmpty}
-            className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
-          >
-            {busy === "rephrase" ? "Rephrasing…" : "Rephrase"}
-          </button>
-          <button
-            onClick={() => {
-              if (!editor || isEmpty) return;
-              const lang = window.prompt("Translate the draft into which language?", "French");
-              if (lang) runCopilot("translate", () => copilot.translate(editor.getText(), lang), (t) => editor.commands.setContent(textToHtml(t)));
-            }}
-            disabled={!!busy || isPending || isEmpty}
-            className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
-          >
-            Translate
-          </button>
+          {aiDraft && (
+            // The reply the AI already drafted (shadow mode) — load it to edit/send.
+            <button
+              onClick={() => editor?.commands.setContent(textToHtml(aiDraft))}
+              disabled={!!busy || isPending}
+              className="rounded border border-accent-300 bg-accent-100 px-2 py-1 font-medium text-accent-800 hover:bg-accent-200 disabled:opacity-40 dark:border-accent-500/40 dark:bg-accent-500/20 dark:text-accent-200 dark:hover:bg-accent-500/30"
+            >
+              Use AI draft
+            </button>
+          )}
+          {copilot && (
+            <>
+              <button
+                onClick={() => runCopilot("draft", () => copilot.draft(ticketId), (t) => editor?.commands.setContent(textToHtml(t)))}
+                disabled={!!busy || isPending}
+                className="rounded border border-accent-200 bg-accent-50 px-2 py-1 text-accent-700 hover:bg-accent-100 disabled:opacity-40 dark:border-accent-500/25 dark:bg-accent-500/10 dark:text-accent-300 dark:hover:bg-accent-500/20"
+              >
+                {busy === "draft" ? "Drafting…" : aiDraft ? "Re-draft" : "Draft reply"}
+              </button>
+              <button
+                onClick={() => runCopilot("summary", () => copilot.summarise(ticketId), setSummary)}
+                disabled={!!busy || isPending}
+                className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
+              >
+                {busy === "summary" ? "Summarising…" : "Summarise"}
+              </button>
+              <button
+                onClick={() => editor && !isEmpty && runCopilot("rephrase", () => copilot.rephrase(editor.getText()), (t) => editor.commands.setContent(textToHtml(t)))}
+                disabled={!!busy || isPending || isEmpty}
+                className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
+              >
+                {busy === "rephrase" ? "Rephrasing…" : "Rephrase"}
+              </button>
+              <button
+                onClick={() => {
+                  if (!editor || isEmpty) return;
+                  const lang = window.prompt("Translate the draft into which language?", "French");
+                  if (lang) runCopilot("translate", () => copilot.translate(editor.getText(), lang), (t) => editor.commands.setContent(textToHtml(t)));
+                }}
+                disabled={!!busy || isPending || isEmpty}
+                className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
+              >
+                Translate
+              </button>
+            </>
+          )}
         </div>
       )}
 
