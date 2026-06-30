@@ -207,7 +207,7 @@ export async function sendAutoAck(ticket: Ticket): Promise<void> {
   }
 }
 
-async function latestCustomerThreadMeta(ticketId: string): Promise<{ messageId: string | null; references: string[] }> {
+export async function latestCustomerThreadMeta(ticketId: string): Promise<{ messageId: string | null; references: string[] }> {
   const { data } = await db()
     .from("messages")
     .select("channel_meta")

@@ -3,21 +3,27 @@ import { requireCron } from "@/lib/cron-auth";
 import { db } from "@/lib/db/client";
 import { awaitingResponse, getTicketsByIds, updateTicket } from "@/lib/db/queries";
 import { hasRecentNotification, notify, ticketRecipients } from "@/lib/db/notifications";
+import { sweepInactiveWaiting } from "@/lib/channels/inactivity";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-// Hourly sweep (Vercel cron). Two jobs:
+// Hourly sweep (Vercel cron). Three jobs:
 //  1. Tickets awaiting an agent reply for > STALE_TICKET_HOURS → alert owner.
 //  2. Snoozed tickets whose time is up → alert owner + clear the snooze.
+//  3. "Waiting on customer" tickets gone quiet → reminder, then auto-close.
 const STALE_HOURS = Number(process.env.STALE_TICKET_HOURS ?? "24");
 
 export async function GET(request: Request) {
   const unauthorised = requireCron(request);
   if (unauthorised) return unauthorised;
   try {
-    const [staleAlerts, snoozeAlerts] = await Promise.all([sweepStale(), sweepSnoozed()]);
-    return Response.json({ staleAlerts, snoozeAlerts });
+    const [staleAlerts, snoozeAlerts, inactivity] = await Promise.all([
+      sweepStale(),
+      sweepSnoozed(),
+      sweepInactiveWaiting(),
+    ]);
+    return Response.json({ staleAlerts, snoozeAlerts, inactivity });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("stale-tickets failed:", message);
