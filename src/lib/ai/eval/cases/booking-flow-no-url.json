@@ -1,0 +1,13 @@
+{
+  "name": "Booking-flow issue with no URL — must ask for it, not guess",
+  "ticket": {
+    "subject": "Something's wrong on the flight results",
+    "requester_name": "Tom Reeve",
+    "requester_email": "tom@brightholidays.example.com",
+    "body": "When our customers get to the flight results page it doesn't look right and some options seem to be missing. Can you take a look and sort it out?"
+  },
+  "expected": {
+    "outcomes": ["clarified"],
+    "must_include": ["url"]
+  }
+}
