@@ -236,7 +236,7 @@ export async function assistTicketDraft(subject: string, body: string): Promise<
   try {
     const system = `A Travelgenix client is about to send a support request. Judge whether it gives the team enough to investigate without a back-and-forth. ${BRAND_VOICE}
 Respond with ONLY minified JSON: {"enough":true|false,"missing":["short specific item"]}.
-When it's not enough, list up to 3 concrete things that would help — e.g. the page URL, the exact error text, what they expected to happen, the affected widget/booking reference, or a screenshot. Be generous: if it's already clear, return {"enough":true,"missing":[]}. Never ask for refunds, billing or contract details.`;
+When it's not enough, list up to 3 concrete things that would help — e.g. the page URL (for a search, results, extras or basket issue this must be the page URL carrying the search Session ID, i.e. the part after "searchSession="), the exact error text, what they expected to happen, the affected widget/booking reference, or a screenshot. Be generous: if it's already clear, return {"enough":true,"missing":[]}. Never ask for refunds, billing or contract details.`;
     const prompt = `Subject: ${subjectClean || "(none)"}\n\nMessage: ${bodyClean}`;
     const raw = await complete(env.utilityModel, system, prompt, 300);
     const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
