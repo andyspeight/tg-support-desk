@@ -13,6 +13,7 @@ const TYPE_LABEL: Record<string, string> = {
   mention: "Mention",
   stale: "Awaiting reply",
   snooze_due: "Snooze ended",
+  pending_approval: "Pending approval",
 };
 
 const TYPE_DOT: Record<string, string> = {
@@ -22,6 +23,7 @@ const TYPE_DOT: Record<string, string> = {
   mention: "bg-sky-500",
   stale: "bg-amber-500",
   snooze_due: "bg-emerald-500",
+  pending_approval: "bg-violet-500",
 };
 
 function timeAgo(iso: string): string {
@@ -64,6 +66,7 @@ export default async function NotificationsPage() {
             <form key={n.id} action={openNotificationAction}>
               <input type="hidden" name="id" value={n.id} />
               <input type="hidden" name="ticketId" value={n.ticket_id ?? ""} />
+              <input type="hidden" name="type" value={n.type} />
               <button
                 type="submit"
                 className={`flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-surface-2 ${n.read_at ? "" : "bg-brand-50/40 dark:bg-brand-500/10"}`}
