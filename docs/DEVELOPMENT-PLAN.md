@@ -94,7 +94,9 @@ Stage = where it lands. "AI-replaced" = we deliberately cover the job a differen
   supplier credential errors, deeplink format, CMS/blog basics, Travelify pricing rules,
   deposit rules, promo codes, user/role admin, order manager, "search returns nothing" triage).
 - [ ] Grow eval set 3 → 10 cases from real (anonymised) Zendesk ticket themes; suite green.
-- [ ] Security checklist pass (brief §10) for the live surface.
+- [x] Security checklist pass (brief §10) for the live surface — RLS, server-only
+  secrets, input sanitisation, signed-URL attachments, rate limits, SSO CSRF/replay
+  hardening, audit log; GDPR export/delete shipped. (Retention policy still to document.)
 - [ ] Agent onboarding: 30-minute walkthrough; agents work the **AI-escalated** view only.
 - [ ] Parallel-run protocol: new tickets → desk; legacy/open tickets finish in Zendesk;
   Zendesk export not needed (clean start, decided 12 Jun).
