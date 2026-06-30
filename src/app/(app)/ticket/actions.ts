@@ -4,12 +4,12 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { requireAgent } from "@/lib/auth";
-import { addMessage, audit, getTicket, getTicketByReference, heartbeatPresence, mergeTickets, setMessageAttachments, unmergeTickets, updateTicket, type Viewer } from "@/lib/db/queries";
+import { addAllowedSender, addBlockedSender, addMessage, audit, getTicket, getTicketByReference, heartbeatPresence, mergeTickets, setMessageAttachments, unmergeTickets, updateTicket, type Viewer } from "@/lib/db/queries";
 import { notify } from "@/lib/db/notifications";
 import { parseMentions } from "@/lib/mentions";
 import { env } from "@/lib/env";
-import { sendTicketReply } from "@/lib/channels/email";
-import { sanitizeEmailHtml, htmlToText } from "@/lib/channels/email-parse";
+import { sendAutoAck, sendTicketReply } from "@/lib/channels/email";
+import { allowPatternFor, sanitizeEmailHtml, htmlToText } from "@/lib/channels/email-parse";
 import { storeOutboundAttachments, type OutboundFile } from "@/lib/channels/attachments";
 import type { Json } from "@/lib/db/database.types";
 import { resolveTicket } from "@/lib/ai/resolve";
@@ -287,4 +287,62 @@ export async function runAiAction(formData: FormData): Promise<void> {
     // resolveTicket fail-safe-escalates internally; surface state via refresh.
   }
   refresh(ticketId);
+}
+
+const senderActionSchema = z.object({ ticketId: z.string().uuid() });
+
+/**
+ * Approve an unknown sender held in the spam gate: add them to the allow-list
+ * (by domain for corporate, exact for free-mail), release the ticket into the
+ * normal flow, send the receipt they were held back from, and let the AI engage
+ * — i.e. the standard new-ticket sequence, just deferred until a human vouched.
+ */
+export async function approveSenderAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const { ticketId } = senderActionSchema.parse(Object.fromEntries(formData));
+  const ticket = await getTicket(ticketId);
+  if (!ticket) throw new Error("Ticket not found");
+
+  if (ticket.status === "awaiting_approval") {
+    const pattern = allowPatternFor(ticket.requester_email);
+    await addAllowedSender(pattern, session.email);
+    const released = await updateTicket(ticketId, {
+      status: "new",
+      tags: ticket.tags.filter((t) => t !== "unknown-sender"),
+    });
+    await audit("human", session.email, "sender.approved", { type: "ticket", id: ticketId }, { pattern });
+
+    await sendAutoAck(released);
+    try {
+      await resolveTicket(ticketId, { trigger: "manual", actor: session.email });
+    } catch {
+      // resolveTicket fail-safe-escalates internally.
+    }
+  }
+
+  revalidatePath("/inbox");
+  redirect("/inbox?view=approval");
+}
+
+/**
+ * Block an unknown sender: add their exact address (never a whole domain off a
+ * single message) to the blocklist and close the held ticket as spam. Future
+ * mail from them is dropped before a ticket is ever created.
+ */
+export async function blockSenderAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const { ticketId } = senderActionSchema.parse(Object.fromEntries(formData));
+  const ticket = await getTicket(ticketId);
+  if (!ticket) throw new Error("Ticket not found");
+
+  const email = ticket.requester_email.toLowerCase().trim();
+  if (email) await addBlockedSender(email, session.email);
+  await updateTicket(ticketId, {
+    status: "closed",
+    tags: [...new Set([...ticket.tags.filter((t) => t !== "unknown-sender"), "spam"])],
+  });
+  await audit("human", session.email, "sender.blocked", { type: "ticket", id: ticketId }, { email });
+
+  revalidatePath("/inbox");
+  redirect("/inbox?view=approval");
 }

@@ -27,7 +27,7 @@ function unwrap<T>(result: { data: T | null; error: { message: string } | null }
 
 // ── Tickets ──────────────────────────────────────────────────────────────────
 
-export type InboxView = "mine" | "unassigned" | "escalated" | "waiting" | "breaching" | "open" | "all";
+export type InboxView = "mine" | "unassigned" | "escalated" | "waiting" | "breaching" | "approval" | "open" | "all";
 
 const OPEN_STATUSES = ["new", "ai_working", "waiting_on_customer", "escalated", "pending"] as const;
 
@@ -161,6 +161,9 @@ export async function listTickets(view: InboxView, agentEmail: string): Promise<
     case "waiting":
       query = query.eq("status", "waiting_on_customer");
       break;
+    case "approval":
+      query = query.eq("status", "awaiting_approval");
+      break;
     case "open":
       query = query.in("status", [...OPEN_STATUSES]).or(activeNotSnoozed);
       break;
@@ -174,11 +177,12 @@ export async function listTickets(view: InboxView, agentEmail: string): Promise<
 export async function inboxCounts(agentEmail: string): Promise<Record<InboxView, number>> {
   const activeNotSnoozed = `snoozed_until.is.null,snoozed_until.lte.${new Date().toISOString()}`;
   const base = () => db().from("tickets").select("id", { count: "exact", head: true }).eq("tenant_id", env.tenantId);
-  const [mine, unassigned, escalated, waiting, open, all, breaching] = await Promise.all([
+  const [mine, unassigned, escalated, waiting, approval, open, all, breaching] = await Promise.all([
     base().eq("assignee", agentEmail).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
     base().is("assignee", null).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
     base().eq("status", "escalated"),
     base().eq("status", "waiting_on_customer"),
+    base().eq("status", "awaiting_approval"),
     base().in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
     base(),
     listBreachingTickets(),
@@ -188,6 +192,7 @@ export async function inboxCounts(agentEmail: string): Promise<Record<InboxView,
     unassigned: unassigned.count ?? 0,
     escalated: escalated.count ?? 0,
     waiting: waiting.count ?? 0,
+    approval: approval.count ?? 0,
     breaching: breaching.length,
     open: open.count ?? 0,
     all: all.count ?? 0,
@@ -957,15 +962,65 @@ export async function getBlockedPatterns(): Promise<string[]> {
 }
 
 export async function addBlockedSender(pattern: string, createdBy: string): Promise<void> {
+  const normalised = pattern.toLowerCase().trim();
+  if (!normalised) return;
+  // Idempotent: re-blocking an already-blocked sender (double-click / race) must
+  // not error — the ticket flow depends on this not throwing.
   const { error } = await db()
     .from("blocked_senders")
-    .insert({ tenant_id: env.tenantId, pattern: pattern.toLowerCase().trim(), created_by: createdBy });
+    .upsert(
+      { tenant_id: env.tenantId, pattern: normalised, created_by: createdBy },
+      { onConflict: "tenant_id,pattern", ignoreDuplicates: true },
+    );
   if (error) throw new Error(`addBlockedSender: ${error.message}`);
 }
 
 export async function removeBlockedSender(id: string): Promise<void> {
   const { error } = await db().from("blocked_senders").delete().eq("tenant_id", env.tenantId).eq("id", id);
   if (error) throw new Error(`removeBlockedSender: ${error.message}`);
+}
+
+export async function listAllowedSenders(): Promise<{ id: string; pattern: string }[]> {
+  const result = await db().from("allowed_senders").select("id, pattern").eq("tenant_id", env.tenantId).order("pattern");
+  return unwrap(result, "listAllowedSenders");
+}
+
+export async function getAllowedPatterns(): Promise<string[]> {
+  const { data, error } = await db().from("allowed_senders").select("pattern").eq("tenant_id", env.tenantId);
+  if (error) throw new Error(`getAllowedPatterns: ${error.message}`);
+  return (data ?? []).map((r) => r.pattern);
+}
+
+export async function addAllowedSender(pattern: string, createdBy: string): Promise<void> {
+  const normalised = pattern.toLowerCase().trim();
+  if (!normalised) return;
+  // Idempotent: re-approving an already-allowed sender must not error.
+  const { error } = await db()
+    .from("allowed_senders")
+    .upsert(
+      { tenant_id: env.tenantId, pattern: normalised, created_by: createdBy },
+      { onConflict: "tenant_id,pattern", ignoreDuplicates: true },
+    );
+  if (error) throw new Error(`addAllowedSender: ${error.message}`);
+}
+
+/** Bulk seed/import. Normalises, de-dupes, and skips rows that already exist.
+ *  Returns the number of new patterns actually inserted. */
+export async function addAllowedSenders(patterns: string[], createdBy: string): Promise<number> {
+  const cleaned = [...new Set(patterns.map((p) => p.toLowerCase().trim()).filter(Boolean))];
+  if (cleaned.length === 0) return 0;
+  const rows = cleaned.map((pattern) => ({ tenant_id: env.tenantId, pattern, created_by: createdBy }));
+  const { data, error } = await db()
+    .from("allowed_senders")
+    .upsert(rows, { onConflict: "tenant_id,pattern", ignoreDuplicates: true })
+    .select("id");
+  if (error) throw new Error(`addAllowedSenders: ${error.message}`);
+  return (data ?? []).length;
+}
+
+export async function removeAllowedSender(id: string): Promise<void> {
+  const { error } = await db().from("allowed_senders").delete().eq("tenant_id", env.tenantId).eq("id", id);
+  if (error) throw new Error(`removeAllowedSender: ${error.message}`);
 }
 
 export async function listSlaPolicies(): Promise<SlaPolicy[]> {

@@ -13,6 +13,7 @@ const VIEWS: { key: InboxView; label: string }[] = [
   { key: "escalated", label: "AI-escalated" },
   { key: "waiting", label: "Waiting on customer" },
   { key: "breaching", label: "Breaching SLA" },
+  { key: "approval", label: "Pending approval" },
   { key: "all", label: "All" },
 ];
 

@@ -22,7 +22,13 @@ type Row = {
   csat_score: number | null;
   client_id: string | null;
   escalation_reason: string | null;
+  tags: string[];
 };
+
+// Held-for-approval (likely spam) and human-blocked spam aren't real support
+// volume — strip both before any metric is computed.
+const isRealTicket = (r: { status: string; tags?: string[] | null }): boolean =>
+  r.status !== "awaiting_approval" && !(r.tags ?? []).includes("spam");
 
 export type Analytics = {
   connected: boolean;
@@ -71,7 +77,7 @@ export async function getAnalytics(): Promise<Analytics> {
       client
         .from("tickets")
         .select(
-          "status, ai_resolved, intent, priority, created_at, first_response_at, resolved_at, csat_score, client_id, escalation_reason",
+          "status, ai_resolved, intent, priority, created_at, first_response_at, resolved_at, csat_score, client_id, escalation_reason, tags",
         )
         .eq("tenant_id", tenant)
         .order("created_at", { ascending: false })
@@ -80,7 +86,7 @@ export async function getAnalytics(): Promise<Analytics> {
     ]);
     if (ticketsRes.error) throw new Error(ticketsRes.error.message);
 
-    const rows = (ticketsRes.data as Row[]) ?? [];
+    const rows = ((ticketsRes.data as Row[]) ?? []).filter(isRealTicket);
     const policies = new Map<TicketPriority, SlaPolicy>(
       ((policiesRes.data as SlaPolicy[]) ?? []).map((p) => [p.priority, p]),
     );
@@ -205,7 +211,7 @@ export type WeeklyGapDigest = {
   articlesToReview: { title: string; cited: number; resolveRate: number | null }[];
 };
 
-type DigestRow = Pick<Row, "status" | "ai_resolved" | "intent" | "created_at" | "csat_score" | "escalation_reason">;
+type DigestRow = Pick<Row, "status" | "ai_resolved" | "intent" | "created_at" | "csat_score" | "escalation_reason" | "tags">;
 
 /** Cohorted by creation date: "this week" = tickets created in the last 7 days,
  *  with the prior 7 days as the trend baseline. Returns null on any error so the
@@ -221,7 +227,7 @@ export async function getWeeklyGapDigest(): Promise<WeeklyGapDigest | null> {
     const [ticketsRes, kbCountRes, kbTitlesRes] = await Promise.all([
       client
         .from("tickets")
-        .select("status, ai_resolved, intent, created_at, csat_score, escalation_reason")
+        .select("status, ai_resolved, intent, created_at, csat_score, escalation_reason, tags")
         .eq("tenant_id", tenant)
         .gte("created_at", since)
         .limit(5000),
@@ -236,7 +242,7 @@ export async function getWeeklyGapDigest(): Promise<WeeklyGapDigest | null> {
     ]);
     if (ticketsRes.error) throw new Error(ticketsRes.error.message);
 
-    const rows = (ticketsRes.data as DigestRow[]) ?? [];
+    const rows = ((ticketsRes.data as DigestRow[]) ?? []).filter(isRealTicket);
     const cutoff = now - WEEK_MS;
     const isThisWeek = (r: DigestRow) => new Date(r.created_at).getTime() >= cutoff;
 

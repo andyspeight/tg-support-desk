@@ -1,5 +1,6 @@
 import "server-only";
 import { env } from "@/lib/env";
+import { FREE_MAIL_DOMAINS } from "@/lib/channels/email-parse";
 
 /**
  * Read-only access to the Airtable Clients base — the source of truth for
@@ -17,27 +18,9 @@ export type ClientRecord = {
 
 const API_BASE = "https://api.airtable.com/v0";
 
-// Free/ISP mailbox domains that must never be used for domain-level matching.
-const GENERIC_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "outlook.com",
-  "hotmail.com",
-  "hotmail.co.uk",
-  "live.com",
-  "live.co.uk",
-  "yahoo.com",
-  "yahoo.co.uk",
-  "icloud.com",
-  "me.com",
-  "aol.com",
-  "btinternet.com",
-  "sky.com",
-  "talktalk.net",
-  "virginmedia.com",
-  "protonmail.com",
-  "proton.me",
-]);
+// Domain-level matching must never fire on a free/ISP mailbox — shared with the
+// allow-list so the two stay in lock-step (one source of truth in email-parse).
+const GENERIC_DOMAINS = FREE_MAIL_DOMAINS;
 
 async function airtableGet(path: string, params: Record<string, string>): Promise<unknown> {
   const url = new URL(`${API_BASE}/${env.airtableClientsBaseId}/${path}`);
