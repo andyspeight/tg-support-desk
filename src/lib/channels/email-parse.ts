@@ -16,6 +16,8 @@ export type GmailMessage = {
   id: string;
   threadId: string;
   internalDate?: string;
+  /** Gmail system/user labels (e.g. "INBOX", "SPAM") — used to rescue mis-filed mail. */
+  labelIds?: string[];
   payload?: GmailMessagePart;
 };
 

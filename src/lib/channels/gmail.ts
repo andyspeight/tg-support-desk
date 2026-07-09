@@ -44,13 +44,22 @@ async function gmailFetch(path: string, init?: RequestInit): Promise<unknown> {
   return res.json();
 }
 
+// Read both the inbox AND the spam folder: Gmail mis-files real client mail as
+// spam, and an unread support email that never becomes a ticket is a lost
+// customer. ingestGmailMessage decides what to rescue from spam (known senders /
+// existing threads) vs leave alone, so pulling the ids here is safe.
 export async function listInboxMessageIds(sinceDays = 3): Promise<string[]> {
-  const params = new URLSearchParams({
-    q: `in:inbox newer_than:${sinceDays}d`,
-    maxResults: "50",
-  });
-  const data = (await gmailFetch(`/messages?${params}`)) as { messages?: { id: string }[] };
-  return (data.messages ?? []).map((m) => m.id);
+  const ids = new Set<string>();
+  for (const scope of ["in:inbox", "in:spam"]) {
+    const params = new URLSearchParams({
+      q: `${scope} newer_than:${sinceDays}d`,
+      maxResults: "50",
+      includeSpamTrash: "true", // required for in:spam to return anything
+    });
+    const data = (await gmailFetch(`/messages?${params}`)) as { messages?: { id: string }[] };
+    for (const m of data.messages ?? []) ids.add(m.id);
+  }
+  return [...ids];
 }
 
 export async function getMessage(id: string): Promise<GmailMessage> {
