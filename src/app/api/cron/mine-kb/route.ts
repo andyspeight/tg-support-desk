@@ -1,5 +1,5 @@
 import { requireCron } from "@/lib/cron-auth";
-import { audit, createKbArticle, existingKbSourceTicketIds, listHumanResolvedEscalated } from "@/lib/db/queries";
+import { audit, createKbArticle, existingKbSourceTicketIds, listTicketsToMine } from "@/lib/db/queries";
 import { copilotDraftKbArticle } from "@/lib/ai/copilot";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   if (unauthorised) return unauthorised;
 
   try {
-    const resolved = await listHumanResolvedEscalated(WINDOW_HOURS, 50);
+    const resolved = await listTicketsToMine(WINDOW_HOURS, 50);
     if (resolved.length === 0) return Response.json({ drafted: 0, candidates: 0 });
 
     const already = await existingKbSourceTicketIds(resolved.map((t) => t.id));

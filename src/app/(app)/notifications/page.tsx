@@ -14,6 +14,7 @@ const TYPE_LABEL: Record<string, string> = {
   stale: "Awaiting reply",
   snooze_due: "Snooze ended",
   pending_approval: "Pending approval",
+  needs_review: "Ready to send",
 };
 
 const TYPE_DOT: Record<string, string> = {
@@ -24,6 +25,7 @@ const TYPE_DOT: Record<string, string> = {
   stale: "bg-amber-500",
   snooze_due: "bg-emerald-500",
   pending_approval: "bg-violet-500",
+  needs_review: "bg-orange-500",
 };
 
 function timeAgo(iso: string): string {
