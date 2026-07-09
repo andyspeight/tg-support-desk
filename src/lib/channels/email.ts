@@ -53,6 +53,24 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
   // and no auto-ack goes out until an agent approves the sender.
   let held = false;
 
+  // Known-sender check (an Airtable lookup), memoised — used by both the Spam
+  // rescue below and the unknown-sender gate on new tickets.
+  const senderEmail = parsed.fromEmail; // narrowed to string by the guard above
+  let knownSender: boolean | undefined;
+  const isKnown = async (): Promise<boolean> => {
+    if (knownSender === undefined) knownSender = await isKnownSender(senderEmail);
+    return knownSender;
+  };
+
+  // The poll also reads the Spam folder, because Gmail mis-files real client
+  // mail there and it would otherwise be lost. But we only rescue what we can
+  // trust — a known sender, or a reply on an existing thread. A genuinely-new
+  // message Gmail flagged as spam is left where Gmail put it.
+  if ((gmailMessage.labelIds ?? []).includes("SPAM") && !ticket && !(await isKnown())) {
+    await audit("system", "email-channel", "spam.folder_ignored", undefined, { from: parsed.fromEmail });
+    return null;
+  }
+
   if (!ticket) {
     const tags: string[] = [];
     // Sender verification failed → the ticket still exists, but the AI must
@@ -65,7 +83,7 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
     // Airtable client is parked in the approval queue. Skipped for spoof-failed
     // senders (already escalated above) and machine auto-notifications (no human
     // to approve — the existing auto-reply suppression handles those).
-    if (!unverified && !parsed.isAutoReply && !(await isKnownSender(parsed.fromEmail))) {
+    if (!unverified && !parsed.isAutoReply && !(await isKnown())) {
       held = true;
       tags.push("unknown-sender");
     }
