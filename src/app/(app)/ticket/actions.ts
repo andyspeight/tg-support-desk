@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { requireAgent } from "@/lib/auth";
-import { addAllowedSender, addBlockedSender, addMessage, audit, getTicket, getTicketByReference, heartbeatPresence, mergeTickets, setMessageAttachments, unmergeTickets, updateTicket, type Viewer } from "@/lib/db/queries";
+import { addAllowedSender, addBlockedSender, addMessage, audit, getLatestAiDraft, getTicket, getTicketByReference, heartbeatPresence, mergeTickets, setMessageAttachments, unmergeTickets, updateTicket, type Viewer } from "@/lib/db/queries";
+import { classifyEdit, isMaterialEdit } from "@/lib/ai/draft-diff";
+import type { Ticket } from "@/lib/db/types";
 import { notify } from "@/lib/db/notifications";
 import { parseMentions } from "@/lib/mentions";
 import { env } from "@/lib/env";
@@ -36,6 +38,27 @@ function signOffHtml(html: string, firstName: string | null): string {
     .replace(/\s+$/, "");
   const inner = firstName ? `${escapeHtml(firstName)}<br>${TEAM_SIGNOFF}` : TEAM_SIGNOFF;
   return `${base}<p>${inner}</p>`;
+}
+
+/**
+ * The learning signal. When an agent's reply acted on an AI draft, record how
+ * much they changed it: sent-as-is says the AI was right; a material rewrite says
+ * it was wrong — so tag the ticket 'ai-corrected' and the self-improvement loop
+ * mines the human's version into the KB, teaching the desk the right answer.
+ * The edit class also feeds the digest's per-intent quality picture. Best-effort.
+ */
+async function captureDraftReview(ticket: Ticket, sentText: string, actor: string): Promise<void> {
+  const draft = await getLatestAiDraft(ticket.id);
+  if (!draft || !sentText.trim()) return;
+  const { similarity, editClass } = classifyEdit(draft, sentText);
+  await audit("human", actor, "ai.draft_reviewed", { type: "ticket", id: ticket.id }, {
+    edit_class: editClass,
+    similarity: Math.round(similarity * 100) / 100,
+    intent: ticket.intent,
+  });
+  if (isMaterialEdit(editClass) && !ticket.tags.includes("ai-corrected")) {
+    await updateTicket(ticket.id, { tags: [...ticket.tags, "ai-corrected"] });
+  }
 }
 
 /** Parse the rich composer: sanitised HTML, derived plain text, uploaded files. */
@@ -107,6 +130,9 @@ export async function sendReplyAction(formData: FormData): Promise<ComposerResul
       statusPatch.ai_resolved = false; // human-resolved
     }
     await updateTicket(ticketId, statusPatch);
+    // Learning loop: record how much the agent changed the AI's draft (if this
+    // reply acted on one). Best-effort — never blocks or fails the reply.
+    await captureDraftReview(ticket, text, session.email).catch((e) => console.error("captureDraftReview:", e));
     refresh(ticketId);
 
     return delivery === "stored"

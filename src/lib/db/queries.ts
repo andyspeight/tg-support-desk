@@ -27,9 +27,9 @@ function unwrap<T>(result: { data: T | null; error: { message: string } | null }
 
 // ── Tickets ──────────────────────────────────────────────────────────────────
 
-export type InboxView = "mine" | "unassigned" | "escalated" | "waiting" | "breaching" | "approval" | "open" | "all";
+export type InboxView = "mine" | "unassigned" | "escalated" | "review" | "waiting" | "breaching" | "approval" | "open" | "all";
 
-const OPEN_STATUSES = ["new", "ai_working", "waiting_on_customer", "escalated", "pending"] as const;
+const OPEN_STATUSES = ["new", "ai_working", "waiting_on_customer", "escalated", "needs_review", "pending"] as const;
 
 export async function createTicket(input: Omit<TablesInsert<"tickets">, "tenant_id">): Promise<Ticket> {
   const result = await db()
@@ -158,6 +158,9 @@ export async function listTickets(view: InboxView, agentEmail: string): Promise<
     case "escalated":
       query = query.eq("status", "escalated");
       break;
+    case "review":
+      query = query.eq("status", "needs_review");
+      break;
     case "waiting":
       query = query.eq("status", "waiting_on_customer");
       break;
@@ -177,10 +180,11 @@ export async function listTickets(view: InboxView, agentEmail: string): Promise<
 export async function inboxCounts(agentEmail: string): Promise<Record<InboxView, number>> {
   const activeNotSnoozed = `snoozed_until.is.null,snoozed_until.lte.${new Date().toISOString()}`;
   const base = () => db().from("tickets").select("id", { count: "exact", head: true }).eq("tenant_id", env.tenantId);
-  const [mine, unassigned, escalated, waiting, approval, open, all, breaching] = await Promise.all([
+  const [mine, unassigned, escalated, review, waiting, approval, open, all, breaching] = await Promise.all([
     base().eq("assignee", agentEmail).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
     base().is("assignee", null).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
     base().eq("status", "escalated"),
+    base().eq("status", "needs_review"),
     base().eq("status", "waiting_on_customer"),
     base().eq("status", "awaiting_approval"),
     base().in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
@@ -191,6 +195,7 @@ export async function inboxCounts(agentEmail: string): Promise<Record<InboxView,
     mine: mine.count ?? 0,
     unassigned: unassigned.count ?? 0,
     escalated: escalated.count ?? 0,
+    review: review.count ?? 0,
     waiting: waiting.count ?? 0,
     approval: approval.count ?? 0,
     breaching: breaching.length,
@@ -704,7 +709,11 @@ export async function publishKbArticle(id: string, embedding: number[] | null): 
 
 /** Human-resolved, previously-escalated tickets in a recent window — candidates
  *  for mining into KB articles (self-improvement loop). */
-export async function listHumanResolvedEscalated(withinHours: number, limit = 50): Promise<Ticket[]> {
+/** Human-resolved tickets worth mining into KB candidates: genuine escalations
+ *  the AI couldn't answer, plus tickets where a human materially rewrote the AI's
+ *  draft (tagged 'ai-corrected') — i.e. the AI got it wrong and the human taught
+ *  it the right answer. Both feed the self-improvement loop. */
+export async function listTicketsToMine(withinHours: number, limit = 50): Promise<Ticket[]> {
   const since = new Date(Date.now() - withinHours * 3_600_000).toISOString();
   const result = await db()
     .from("tickets")
@@ -712,11 +721,29 @@ export async function listHumanResolvedEscalated(withinHours: number, limit = 50
     .eq("tenant_id", env.tenantId)
     .in("status", ["resolved", "closed"])
     .eq("ai_resolved", false)
-    .not("escalation_reason", "is", null)
     .gte("resolved_at", since)
+    .or("escalation_reason.not.is.null,tags.cs.{ai-corrected}")
     .order("resolved_at", { ascending: false })
     .limit(limit);
-  return unwrap(result, "listHumanResolvedEscalated");
+  return unwrap(result, "listTicketsToMine");
+}
+
+/** The text of the latest AI draft still sitting on a ticket (shadow / held for
+ *  review), or null. Used to measure how much a human changed it on send. */
+export async function getLatestAiDraft(ticketId: string): Promise<string | null> {
+  const { data, error } = await db()
+    .from("messages")
+    .select("channel_meta")
+    .eq("ticket_id", ticketId)
+    .eq("role", "internal_note")
+    .order("created_at", { ascending: false })
+    .limit(10);
+  if (error) throw new Error(`getLatestAiDraft: ${error.message}`);
+  for (const row of data ?? []) {
+    const meta = (row.channel_meta ?? {}) as { kind?: string; draft_text?: string };
+    if (meta.kind === "shadow_draft" && meta.draft_text) return meta.draft_text;
+  }
+  return null;
 }
 
 /** Of the given tickets, which already have a KB article mined from them. */

@@ -165,7 +165,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const clientPortalHref = `/portal?as=${encodeURIComponent(ticket.requester_email)}&from=${ticket.id}`;
 
   // Lifecycle quick-actions (Zendesk-style): resolve/close/reopen by current state.
-  const lifecycleOpen = ["new", "ai_working", "waiting_on_customer", "escalated", "pending"].includes(ticket.status);
+  const lifecycleOpen = ["new", "ai_working", "waiting_on_customer", "escalated", "needs_review", "pending"].includes(ticket.status);
   const lifecycleResolved = ticket.status === "resolved";
   const lifecycleClosed = ticket.status === "closed";
 
@@ -239,6 +239,19 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         </div>
 
         <div className="flex-1 space-y-3 px-4 py-4 sm:px-6 lg:overflow-y-auto">
+          {ticket.status === "needs_review" && aiDraft && (
+            <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 dark:border-orange-500/25 dark:bg-orange-500/10">
+              <p className="text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">
+                AI reply drafted — review &amp; send
+              </p>
+              <p className="mt-1.5 text-sm text-ink-2">
+                The AI wrote a reply but wasn’t cleared to send it on its own. Hit{" "}
+                <span className="font-medium text-ink">Use AI draft</span> in the reply box to load it, edit anything you
+                like, and send — your edits teach it to get the next one right.
+              </p>
+            </div>
+          )}
+
           {ticket.status === "awaiting_approval" && (
             <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 dark:border-violet-500/25 dark:bg-violet-500/10">
               <p className="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">

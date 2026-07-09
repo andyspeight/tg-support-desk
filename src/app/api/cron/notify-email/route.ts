@@ -17,6 +17,7 @@ const TYPE_LABEL: Record<string, string> = {
   stale: "Awaiting your reply",
   snooze_due: "Snooze ended",
   pending_approval: "Senders awaiting approval",
+  needs_review: "AI reply ready to send",
 };
 
 export async function GET(request: Request) {

@@ -778,6 +778,7 @@ export type Database = {
         | "closed"
         | "pending"
         | "awaiting_approval"
+        | "needs_review"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -928,6 +929,7 @@ export const Constants = {
         "closed",
         "pending",
         "awaiting_approval",
+        "needs_review",
       ],
     },
   },

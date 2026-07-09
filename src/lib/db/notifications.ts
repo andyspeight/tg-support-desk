@@ -13,7 +13,8 @@ export type NotificationType =
   | "mention"
   | "stale"
   | "snooze_due"
-  | "pending_approval";
+  | "pending_approval"
+  | "needs_review";
 
 type NotifyInput = {
   recipients: string[];

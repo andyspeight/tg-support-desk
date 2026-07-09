@@ -10,6 +10,7 @@ const VIEWS: { key: InboxView; label: string }[] = [
   { key: "open", label: "Open" },
   { key: "mine", label: "My open" },
   { key: "unassigned", label: "Unassigned" },
+  { key: "review", label: "Needs review" },
   { key: "escalated", label: "AI-escalated" },
   { key: "waiting", label: "Waiting on customer" },
   { key: "breaching", label: "Breaching SLA" },

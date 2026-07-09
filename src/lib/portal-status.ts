@@ -18,6 +18,9 @@ export function clientStatus(status: string): { label: string; tone: string } {
       return { label: "In progress", tone: "bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300" };
     case "awaiting_approval":
       return { label: "Received", tone: "bg-surface-2 text-ink-2" };
+    case "needs_review":
+      // A reply is drafted and a person is finalising it — don't expose internals.
+      return { label: "Working on it", tone: "bg-accent-500/10 text-accent-700 dark:text-accent-300" };
     default:
       return { label: status, tone: "bg-surface-2 text-ink-2" };
   }

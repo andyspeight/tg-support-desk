@@ -173,10 +173,24 @@ export const env = {
     return Number(optional("AI_MAX_TURNS", "8"));
   },
   get aiShadowMode() {
-    // Parallel-run safety, ON by default: the resolution agent drafts into an
-    // internal note for a human to review/send instead of replying to the
-    // customer. Set AI_SHADOW_MODE=false to go fully live once it's trusted.
+    // Master hold, ON by default: while true the AI drafts every reply into the
+    // Needs-review queue for a human to approve/send — it never emails the
+    // customer itself. Set AI_SHADOW_MODE=false to hand control to the graduated
+    // send-gate below (auto-send the safe, high-confidence ones; hold the rest).
     return optional("AI_SHADOW_MODE", "true") !== "false";
+  },
+  get aiAutosendConfidence() {
+    // With shadow mode off, only answers at/above this confidence auto-send;
+    // anything less is held in Needs-review. Start high, lower as trust grows.
+    return Number(optional("AI_AUTOSEND_CONFIDENCE", "0.85"));
+  },
+  get aiAutosendIntents() {
+    // …and only these intents auto-send (KB-answerable, low-risk). Everything
+    // else always holds for review. Comma-separated; widen as confidence grows.
+    return optional("AI_AUTOSEND_INTENTS", "how_to,content_seo,deeplinks")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
   },
   get gmailPollBatch() {
     return Number(optional("GMAIL_POLL_BATCH", "10"));

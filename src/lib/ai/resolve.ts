@@ -211,53 +211,30 @@ function buildExecutors(ticket: Ticket, retrieved: RetrievedArticle[]): ToolExec
   };
 }
 
-// Shadow mode: don't act on the outcome — record what the AI *would* have done
-// as an internal note for a human to review/send, plus the ai_event so shadow
-// performance stays measurable. No customer email, no auto-resolve.
-async function applyShadowOutcome(
-  ticket: Ticket,
-  outcome: AgentOutcome,
-  result: AgentRunResult | null,
-  retrieved: RetrievedArticle[],
-): Promise<void> {
-  // A sendable draft (answered/clarified) carries a clean customer-ready reply;
-  // escalations carry a diagnosis block instead. Stash the sendable reply in
-  // channel_meta so the agent can load it straight into the composer to edit/send.
-  const sendable = outcome.kind === "answered" || outcome.kind === "clarified";
-  const draft = sendable
-    ? outcome.reply
-    : `Category: ${outcome.category}\nReason: ${outcome.reason}\n\nSuggested reply:\n${outcome.suggestedReply || "(none drafted)"}`;
+// Graduated autonomy: is this answer cleared to send itself? Only when shadow
+// mode is off, the AI is confident enough, and the ticket's intent is on the
+// auto-send allowlist (KB-answerable, low-risk). Everything else is held as a
+// draft for a human. Escalations never auto-send here.
+function canAutoSend(ticket: Ticket, outcome: AgentOutcome): boolean {
+  if (env.aiShadowMode) return false;
+  if (outcome.kind !== "answered" && outcome.kind !== "clarified") return false;
+  if (outcome.confidence < env.aiAutosendConfidence) return false;
+  return Boolean(ticket.intent && env.aiAutosendIntents.includes(ticket.intent));
+}
 
-  await addMessage({
-    ticket_id: ticket.id,
-    role: "internal_note",
-    author: AI_ACTOR,
-    body_text: `AI SHADOW DRAFT — not sent (shadow mode on).\nWould have: ${outcome.kind}.\n\n${draft}`,
-    channel_meta: { kind: "shadow_draft", would_be: outcome.kind, ...(sendable ? { draft_text: outcome.reply } : {}) },
+// A held draft on an *owned* ticket pings the owner. Unowned drafts surface via
+// the Needs-review queue + count (and the stale sweep as a backstop), so we
+// don't ping every agent about every draft — that would be alert-fatigue.
+async function notifyDraftReview(ticket: Ticket): Promise<void> {
+  const owners = ticketRecipients(ticket);
+  if (owners.length === 0) return;
+  await notify({
+    recipients: owners,
+    type: "needs_review",
+    ticketId: ticket.id,
+    title: `Ready to review & send: #${ticket.reference} — ${ticket.subject}`,
+    actor: AI_ACTOR,
   });
-  await updateTicket(ticket.id, {
-    status: "escalated",
-    escalation_reason: "shadow_mode: AI drafted a reply — review and send manually",
-    tags: ticket.tags.includes("ai-shadow") ? ticket.tags : [...ticket.tags, "ai-shadow"],
-  });
-  await audit("ai", AI_ACTOR, "ai.shadow_draft", { type: "ticket", id: ticket.id }, { would_be: outcome.kind });
-  await notifyEscalation(ticket, "Shadow mode: AI drafted a reply for review.");
-  // Surfaced-only: nothing was sent to the customer, so no citation credit.
-  await recordKbUsageSafe(ticket.id, retrieved, null);
-
-  if (result) {
-    await insertAiEvent({
-      ticket_id: ticket.id,
-      turn: result.turns,
-      model: result.model,
-      tools_called: result.toolsCalled.map((t) => ({ ...t })),
-      confidence: outcome.kind === "escalated" ? null : outcome.confidence,
-      outcome: outcome.kind === "clarified" ? "clarified" : outcome.kind === "answered" ? "answered" : "escalated",
-      latency_ms: result.latencyMs,
-      input_tokens: result.inputTokens,
-      output_tokens: result.outputTokens,
-    });
-  }
 }
 
 async function applyOutcome(
@@ -267,30 +244,50 @@ async function applyOutcome(
   retrieved: RetrievedArticle[],
 ): Promise<void> {
   const retrievedLinks = new Set(retrieved.map((r) => r.sourceUrl).filter((u): u is string => Boolean(u)));
-  if (env.aiShadowMode) {
-    await applyShadowOutcome(ticket, outcome, result, retrieved);
-    return;
-  }
-
   let sentBody: string | null = null;
 
   if (outcome.kind === "answered" || outcome.kind === "clarified") {
     // Strip any "Want to know more?" link the agent didn't actually retrieve
     // (no hallucinated sources). We don't append a CSAT "rate us" prompt.
     const body = sanitiseReplyLinks(outcome.reply, retrievedLinks);
-    await sendTicketReply(ticket, body, { role: "ai", author: AI_ACTOR });
-    sentBody = body;
-    await updateTicket(ticket.id, {
-      ...(outcome.language ? { language: outcome.language } : {}),
-      ...(outcome.kind === "answered"
-        ? { status: "resolved", ai_resolved: true, resolved_at: new Date().toISOString() }
-        : { status: "waiting_on_customer" }),
-    });
-    await audit("ai", AI_ACTOR, `ai.${outcome.kind}`, { type: "ticket", id: ticket.id }, {
-      confidence: outcome.confidence,
-    });
+    const langPatch = outcome.language ? { language: outcome.language } : {};
+
+    if (canAutoSend(ticket, outcome)) {
+      // Confident + cleared intent → the AI answers the customer itself.
+      await sendTicketReply(ticket, body, { role: "ai", author: AI_ACTOR });
+      sentBody = body;
+      await updateTicket(ticket.id, {
+        ...langPatch,
+        ...(outcome.kind === "answered"
+          ? { status: "resolved", ai_resolved: true, resolved_at: new Date().toISOString() }
+          : { status: "waiting_on_customer" }),
+      });
+      await audit("ai", AI_ACTOR, `ai.${outcome.kind}`, { type: "ticket", id: ticket.id }, {
+        confidence: outcome.confidence,
+        auto_sent: true,
+      });
+    } else {
+      // Not cleared to send — hold the drafted answer for a human to approve,
+      // edit and send (loadable via "Use AI draft"). The team sign-off stays out;
+      // the sending agent's name is added on send.
+      await addMessage({
+        ticket_id: ticket.id,
+        role: "internal_note",
+        author: AI_ACTOR,
+        body_text: `AI DRAFT — ready to review and send.\n\n${body}`,
+        channel_meta: { kind: "shadow_draft", would_be: outcome.kind, draft_text: body },
+      });
+      await updateTicket(ticket.id, { ...langPatch, status: "needs_review", ai_resolved: false });
+      await audit("ai", AI_ACTOR, "ai.drafted", { type: "ticket", id: ticket.id }, {
+        confidence: outcome.confidence,
+        held: env.aiShadowMode ? "shadow_mode" : "below_gate",
+        intent: ticket.intent,
+      });
+      await notifyDraftReview(ticket);
+    }
   } else {
-    // Handover package as a pinned internal note — escalations are 2-minute jobs.
+    // Escalation — the AI couldn't answer. Handover package as a pinned internal
+    // note (2-minute jobs), plus a holding reply once we're live (never in shadow).
     await addMessage({
       ticket_id: ticket.id,
       role: "internal_note",
@@ -305,7 +302,7 @@ async function applyOutcome(
       },
     });
 
-    if (outcome.holdingReply) {
+    if (outcome.holdingReply && !env.aiShadowMode) {
       await sendTicketReply(ticket, outcome.holdingReply, { role: "ai", author: AI_ACTOR });
     }
 
