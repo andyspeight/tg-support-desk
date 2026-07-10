@@ -185,6 +185,28 @@ export function SearchClient({ search, agents, initialQuery = "" }: Props) {
             </div>
           </section>
 
+          {results.pastTickets.length > 0 && (
+            <section>
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-3">
+                Similar past tickets ({results.pastTickets.length})
+              </h2>
+              <div className="mt-2 space-y-1.5">
+                {results.pastTickets.map((pastTicket) => (
+                  <Link
+                    key={pastTicket.ticket_id}
+                    href={`/ticket/${pastTicket.ticket_id}`}
+                    className="flex items-center gap-2 rounded-md border border-line-soft bg-surface p-3 transition hover:border-ink-3"
+                  >
+                    <span className="shrink-0 text-xs text-ink-3">#{pastTicket.reference}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-ink">{pastTicket.subject}</span>
+                    <span className="shrink-0 text-[11px] text-ink-3">{Math.round(pastTicket.similarity * 100)}% match</span>
+                    <StatusBadge status={pastTicket.status} />
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+
           <section>
             <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-3">
               Knowledge base ({results.kb.length})

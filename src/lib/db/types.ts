@@ -27,10 +27,20 @@ export type TicketSearchHit = {
 
 export type TicketSearchFilters = { statuses?: string[]; assignee?: string | null; since?: string | null };
 
-/** A semantic KB search hit (vector + rerank), for the search results panel. */
+/** A semantic KB search hit, for the search results panel. */
 export type KbSearchHit = { id: string; title: string; snippet: string; url: string | null; similarity: number };
 
-export type SearchResponse = { tickets: TicketSearchHit[]; kb: KbSearchHit[] };
+/** A semantic past-ticket match (resolved/closed, by meaning). */
+export type PastTicketHit = {
+  ticket_id: string;
+  reference: number;
+  subject: string;
+  status: TicketStatus;
+  resolved_at: string | null;
+  similarity: number;
+};
+
+export type SearchResponse = { tickets: TicketSearchHit[]; kb: KbSearchHit[]; pastTickets: PastTicketHit[] };
 
 /** One affected client on a proactive outreach incident. */
 export type OutreachRecipient = { email: string; name?: string | null };
