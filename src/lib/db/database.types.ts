@@ -207,6 +207,79 @@ export type Database = {
           },
         ]
       }
+      qa_reviews: {
+        Row: {
+          addresses_question: boolean
+          commercial_commitment: boolean
+          created_at: string
+          grounded: boolean
+          id: string
+          issues: Json
+          message_id: string
+          model: string | null
+          note: string | null
+          on_brand: boolean
+          target_role: string
+          tenant_id: string
+          ticket_id: string
+          verdict: string
+        }
+        Insert: {
+          addresses_question?: boolean
+          commercial_commitment?: boolean
+          created_at?: string
+          grounded?: boolean
+          id?: string
+          issues?: Json
+          message_id: string
+          model?: string | null
+          note?: string | null
+          on_brand?: boolean
+          target_role?: string
+          tenant_id?: string
+          ticket_id: string
+          verdict: string
+        }
+        Update: {
+          addresses_question?: boolean
+          commercial_commitment?: boolean
+          created_at?: string
+          grounded?: boolean
+          id?: string
+          issues?: Json
+          message_id?: string
+          model?: string | null
+          note?: string | null
+          on_brand?: boolean
+          target_role?: string
+          tenant_id?: string
+          ticket_id?: string
+          verdict?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_reviews_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qa_reviews_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: true
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qa_reviews_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -816,6 +889,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      ai_replies_needing_qa: {
+        Args: { p_tenant?: string; p_limit?: number }
+        Returns: {
+          message_id: string
+          ticket_id: string
+          body_text: string
+          created_at: string
+        }[]
+      }
       match_kb_articles: {
         Args: {
           match_count?: number

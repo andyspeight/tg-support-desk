@@ -28,6 +28,10 @@ export const env = {
   get anthropicApiKey() {
     return required("ANTHROPIC_API_KEY");
   },
+  // Non-throwing check for cron routes that should no-op (not 500) pre-go-live.
+  get anthropicConfigured() {
+    return Boolean(optional("ANTHROPIC_API_KEY"));
+  },
   get resolutionModel() {
     // Temporary: claude-fable-5 is unavailable (Jun 2026) — default the
     // resolution agent (and KB-grounded copilot drafting) to claude-opus-4-8
