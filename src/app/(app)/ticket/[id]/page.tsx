@@ -8,7 +8,7 @@ import { getClientById } from "@/lib/integrations/airtable-clients";
 import { env } from "@/lib/env";
 import { allowPatternFor, sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
-import { AlertTriangle, ArrowLeft, Eye, EyeOff, GitMerge, LayoutDashboard, Lightbulb, Paperclip, Users } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Eye, EyeOff, GitMerge, LayoutDashboard, Lightbulb, Loader2, Paperclip, Users } from "lucide-react";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
@@ -182,7 +182,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     <div className="flex flex-col lg:h-full">
       <TicketPresence ticketId={ticket.id} heartbeat={presenceHeartbeatAction} />
       <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row">
-        <RefreshPoller />
+        <RefreshPoller intervalMs={ticket.status === "ai_working" ? 6000 : 20000} />
 
       {/* Conversation column */}
       <div className="flex min-w-0 flex-1 flex-col">
@@ -248,6 +248,21 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         </div>
 
         <div className="flex-1 space-y-3 px-4 py-4 sm:px-6 lg:overflow-y-auto">
+          {ticket.status === "ai_working" && (
+            <div className="flex items-start gap-3 rounded-lg border border-accent-200 bg-accent-50 p-4 dark:border-accent-500/25 dark:bg-accent-500/10">
+              <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-accent-600 motion-reduce:animate-none dark:text-accent-300" strokeWidth={2} />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-accent-700 dark:text-accent-300">
+                  AI is working on this
+                </p>
+                <p className="mt-1.5 text-sm text-ink-2">
+                  Reading the ticket and drafting a reply — usually under a minute. It’ll either send its answer or leave a
+                  draft here for you to review. This updates on its own.
+                </p>
+              </div>
+            </div>
+          )}
+
           {ticket.status === "needs_review" && aiDraft && (
             <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 dark:border-orange-500/25 dark:bg-orange-500/10">
               <p className="text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">

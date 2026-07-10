@@ -179,6 +179,20 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
     }
   }
 
+  // A brand-new ticket held for sender approval can't be touched by the AI until
+  // a human vets the sender — so alert the team straight away rather than leaving
+  // it for the hourly approval sweep. This is a "human needed" trigger.
+  if (createdTicket && held) {
+    await notify({
+      recipients: env.agentEmails,
+      type: "pending_approval",
+      ticketId: ticket.id,
+      title: `Approve new sender ${parsed.fromEmail} — #${ticket.reference}`,
+      body: parsed.subject,
+      actor: parsed.fromEmail,
+    });
+  }
+
   // Instant receipt on a brand-new email ticket so the customer isn't left in
   // silence (especially while the AI is in shadow mode). Skipped for auto-replies
   // (loop/backscatter risk) and spoof-failed senders. Best-effort — a failed
