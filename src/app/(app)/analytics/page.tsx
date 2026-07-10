@@ -1,4 +1,5 @@
 import { getAnalytics } from "@/lib/db/analytics";
+import { qaSummary } from "@/lib/db/queries";
 import { getClientById } from "@/lib/integrations/airtable-clients";
 import { RESOLUTION_MILESTONES } from "@/lib/roadmap";
 
@@ -23,6 +24,8 @@ function Bar({ value, max, className = "bg-accent-500" }: { value: number; max: 
 export default async function AnalyticsPage() {
   const a = await getAnalytics();
   const target = 70;
+  const qa = await qaSummary().catch(() => ({ total: 0, flagged: 0 }));
+  const qaPassRate = qa.total > 0 ? Math.round(((qa.total - qa.flagged) / qa.total) * 100) : null;
 
   // Resolve the top-client rec ids to company names (agent-only page; falls
   // back to the id per-item so a slow/missing Airtable never breaks the page).
@@ -105,6 +108,16 @@ export default async function AnalyticsPage() {
           sub={a.csat?.humanAvg != null ? `human ${a.csat.humanAvg}/5` : a.csat ? `${a.csat.count} rated` : undefined}
         />
         <Stat label="CSAT responses" value={a.csat ? String(a.csat.count) : "—"} />
+        <Stat
+          label="AI QA pass rate"
+          value={qaPassRate === null ? "—" : `${qaPassRate}%`}
+          sub={qa.total > 0 ? `${qa.total} AI replies checked` : "auto-sent replies, judged"}
+        />
+        <Stat
+          label="QA flags"
+          value={String(qa.flagged)}
+          sub={qa.flagged > 0 ? "sent replies needing a look" : "none flagged"}
+        />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">

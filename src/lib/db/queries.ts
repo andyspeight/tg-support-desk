@@ -941,6 +941,36 @@ export async function upsertTicketEmbedding(ticketId: string, embedding: number[
   if (error) throw new Error(`upsertTicketEmbedding: ${error.message}`);
 }
 
+// ── AI reply QA (independent guardrail judge) ────────────────────────────────
+
+/** The QA cron's work list: AI-sent replies that haven't been graded yet. */
+export async function listAiRepliesForQa(
+  limit = 8,
+): Promise<{ message_id: string; ticket_id: string; body_text: string; created_at: string }[]> {
+  const result = await db().rpc("ai_replies_needing_qa", { p_tenant: env.tenantId, p_limit: limit });
+  return unwrap(result, "listAiRepliesForQa");
+}
+
+export async function insertQaReview(input: Omit<TablesInsert<"qa_reviews">, "tenant_id">): Promise<void> {
+  const { error } = await db().from("qa_reviews").insert({ ...input, tenant_id: env.tenantId });
+  // A duplicate (message already reviewed) is fine — the work list prevents it,
+  // but a race shouldn't error the run.
+  if (error && !error.message.includes("duplicate")) throw new Error(`insertQaReview: ${error.message}`);
+}
+
+/** Pass/flag tally over a recent window, for the analytics QA tile. */
+export async function qaSummary(days = 30): Promise<{ total: number; flagged: number }> {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const { data, error } = await db()
+    .from("qa_reviews")
+    .select("verdict")
+    .eq("tenant_id", env.tenantId)
+    .gte("created_at", since);
+  if (error) throw new Error(`qaSummary: ${error.message}`);
+  const rows = data ?? [];
+  return { total: rows.length, flagged: rows.filter((r) => r.verdict === "flag").length };
+}
+
 // ── AI events / audit ────────────────────────────────────────────────────────
 
 export async function insertAiEvent(input: {

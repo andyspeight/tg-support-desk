@@ -26,6 +26,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/cron/qa-review",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/send-outreach",
       "schedule": "* * * * *"
     },
