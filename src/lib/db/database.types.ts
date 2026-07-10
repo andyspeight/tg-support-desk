@@ -809,6 +809,29 @@ export type Database = {
           ticket_id: string
         }[]
       }
+      search_tickets: {
+        Args: {
+          q: string
+          p_tenant?: string
+          p_statuses?: string[]
+          p_assignee?: string
+          p_since?: string
+          p_limit?: number
+        }
+        Returns: {
+          id: string
+          reference: number
+          subject: string
+          requester_email: string
+          requester_name: string | null
+          status: Database["public"]["Enums"]["ticket_status"]
+          priority: Database["public"]["Enums"]["ticket_priority"]
+          assignee: string | null
+          updated_at: string
+          rank: number
+          snippet: string
+        }[]
+      }
       tickets_awaiting_response: {
         Args: { p_tenant_id?: string }
         Returns: {
