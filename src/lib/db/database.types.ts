@@ -109,6 +109,65 @@ export type Database = {
           },
         ]
       }
+      outreach_incidents: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          detail: string | null
+          draft_message: string | null
+          id: string
+          recipients: Json
+          sent_at: string | null
+          sent_count: number
+          source: string
+          status: string
+          summary: string
+          supplier: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          detail?: string | null
+          draft_message?: string | null
+          id?: string
+          recipients?: Json
+          sent_at?: string | null
+          sent_count?: number
+          source?: string
+          status?: string
+          summary: string
+          supplier: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          detail?: string | null
+          draft_message?: string | null
+          id?: string
+          recipients?: Json
+          sent_at?: string | null
+          sent_count?: number
+          source?: string
+          status?: string
+          summary?: string
+          supplier?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outreach_incidents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string

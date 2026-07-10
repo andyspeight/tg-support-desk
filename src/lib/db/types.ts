@@ -7,6 +7,10 @@ export type AiEvent = Tables<"ai_events">;
 export type CannedResponse = Tables<"canned_responses">;
 export type SlaPolicy = Tables<"sla_policies">;
 export type Notification = Tables<"notifications">;
+export type OutreachIncident = Tables<"outreach_incidents">;
+
+/** One affected client on a proactive outreach incident. */
+export type OutreachRecipient = { email: string; name?: string | null };
 
 export type ClientSupportHistoryItem = Pick<
   Ticket,
