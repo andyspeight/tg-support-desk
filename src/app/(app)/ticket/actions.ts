@@ -367,8 +367,12 @@ export async function approveSenderAction(formData: FormData): Promise<void> {
     }
   }
 
+  // Stay on the ticket the agent just vouched for — the AI has now run, so they
+  // land on either its sent answer or its held draft ready to accept/edit,
+  // rather than being bounced back to the approval queue.
   revalidatePath("/inbox");
-  redirect("/inbox?view=approval");
+  revalidatePath(`/ticket/${ticketId}`);
+  redirect(`/ticket/${ticketId}`);
 }
 
 /**

@@ -37,7 +37,7 @@ const TRIAGE_TOOL: Anthropic.Tool = {
         type: "string",
         enum: [...TRIAGE_INTENTS],
         description:
-          "Best-fit category. how_to = using the platform; widget = embedding/config of booking widgets; supplier_integration = supplier credentials/connectivity/missing results; deeplinks = deeplink URLs; booking_issue = search/results/booking failures; content_seo = CMS/blog/SEO; account_admin = users/roles/login/access; billing_commercial = pricing/invoices/refunds/contracts; bug_report = something broken in the product; other = none of these.",
+          "Best-fit category. how_to = using or configuring the platform, INCLUDING how the client sets up their own selling prices, markups, margins or pricing rules for suppliers/products; widget = embedding/config of booking widgets; supplier_integration = supplier credentials/connectivity/missing results; deeplinks = deeplink URLs; booking_issue = search/results/booking failures; content_seo = CMS/blog/SEO; account_admin = users/roles/login/access; billing_commercial = the client's OWN commercial relationship with Travelgenix — their Travelgenix subscription cost, an invoice Travelgenix sent them, a refund/credit/discount they want from Travelgenix, or their Travelgenix contract. This is NOT how the client prices their own products for their own customers. bug_report = something broken in the product; other = none of these.",
       },
       priority: {
         type: "string",
