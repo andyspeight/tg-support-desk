@@ -258,8 +258,10 @@ async function applyOutcome(
       sentBody = body;
       await updateTicket(ticket.id, {
         ...langPatch,
+        // A definitive answer closes the ticket (a customer reply reopens it and
+        // re-runs the AI); a clarifying question waits on the customer.
         ...(outcome.kind === "answered"
-          ? { status: "resolved", ai_resolved: true, resolved_at: new Date().toISOString() }
+          ? { status: "closed", ai_resolved: true, resolved_at: new Date().toISOString() }
           : { status: "waiting_on_customer" }),
       });
       await audit("ai", AI_ACTOR, `ai.${outcome.kind}`, { type: "ticket", id: ticket.id }, {

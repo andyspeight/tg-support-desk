@@ -38,6 +38,8 @@ type Props = {
   kbArticles?: KbPickerItem[];
   /** The AI's shadow-mode draft, ready to load into the composer to edit/send. */
   aiDraft?: string | null;
+  /** Initial "then →" status after sending (e.g. "closed" for a definitive answer). */
+  defaultAfterStatus?: string;
   copilot?: {
     draft: (ticketId: string) => Promise<CopilotResult>;
     summarise: (ticketId: string) => Promise<CopilotResult>;
@@ -98,7 +100,7 @@ function ToolbarButton({
   );
 }
 
-export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, kbArticles, aiDraft }: Props) {
+export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, kbArticles, aiDraft, defaultAfterStatus }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [isPending, startTransition] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
@@ -107,7 +109,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [afterStatus, setAfterStatus] = useState("waiting_on_customer"); // status to set when replying
+  const [afterStatus, setAfterStatus] = useState(defaultAfterStatus ?? "waiting_on_customer"); // status to set when replying
   const fileInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
 
