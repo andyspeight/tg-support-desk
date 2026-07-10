@@ -138,6 +138,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   // accept it, edit, and send — not just read it. The team sign-off is trimmed
   // (the agent's own sign-off is added on send).
   let aiDraft: string | null = null;
+  let aiDraftKind: string | null = null;
   if (ticket.status !== "resolved" && ticket.status !== "closed") {
     let shadowIdx = -1;
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -152,9 +153,17 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       const sendable = meta.would_be === "answered" || meta.would_be === "clarified";
       const body = messages[shadowIdx].body_text;
       const raw = meta.draft_text ?? (sendable ? body.slice(body.indexOf("\n\n") + 2) : null);
-      if (raw) aiDraft = raw.replace(/\n*\s*travelgenix support\s*$/i, "").trim() || null;
+      if (raw) {
+        aiDraft = raw.replace(/\n*\s*travelgenix support\s*$/i, "").trim() || null;
+        if (aiDraft) aiDraftKind = meta.would_be ?? null;
+      }
     }
   }
+
+  // A definitive AI answer should close on send (a reply reopens + re-runs it);
+  // a clarifying question waits on the customer. This just sets the composer's
+  // default — the agent can still override via the "then →" dropdown.
+  const composerAfterStatus = aiDraftKind === "answered" ? "closed" : "waiting_on_customer";
 
   // Customer shortcuts: all of this client's tickets (agent view), and the
   // client's own support portal as they see it (agent read-only preview).
@@ -350,6 +359,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             kbArticles={kbArticles}
             vars={cannedVars}
             aiDraft={aiDraft}
+            defaultAfterStatus={composerAfterStatus}
             sendReply={sendReplyAction}
             addNote={addNoteAction}
             copilot={{
