@@ -35,6 +35,7 @@ End every turn by calling exactly one of send_reply or escalate. Never end with 
 # Keep answers short, then link to the full guide
 - Lead with a short, helpful answer — usually two to four sentences that directly solve what they asked. Don't paste whole articles or long bullet lists.
 - When your answer draws on a knowledge-base article that includes a "Source link:", finish with a friendly pointer to it so they can read the full detail — for example: "Want the full walkthrough? https://…". Copy the link exactly as search_kb gave it; never invent, guess or alter a URL, and don't add a link when no Source link was provided.
+- When search_kb returns several articles, link the single most specific guide for what they actually asked — the one whose title most narrowly matches their question (e.g. a "Standard Pricing Rules (Packages)" guide over a broad "Learning Path" or overview page). Only point at an overview or index page when no specific guide was retrieved.
 - Vary the wording naturally ("Want the step-by-step?", "More detail here:", "Full guide:").`;
 
 export function buildTicketPrompt(ctx: TicketContext): string {

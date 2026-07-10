@@ -225,14 +225,16 @@ function canAutoSend(ticket: Ticket, outcome: AgentOutcome): boolean {
   return Boolean(ticket.intent && env.aiAutosendIntents.includes(ticket.intent));
 }
 
-// A held draft on an *owned* ticket pings the owner. Unowned drafts surface via
-// the Needs-review queue + count (and the stale sweep as a backstop), so we
-// don't ping every agent about every draft — that would be alert-fatigue.
+// A held AI draft is a "human needed" moment — someone has to review and send it.
+// Ping the owner + watchers, or the whole team when nobody owns it yet, so a
+// draft on an unassigned ticket is never left silent (it would otherwise only
+// surface to an agent who happens to open the Needs-review queue).
 async function notifyDraftReview(ticket: Ticket): Promise<void> {
   const owners = ticketRecipients(ticket);
-  if (owners.length === 0) return;
+  const recipients = owners.length > 0 ? owners : env.agentEmails;
+  if (recipients.length === 0) return;
   await notify({
-    recipients: owners,
+    recipients,
     type: "needs_review",
     ticketId: ticket.id,
     title: `Ready to review & send: #${ticket.reference} — ${ticket.subject}`,
