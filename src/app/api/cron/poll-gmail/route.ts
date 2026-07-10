@@ -1,4 +1,4 @@
-import { pollGmailInbox } from "@/lib/channels/poll-inbox";
+import { pollGmailInboxRepeating } from "@/lib/channels/poll-inbox";
 import { env } from "@/lib/env";
 import { requireCron } from "@/lib/cron-auth";
 
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   if (!env.gmailConfigured) return Response.json({ skipped: "gmail not configured" });
 
   try {
-    const summary = await pollGmailInbox();
+    const summary = await pollGmailInboxRepeating();
     if (summary.errors.length) console.error("poll-gmail errors:", summary.errors);
     return Response.json(summary);
   } catch (error) {

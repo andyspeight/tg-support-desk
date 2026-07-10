@@ -181,8 +181,10 @@ export const env = {
   },
   get aiAutosendConfidence() {
     // With shadow mode off, only answers at/above this confidence auto-send;
-    // anything less is held in Needs-review. Start high, lower as trust grows.
-    return Number(optional("AI_AUTOSEND_CONFIDENCE", "0.85"));
+    // anything less is held in Needs-review. Lowered to 0.70 for the live trial
+    // (safe intents only + mandatory-escalation guardrail still apply); raise via
+    // AI_AUTOSEND_CONFIDENCE if the corrected-draft rate climbs.
+    return Number(optional("AI_AUTOSEND_CONFIDENCE", "0.70"));
   },
   get aiAutosendIntents() {
     // …and only these intents auto-send (KB-answerable, low-risk). Everything
