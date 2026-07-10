@@ -9,6 +9,29 @@ export type SlaPolicy = Tables<"sla_policies">;
 export type Notification = Tables<"notifications">;
 export type OutreachIncident = Tables<"outreach_incidents">;
 
+/** A ranked ticket search hit — includes a highlighted "why it matched" snippet
+ *  (⟦…⟧ marks the matching terms). */
+export type TicketSearchHit = {
+  id: string;
+  reference: number;
+  subject: string;
+  requester_email: string;
+  requester_name: string | null;
+  status: TicketStatus;
+  priority: TicketPriority;
+  assignee: string | null;
+  updated_at: string;
+  rank: number;
+  snippet: string;
+};
+
+export type TicketSearchFilters = { statuses?: string[]; assignee?: string | null; since?: string | null };
+
+/** A semantic KB search hit (vector + rerank), for the search results panel. */
+export type KbSearchHit = { id: string; title: string; snippet: string; url: string | null; similarity: number };
+
+export type SearchResponse = { tickets: TicketSearchHit[]; kb: KbSearchHit[] };
+
 /** One affected client on a proactive outreach incident. */
 export type OutreachRecipient = { email: string; name?: string | null };
 

@@ -18,6 +18,8 @@ import type {
   Ticket,
   TicketChannel,
   TicketPriority,
+  TicketSearchFilters,
+  TicketSearchHit,
 } from "./types";
 
 function unwrap<T>(result: { data: T | null; error: { message: string } | null }, context: string): T {
@@ -560,6 +562,29 @@ export async function searchAll(query: string): Promise<SearchResults> {
     messages: messageHits,
     kb: kb.data ?? [],
   };
+}
+
+/**
+ * Ranked, content-aware ticket search: a ticket matches on its subject OR
+ * anything said in its conversation, ranked by relevance, with a highlighted
+ * (⟦…⟧) snippet of the matching text. Optional status / assignee / since filters.
+ */
+export async function searchTickets(
+  query: string,
+  filters: TicketSearchFilters = {},
+): Promise<TicketSearchHit[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const statuses = filters.statuses?.filter(Boolean) ?? [];
+  const result = await db().rpc("search_tickets", {
+    q,
+    p_tenant: env.tenantId,
+    p_statuses: statuses.length ? statuses : undefined,
+    p_assignee: filters.assignee || undefined,
+    p_since: filters.since || undefined,
+    p_limit: 30,
+  });
+  return unwrap(result, "searchTickets") as TicketSearchHit[];
 }
 
 // ── Messages ─────────────────────────────────────────────────────────────────
