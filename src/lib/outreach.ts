@@ -6,7 +6,16 @@ export type ParsedRecipient = { email: string; name?: string };
 // Result shapes shared between the server actions and the review UI. Declared
 // here (a plain module) because a "use server" file may only export functions.
 export type OutreachDraftResult = { ok: true; draft: string } | { ok: false; error: string };
-export type OutreachSendResult = { ok: true; sent: number; failed: number } | { ok: false; error: string };
+// `sent`/`failed` count an inline (small) send; `queued` is set when a large send
+// was handed to the background drainer instead. Exactly one path populates each.
+export type OutreachSendResult =
+  | { ok: true; sent: number; failed: number; queued: number }
+  | { ok: false; error: string };
+
+/** URL/tag-safe supplier slug (e.g. "Amadeus GDS" → "amadeus-gds"). */
+export function supplierSlug(supplier: string): string {
+  return supplier.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "supplier";
+}
 
 const EMAIL_RE = /[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+/;
 

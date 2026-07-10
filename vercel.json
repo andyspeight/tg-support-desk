@@ -22,6 +22,10 @@
       "schedule": "15 * * * *"
     },
     {
+      "path": "/api/cron/send-outreach",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/university-sync",
       "schedule": "0 4 * * *"
     },

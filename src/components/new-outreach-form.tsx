@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useFormStatus } from "react-dom";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Users } from "lucide-react";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -17,9 +18,12 @@ function SubmitButton() {
   );
 }
 
-/** Raise a proactive outreach: supplier, what's wrong, and the affected clients.
- *  On submit the AI drafts the message and we land on the review screen. */
+/** Raise a proactive outreach: supplier, what's wrong, and the affected clients
+ *  (an explicit list, or every client). On submit the AI drafts the message and
+ *  we land on the review screen. */
 export function NewOutreachForm({ action }: { action: (formData: FormData) => Promise<void> }) {
+  const [allClients, setAllClients] = useState(false);
+
   return (
     <form action={action} className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
@@ -44,6 +48,7 @@ export function NewOutreachForm({ action }: { action: (formData: FormData) => Pr
           />
         </label>
       </div>
+
       <label className="block">
         <span className="text-xs font-medium text-ink-2">Detail for the AI (optional)</span>
         <textarea
@@ -54,20 +59,45 @@ export function NewOutreachForm({ action }: { action: (formData: FormData) => Pr
           className="mt-1 w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink focus:border-ink-3 focus:outline-none"
         />
       </label>
-      <label className="block">
-        <span className="text-xs font-medium text-ink-2">Affected clients</span>
-        <textarea
-          name="recipients"
-          required
-          rows={4}
-          maxLength={20000}
-          placeholder={"One client per line —\njo@agency.com\nSam Patel <sam@toursco.com>"}
-          className="mt-1 w-full rounded-md border border-line bg-surface px-3 py-2 font-mono text-xs text-ink focus:border-ink-3 focus:outline-none"
-        />
-        <span className="mt-1 block text-[11px] text-ink-3">
-          One client per line: an email, or “Name &lt;email&gt;”. The greeting is personalised per client.
-        </span>
-      </label>
+
+      <div>
+        <span className="text-xs font-medium text-ink-2">Who to tell</span>
+        <label className="mt-1 flex items-start gap-2 rounded-md border border-line bg-surface-2/40 p-2.5">
+          <input
+            type="checkbox"
+            name="allClients"
+            checked={allClients}
+            onChange={(e) => setAllClients(e.target.checked)}
+            className="mt-0.5 h-4 w-4"
+          />
+          <span className="text-sm text-ink">
+            <span className="inline-flex items-center gap-1.5 font-medium">
+              <Users className="h-3.5 w-3.5 text-ink-3" strokeWidth={1.75} /> Send to all clients
+            </span>
+            <span className="mt-0.5 block text-[11px] text-ink-3">
+              Every client in the Clients base with an email on file. You’ll review the message before anything sends.
+            </span>
+          </span>
+        </label>
+      </div>
+
+      {!allClients && (
+        <label className="block">
+          <span className="text-xs font-medium text-ink-2">Affected clients</span>
+          <textarea
+            name="recipients"
+            required
+            rows={4}
+            maxLength={20000}
+            placeholder={"One client per line —\njo@agency.com\nSam Patel <sam@toursco.com>"}
+            className="mt-1 w-full rounded-md border border-line bg-surface px-3 py-2 font-mono text-xs text-ink focus:border-ink-3 focus:outline-none"
+          />
+          <span className="mt-1 block text-[11px] text-ink-3">
+            One client per line: an email, or “Name &lt;email&gt;”. The greeting is personalised per client.
+          </span>
+        </label>
+      )}
+
       <SubmitButton />
     </form>
   );

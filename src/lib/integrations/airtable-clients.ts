@@ -81,6 +81,55 @@ export async function matchClientByEmail(email: string): Promise<ClientRecord | 
   return null;
 }
 
+export type ClientContact = { email: string; name?: string };
+
+// Preference order for a client's display name (real fields on the Clients base,
+// per SAFE_CLIENT_FIELDS): a contact person first, then the company/trading name.
+const CLIENT_NAME_FIELDS = ["Primary Contact Name", "ClientName", "Trading Name"] as const;
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function firstFieldString(fields: Record<string, unknown>, keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    const value = fields[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (Array.isArray(value)) {
+      const found = value.find((v) => typeof v === "string" && v.trim());
+      if (found) return (found as string).trim();
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Every client with a support email — the recipient pool for a "to all clients"
+ * proactive outreach. Paginates the Clients base, skips records without a
+ * valid-looking email, and dedupes case-insensitively. Read-only; throws on an
+ * Airtable error so the caller can surface it rather than silently under-send.
+ */
+export async function listAllClients(): Promise<ClientContact[]> {
+  const emailFields = env.airtableClientEmailFields;
+  const out: ClientContact[] = [];
+  const seen = new Set<string>();
+  let offset: string | undefined;
+  do {
+    const params: Record<string, string> = { pageSize: "100" };
+    if (offset) params.offset = offset;
+    const data = (await airtableGet(encodeURIComponent(env.airtableClientsTable), params)) as {
+      records: { id: string; fields: Record<string, unknown> }[];
+      offset?: string;
+    };
+    for (const record of data.records) {
+      const email = firstFieldString(record.fields, emailFields)?.toLowerCase();
+      if (!email || !EMAIL_SHAPE.test(email) || seen.has(email)) continue;
+      seen.add(email);
+      const name = firstFieldString(record.fields, CLIENT_NAME_FIELDS);
+      out.push(name ? { email, name } : { email });
+    }
+    offset = data.offset;
+  } while (offset && out.length < 5000);
+  return out;
+}
+
 /**
  * Compact, prompt-safe summary of a client record. Allowlist-based and pure —
  * implemented in ./client-summary so it stays unit-testable and so credential

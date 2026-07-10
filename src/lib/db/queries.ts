@@ -964,6 +964,20 @@ export async function getOutreachIncident(id: string): Promise<OutreachIncident 
   return data;
 }
 
+/** Oldest incident still being sent — the background drainer works one at a time. */
+export async function getNextSendingOutreach(): Promise<OutreachIncident | null> {
+  const { data, error } = await db()
+    .from("outreach_incidents")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .eq("status", "sending")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`getNextSendingOutreach: ${error.message}`);
+  return data;
+}
+
 export async function createOutreachIncident(
   input: Omit<TablesInsert<"outreach_incidents">, "tenant_id">,
 ): Promise<OutreachIncident> {

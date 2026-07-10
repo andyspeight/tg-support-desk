@@ -15,8 +15,8 @@ function formatDate(iso: string): string {
 
 export default async function ProactivePage() {
   const incidents = await listOutreachIncidents();
-  const open = incidents.filter((i) => i.status === "open");
-  const past = incidents.filter((i) => i.status !== "open");
+  const active = incidents.filter((i) => i.status === "open" || i.status === "sending");
+  const past = incidents.filter((i) => i.status === "sent" || i.status === "dismissed");
 
   return (
     <div className="mx-auto max-w-3xl p-4 sm:p-6">
@@ -34,31 +34,40 @@ export default async function ProactivePage() {
         <NewOutreachForm action={createOutreachAction} />
       </div>
 
-      {open.length > 0 && (
+      {active.length > 0 && (
         <section className="mt-6">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-3">Awaiting send</h2>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-3">Active</h2>
           <ul className="space-y-2">
-            {open.map((incident) => (
-              <li key={incident.id}>
-                <Link
-                  href={`/proactive/${incident.id}`}
-                  className="block rounded-lg border border-line bg-surface p-3 transition hover:border-ink-3"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium text-ink">
-                      {incident.supplier} — {incident.summary}
+            {active.map((incident) => {
+              const total = recipientCount(incident.recipients);
+              const isSending = incident.status === "sending";
+              return (
+                <li key={incident.id}>
+                  <Link
+                    href={`/proactive/${incident.id}`}
+                    className="block rounded-lg border border-line bg-surface p-3 transition hover:border-ink-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium text-ink">
+                        {incident.supplier} — {incident.summary}
+                      </span>
+                      {isSending ? (
+                        <span className="shrink-0 rounded bg-accent-100 px-1.5 py-0.5 text-[10px] font-medium text-accent-700 dark:bg-accent-500/15 dark:text-accent-300">
+                          Sending {incident.sent_count}/{total}
+                        </span>
+                      ) : (
+                        <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+                          Draft
+                        </span>
+                      )}
+                    </div>
+                    <span className="mt-0.5 block text-xs text-ink-3">
+                      {total} client{total === 1 ? "" : "s"} · raised {formatDate(incident.created_at)}
                     </span>
-                    <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-                      Draft
-                    </span>
-                  </div>
-                  <span className="mt-0.5 block text-xs text-ink-3">
-                    {recipientCount(incident.recipients)} client{recipientCount(incident.recipients) === 1 ? "" : "s"} · raised{" "}
-                    {formatDate(incident.created_at)}
-                  </span>
-                </Link>
-              </li>
-            ))}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

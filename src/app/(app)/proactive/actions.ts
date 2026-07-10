@@ -7,34 +7,41 @@ import { requireAgent } from "@/lib/auth";
 import {
   audit,
   createOutreachIncident,
-  createTicket,
   getOutreachIncident,
   updateOutreachIncident,
 } from "@/lib/db/queries";
 import { draftOutreach } from "@/lib/ai/copilot";
-import { sendTicketReply } from "@/lib/channels/email";
-import { parseRecipients, personaliseOutreach, type OutreachDraftResult, type OutreachSendResult } from "@/lib/outreach";
+import { sendOutreachToRecipient } from "@/lib/channels/outreach-send";
+import { listAllClients } from "@/lib/integrations/airtable-clients";
+import { parseRecipients, supplierSlug, type OutreachDraftResult, type OutreachSendResult } from "@/lib/outreach";
 import type { OutreachRecipient } from "@/lib/db/types";
 import type { Json } from "@/lib/db/database.types";
 
-// A proactive send fans out to at most this many clients per action, to stay
-// within a single request's time budget. Larger outages can be split; the trial
-// scale is well under this.
-const MAX_RECIPIENTS = 200;
+// Hard safety cap on any single outreach.
+const RECIPIENT_CAP = 2000;
+// Sends up to this many go immediately from the action; larger ones (e.g. "all
+// clients") are queued to the paced background drainer so they don't time out.
+const INLINE_MAX = 20;
 
 const createSchema = z.object({
   supplier: z.string().trim().min(1).max(120),
   summary: z.string().trim().min(1).max(300),
   detail: z.string().trim().max(4000).optional(),
-  recipients: z.string().trim().min(1).max(20000),
+  recipients: z.string().trim().max(20000).optional(),
+  allClients: z.string().optional(),
 });
 
-/** Raise an incident, parse the affected clients, and immediately AI-draft the
- *  message so the agent lands on a ready-to-review outreach. */
+/** Raise an incident, resolve the affected clients (an explicit list, or every
+ *  client from the Airtable Clients base), and AI-draft the message so the agent
+ *  lands on a ready-to-review outreach. */
 export async function createOutreachAction(formData: FormData): Promise<void> {
   const session = await requireAgent();
   const input = createSchema.parse(Object.fromEntries(formData));
-  const recipients = parseRecipients(input.recipients).slice(0, MAX_RECIPIENTS);
+  const toAllClients = Boolean(input.allClients);
+
+  const recipients: OutreachRecipient[] = (
+    toAllClients ? await listAllClients() : parseRecipients(input.recipients ?? "")
+  ).slice(0, RECIPIENT_CAP);
 
   const incident = await createOutreachIncident({
     supplier: input.supplier,
@@ -47,6 +54,7 @@ export async function createOutreachAction(formData: FormData): Promise<void> {
   await audit("human", session.email, "outreach.created", { type: "outreach", id: incident.id }, {
     supplier: input.supplier,
     recipients: recipients.length,
+    all_clients: toAllClients,
   });
 
   // Draft now (best-effort) so the review screen isn't blank.
@@ -83,15 +91,11 @@ const sendSchema = z.object({
   message: z.string().trim().min(1).max(20000),
 });
 
-function supplierSlug(supplier: string): string {
-  return supplier.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "supplier";
-}
-
 /**
- * Send the reviewed message to every affected client. Each send is its own
- * ticket + branded email (personalised greeting), so a client's reply threads
- * back into the desk and the normal AI/agent flow picks it up. Best-effort per
- * recipient — one failed address never blocks the rest.
+ * Send the reviewed message. A small send goes out immediately, one ticket +
+ * branded email per client, so a reply threads straight back into the desk. A
+ * large send (e.g. all clients) is queued to the paced background drainer
+ * instead — the review screen then shows the send progressing.
  */
 export async function sendOutreachAction(incidentId: string, message: string): Promise<OutreachSendResult> {
   const session = await requireAgent();
@@ -100,39 +104,50 @@ export async function sendOutreachAction(incidentId: string, message: string): P
 
   const incident = await getOutreachIncident(incidentId);
   if (!incident) return { ok: false, error: "Incident not found." };
-  if (incident.status === "sent") return { ok: false, error: "This outreach has already been sent." };
+  if (incident.status === "sent" || incident.status === "sending") {
+    return { ok: false, error: "This outreach is already sending or sent." };
+  }
 
-  const recipients = ((incident.recipients as unknown as OutreachRecipient[]) ?? []).slice(0, MAX_RECIPIENTS);
+  const recipients = ((incident.recipients as unknown as OutreachRecipient[]) ?? []).slice(0, RECIPIENT_CAP);
   if (recipients.length === 0) return { ok: false, error: "No recipients to send to." };
 
-  const agentName = session.name && !session.name.includes("@") ? session.name.trim() : null;
-  const slug = supplierSlug(incident.supplier);
-  const subject = incident.summary.slice(0, 150);
+  // Large send → queue for the paced drainer, which sends in batches.
+  if (recipients.length > INLINE_MAX) {
+    await updateOutreachIncident(incidentId, {
+      draft_message: message,
+      status: "sending",
+      sent_count: 0,
+      done_emails: [] as unknown as Json,
+      sent_at: null,
+    });
+    await audit("human", session.email, "outreach.queued", { type: "outreach", id: incidentId }, {
+      supplier: incident.supplier,
+      recipients: recipients.length,
+    });
+    revalidatePath(`/proactive/${incidentId}`);
+    revalidatePath("/proactive");
+    return { ok: true, sent: 0, failed: 0, queued: recipients.length };
+  }
 
+  // Small send → do it now.
+  const opts = {
+    slug: supplierSlug(incident.supplier),
+    subject: incident.summary.slice(0, 150),
+    author: session.email,
+    message,
+  };
   let sent = 0;
+  const done: string[] = [];
   const failed: string[] = [];
   for (const recipient of recipients) {
     try {
-      const ticket = await createTicket({
-        requester_email: recipient.email,
-        requester_name: recipient.name ?? null,
-        subject,
-        channel: "email",
-        status: "waiting_on_customer",
-        priority: "p3",
-        tags: ["proactive", `supplier:${slug}`],
-      });
-      await sendTicketReply(ticket, personaliseOutreach(message, recipient.name), {
-        role: "human",
-        author: session.email,
-        fromName: agentName ?? undefined,
-        subject,
-      });
+      await sendOutreachToRecipient(opts, recipient);
       sent += 1;
     } catch (error) {
       failed.push(recipient.email);
       console.error(`outreach send to ${recipient.email} failed:`, error);
     }
+    done.push(recipient.email.toLowerCase());
   }
 
   await updateOutreachIncident(incidentId, {
@@ -140,6 +155,7 @@ export async function sendOutreachAction(incidentId: string, message: string): P
     status: sent > 0 ? "sent" : incident.status,
     sent_at: sent > 0 ? new Date().toISOString() : incident.sent_at,
     sent_count: sent,
+    done_emails: done as unknown as Json,
   });
   await audit("human", session.email, "outreach.sent", { type: "outreach", id: incidentId }, {
     supplier: incident.supplier,
@@ -149,7 +165,7 @@ export async function sendOutreachAction(incidentId: string, message: string): P
 
   revalidatePath(`/proactive/${incidentId}`);
   revalidatePath("/proactive");
-  return { ok: true, sent, failed: failed.length };
+  return { ok: true, sent, failed: failed.length, queued: 0 };
 }
 
 /** Bin an incident that no longer needs outreach. */

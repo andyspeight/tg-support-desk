@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Send, Sparkles } from "lucide-react";
 import type { OutreachDraftResult, OutreachSendResult } from "@/lib/outreach";
 
@@ -15,10 +16,10 @@ type Props = {
 /** Review screen: edit the AI-drafted outreach, re-draft, and send to every
  *  affected client after an explicit confirm. Human-in-the-loop by design. */
 export function OutreachComposer({ incidentId, initialDraft, recipientCount, redraft, send }: Props) {
+  const router = useRouter();
   const [message, setMessage] = useState(initialDraft);
   const [busy, setBusy] = useState<null | "draft" | "send">(null);
   const [error, setError] = useState<string | null>(null);
-  const [sentResult, setSentResult] = useState<{ sent: number; failed: number } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const plural = recipientCount === 1 ? "" : "s";
@@ -46,20 +47,14 @@ export function OutreachComposer({ incidentId, initialDraft, recipientCount, red
     setError(null);
     startTransition(async () => {
       const result = await send(incidentId, message);
-      if (result.ok) setSentResult({ sent: result.sent, failed: result.failed });
-      else setError(result.error);
-      setBusy(null);
+      if (result.ok) {
+        // Re-render the page into its sent / sending-progress state.
+        router.refresh();
+      } else {
+        setError(result.error);
+        setBusy(null);
+      }
     });
-  }
-
-  if (sentResult) {
-    return (
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200">
-        Sent to {sentResult.sent} client{sentResult.sent === 1 ? "" : "s"}
-        {sentResult.failed > 0 ? ` · ${sentResult.failed} couldn’t be sent — check those addresses and try again` : ""}. Any replies
-        will thread into the inbox.
-      </div>
-    );
   }
 
   return (
