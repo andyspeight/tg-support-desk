@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Search,
   Settings,
+  Siren,
   type LucideIcon,
 } from "lucide-react";
 import { NotificationsNavItem } from "@/components/notifications-nav";
@@ -18,6 +19,7 @@ const LINKS: { href: string; label: string; icon: LucideIcon; ownerOnly?: boolea
   { href: "/home", label: "My day", icon: House },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, ownerOnly: true },
   { href: "/inbox", label: "Inbox", icon: Inbox },
+  { href: "/proactive", label: "Proactive", icon: Siren },
   { href: "/search", label: "Search", icon: Search },
   { href: "/kb", label: "Knowledge base", icon: BookOpen },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },

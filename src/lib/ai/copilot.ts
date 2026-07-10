@@ -60,6 +60,25 @@ export async function copilotDraft(ticketId: string): Promise<string> {
   return complete(env.resolutionModel, system, prompt);
 }
 
+/**
+ * Draft a PROACTIVE outreach message about a supplier/integration issue, for a
+ * human to review before it goes to affected clients. Honest and reassuring,
+ * grounded only in what the incident states (no invented cause/ETA), and never
+ * any commercial commitment. Uses a {{name}} token personalised per client on send.
+ */
+export async function draftOutreach(incident: {
+  supplier: string;
+  summary: string;
+  detail?: string | null;
+}): Promise<string> {
+  const system = `You are drafting a PROACTIVE outreach message Travelgenix is sending to affected clients about a supplier/integration issue — before they have raised a ticket. A human reviews it before it sends. ${BRAND_VOICE}
+Reassure the client we have spotted the issue and are on it, say plainly what is affected and what (if anything) they need to do, and that we will update them. Be specific but do NOT invent anything beyond what you are told — if you do not know the cause or an ETA, do not state one. Never promise refunds, credit, compensation or contract changes.
+Begin with exactly "Hi {{name}}," on its own line (personalised per client on send) and end with "Travelgenix Support" on its own line. Plain text only, no subject line, a few short paragraphs.`;
+  const detail = incident.detail?.trim() ? `\n\nWhat we know:\n${incident.detail.trim()}` : "";
+  const prompt = `Supplier / system affected: ${incident.supplier}\nIssue: ${incident.summary}${detail}\n\nDraft the outreach message.`;
+  return complete(env.resolutionModel, system, prompt, 700);
+}
+
 /** One-paragraph summary of the whole thread for fast triage. */
 export async function copilotSummarise(ticketId: string): Promise<string> {
   const loaded = await getTicketWithMessages(ticketId);

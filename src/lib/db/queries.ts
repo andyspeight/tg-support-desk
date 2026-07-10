@@ -13,6 +13,7 @@ import type {
   KbSource,
   KbStatus,
   Message,
+  OutreachIncident,
   SlaPolicy,
   Ticket,
   TicketChannel,
@@ -942,6 +943,49 @@ export async function setSyncState(channel: TicketChannel, state: Json): Promise
     .from("channel_sync_state")
     .upsert({ tenant_id: env.tenantId, channel, state, updated_at: new Date().toISOString() });
   if (error) throw new Error(`setSyncState: ${error.message}`);
+}
+
+// ── Proactive outreach ───────────────────────────────────────────────────────
+
+export async function listOutreachIncidents(): Promise<OutreachIncident[]> {
+  const { data, error } = await db()
+    .from("outreach_incidents")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw new Error(`listOutreachIncidents: ${error.message}`);
+  return data ?? [];
+}
+
+export async function getOutreachIncident(id: string): Promise<OutreachIncident | null> {
+  const { data, error } = await db().from("outreach_incidents").select().eq("id", id).maybeSingle();
+  if (error) throw new Error(`getOutreachIncident: ${error.message}`);
+  return data;
+}
+
+export async function createOutreachIncident(
+  input: Omit<TablesInsert<"outreach_incidents">, "tenant_id">,
+): Promise<OutreachIncident> {
+  const result = await db()
+    .from("outreach_incidents")
+    .insert({ ...input, tenant_id: env.tenantId })
+    .select()
+    .single();
+  return unwrap(result, "createOutreachIncident");
+}
+
+export async function updateOutreachIncident(
+  id: string,
+  patch: TablesUpdate<"outreach_incidents">,
+): Promise<OutreachIncident> {
+  const result = await db()
+    .from("outreach_incidents")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+  return unwrap(result, "updateOutreachIncident");
 }
 
 // ── Reference data ───────────────────────────────────────────────────────────

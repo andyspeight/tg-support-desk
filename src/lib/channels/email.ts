@@ -301,7 +301,7 @@ export async function latestCustomerThreadMeta(ticketId: string): Promise<{ mess
 export async function sendTicketReply(
   ticket: Ticket,
   body: string,
-  opts: { role: "ai" | "human"; author: string; html?: string; fromName?: string; attachments?: OutboundFile[] },
+  opts: { role: "ai" | "human"; author: string; html?: string; fromName?: string; attachments?: OutboundFile[]; subject?: string },
 ): Promise<{ message: Message; delivery: ReplyDelivery }> {
   const plan = replyOutbound(ticket.channel, env.gmailConfigured);
 
@@ -344,7 +344,9 @@ export async function sendTicketReply(
   // which surfaces it without losing the draft — no message row is written
   // here, so a retry cannot duplicate the reply.
   const { messageId, references } = await latestCustomerThreadMeta(ticket.id);
-  const subject = /^re:/i.test(ticket.subject) ? ticket.subject : `Re: ${ticket.subject}`;
+  // A reply threads under "Re: …"; a first-contact send (e.g. proactive outreach)
+  // passes its own subject so it doesn't look like a reply to nothing.
+  const subject = opts.subject ?? (/^re:/i.test(ticket.subject) ? ticket.subject : `Re: ${ticket.subject}`);
   const refs = [...references, ...(messageId ? [messageId] : [])];
 
   // Frame the reply in the Travelgenix shell so the customer gets a branded
