@@ -1,32 +1,39 @@
 "use server";
 
 import { requireAgent } from "@/lib/auth";
-import { searchTickets } from "@/lib/db/queries";
-import { searchKb } from "@/lib/ai/kb-search";
-import type { SearchResponse, TicketSearchFilters, TicketSearchHit } from "@/lib/db/types";
+import { matchKbArticles, matchTickets, searchTickets } from "@/lib/db/queries";
+import { embedQuery } from "@/lib/ai/embeddings";
+import type { PastTicketHit, SearchResponse, TicketSearchFilters, TicketSearchHit } from "@/lib/db/types";
 
 /**
- * Powers the instant search box. Runs the ranked, content-aware ticket search
- * and (for queries of 3+ chars) a semantic KB search in parallel. Fail-soft:
- * either side failing yields empty results for that side rather than an error,
- * so a hiccup never blanks the whole page.
+ * Powers the instant search box. The ranked, content-aware keyword ticket search
+ * always runs; for queries of 3+ chars we embed the query ONCE and fan out to the
+ * semantic KB and semantic past-ticket searches in parallel. Fail-soft — a failing
+ * side yields empty results for that side, never a blank page.
  */
 export async function runSearchAction(query: string, filters: TicketSearchFilters): Promise<SearchResponse> {
   await requireAgent();
   const q = query.trim();
-  if (q.length < 2) return { tickets: [], kb: [] };
+  if (q.length < 2) return { tickets: [], kb: [], pastTickets: [] };
 
-  const [tickets, kb] = await Promise.all([
-    searchTickets(q, filters).catch((error) => {
-      console.error("searchTickets failed:", error);
-      return [] as TicketSearchHit[];
-    }),
-    // Semantic KB (vector + rerank) — one embed call, so skip very short queries.
-    (q.length >= 3 ? searchKb(q, 6) : Promise.resolve([])).catch((error) => {
-      console.error("searchKb failed:", error);
-      return [];
-    }),
-  ]);
+  const keywordTickets = searchTickets(q, filters).catch((error) => {
+    console.error("searchTickets failed:", error);
+    return [] as TicketSearchHit[];
+  });
+
+  const semantic =
+    q.length >= 3
+      ? (async () => {
+          const embedding = await embedQuery(q);
+          const [kb, past] = await Promise.all([matchKbArticles(embedding, 6), matchTickets(embedding, 6)]);
+          return { kb, past };
+        })().catch((error) => {
+          console.error("semantic search failed:", error);
+          return { kb: [], past: [] as PastTicketHit[] };
+        })
+      : Promise.resolve({ kb: [], past: [] as PastTicketHit[] });
+
+  const [tickets, { kb, past }] = await Promise.all([keywordTickets, semantic]);
 
   return {
     tickets,
@@ -37,5 +44,6 @@ export async function runSearchAction(query: string, filters: TicketSearchFilter
       url: m.source_url ?? null,
       similarity: m.similarity,
     })),
+    pastTickets: past,
   };
 }

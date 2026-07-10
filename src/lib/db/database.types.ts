@@ -171,6 +171,42 @@ export type Database = {
           },
         ]
       }
+      ticket_embeddings: {
+        Row: {
+          embedding: string | null
+          ticket_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          embedding?: string | null
+          ticket_id: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          embedding?: string | null
+          ticket_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_embeddings_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: true
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_embeddings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -794,6 +830,22 @@ export type Database = {
           title: string
         }[]
       }
+      match_tickets: {
+        Args: {
+          query_embedding: string
+          p_tenant?: string
+          match_count?: number
+          min_similarity?: number
+        }
+        Returns: {
+          ticket_id: string
+          reference: number
+          subject: string
+          status: Database["public"]["Enums"]["ticket_status"]
+          resolved_at: string | null
+          similarity: number
+        }[]
+      }
       search_past_tickets: {
         Args: {
           match_count?: number
@@ -837,6 +889,13 @@ export type Database = {
         Returns: {
           ticket_id: string
           waiting_since: string
+        }[]
+      }
+      tickets_needing_embedding: {
+        Args: { p_tenant?: string; p_limit?: number }
+        Returns: {
+          id: string
+          subject: string
         }[]
       }
     }

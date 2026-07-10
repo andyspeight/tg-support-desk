@@ -14,6 +14,7 @@ import type {
   KbStatus,
   Message,
   OutreachIncident,
+  PastTicketHit,
   SlaPolicy,
   Ticket,
   TicketChannel,
@@ -909,6 +910,35 @@ export async function searchPastTickets(
     p_tenant_id: env.tenantId,
   });
   return unwrap(result, "searchPastTickets");
+}
+
+// ── Semantic ticket search (embeddings) ──────────────────────────────────────
+
+/** Resolved/closed tickets by meaning (vector similarity), for the search box. */
+export async function matchTickets(queryEmbedding: number[], count = 6): Promise<PastTicketHit[]> {
+  const result = await db().rpc("match_tickets", {
+    query_embedding: JSON.stringify(queryEmbedding),
+    p_tenant: env.tenantId,
+    match_count: count,
+    min_similarity: 0.3,
+  });
+  return unwrap(result, "matchTickets") as PastTicketHit[];
+}
+
+/** The embed-tickets cron's work list: resolved/closed tickets not yet embedded. */
+export async function listTicketsNeedingEmbedding(limit = 40): Promise<{ id: string; subject: string }[]> {
+  const result = await db().rpc("tickets_needing_embedding", { p_tenant: env.tenantId, p_limit: limit });
+  return unwrap(result, "listTicketsNeedingEmbedding") as { id: string; subject: string }[];
+}
+
+export async function upsertTicketEmbedding(ticketId: string, embedding: number[]): Promise<void> {
+  const { error } = await db().from("ticket_embeddings").upsert({
+    ticket_id: ticketId,
+    tenant_id: env.tenantId,
+    embedding: JSON.stringify(embedding),
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(`upsertTicketEmbedding: ${error.message}`);
 }
 
 // ── AI events / audit ────────────────────────────────────────────────────────
