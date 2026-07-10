@@ -114,6 +114,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           detail: string | null
+          done_emails: Json
           draft_message: string | null
           id: string
           recipients: Json
@@ -130,6 +131,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           detail?: string | null
+          done_emails?: Json
           draft_message?: string | null
           id?: string
           recipients?: Json
@@ -146,6 +148,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           detail?: string | null
+          done_emails?: Json
           draft_message?: string | null
           id?: string
           recipients?: Json
