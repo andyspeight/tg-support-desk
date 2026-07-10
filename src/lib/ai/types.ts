@@ -49,6 +49,9 @@ export type TicketContext = {
   requesterEmail: string;
   /** One-line client match status; full record comes via get_client_context. */
   clientLine: string;
+  /** This requester has an earlier ticket on record — greet them as a returning
+   *  contact rather than a first-timer. */
+  returningContact: boolean;
   transcript: TranscriptEntry[];
 };
 

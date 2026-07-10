@@ -52,6 +52,7 @@ async function runCase(evalCase: EvalCase, config: { apiKey: string; model: stri
     requesterName: evalCase.ticket.requester_name ?? null,
     requesterEmail: evalCase.ticket.requester_email,
     clientLine: "Matched client record recEVALFIXTURE00 — use get_client_context for details.",
+    returningContact: false,
     transcript: [{ role: "customer", body: evalCase.ticket.body }],
   };
 

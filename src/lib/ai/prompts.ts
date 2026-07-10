@@ -51,15 +51,19 @@ export function buildTicketPrompt(ctx: TicketContext): string {
 
   const fromLine = ctx.requesterName ? `${ctx.requesterName} <${ctx.requesterEmail}>` : ctx.requesterEmail;
 
+  const returningNote = ctx.returningContact
+    ? "\nThis is a returning contact — they've been in touch with Travelgenix support before. Open your reply with a brief, warm welcome-back using their first name (for example \"Good to hear from you again, Louise,\") instead of a plain first-time greeting, then answer their question.\n"
+    : "";
+
   return `<ticket>
 Subject: ${ctx.subject}
 From: ${fromLine}
-Client: ${ctx.clientLine}
+Client: ${ctx.clientLine}${ctx.returningContact ? "\nHistory: has contacted Travelgenix support before." : ""}
 </ticket>
 
 <conversation>
 ${transcript}
 </conversation>
-
+${returningNote}
 Handle the latest customer message.`;
 }

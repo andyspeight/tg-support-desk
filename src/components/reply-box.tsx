@@ -69,6 +69,11 @@ function formatBytes(bytes: number): string {
   if (bytes < 1048576) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
+/** Whitespace-insensitive compare, so an unedited AI draft round-tripped through
+ *  the rich editor still matches its source text. */
+function sameText(a: string, b: string): boolean {
+  return a.replace(/\s+/g, " ").trim() === b.replace(/\s+/g, " ").trim();
+}
 
 function ToolbarButton({
   onClick,
@@ -188,7 +193,10 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
   function reviewThenSend() {
     if (!editor || isPending || (isEmpty && files.length === 0)) return;
     const text = editor.getText().trim();
-    if (!copilot?.review || text === "") {
+    // Skip the tone gate when sending the AI's own draft unchanged — it was
+    // already written to brief, so re-reviewing it just blocks a clean send.
+    const unchangedAiDraft = aiDraft != null && sameText(text, aiDraft);
+    if (!copilot?.review || text === "" || unchangedAiDraft) {
       submit(sendReply);
       return;
     }
