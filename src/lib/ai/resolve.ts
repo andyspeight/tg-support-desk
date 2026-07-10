@@ -11,6 +11,7 @@ import {
   countRecentAiMessages,
   getTicketWithMessages,
   insertAiEvent,
+  isReturningRequester,
   recordKbUsage,
   searchPastTickets,
   updateTicket,
@@ -104,7 +105,7 @@ export async function resolveTicket(
       return outcome;
     }
 
-    const ctx = buildTicketContext(ticket, messages);
+    const ctx = await buildTicketContext(ticket, messages);
     const retrieved: RetrievedArticle[] = [];
     const result = await runResolutionAgent(ctx, buildExecutors(ticket, retrieved), {
       apiKey: env.anthropicApiKey,
@@ -153,11 +154,13 @@ async function ensureClientMatch(ticket: Ticket): Promise<Ticket> {
   return updateTicket(ticket.id, { client_id: match.id });
 }
 
-function buildTicketContext(ticket: Ticket, messages: Message[]): TicketContext {
+async function buildTicketContext(ticket: Ticket, messages: Message[]): Promise<TicketContext> {
+  const returningContact = await isReturningRequester(ticket.requester_email, ticket.created_at).catch(() => false);
   return {
     subject: ticket.subject,
     requesterName: ticket.requester_name,
     requesterEmail: ticket.requester_email,
+    returningContact,
     clientLine: ticket.client_id
       ? `Matched client record ${ticket.client_id} — use get_client_context for details.`
       : "No client record matched this requester.",

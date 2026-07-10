@@ -7,6 +7,7 @@ import {
   findTicketByThreadKey,
   getAllowedPatterns,
   getBlockedPatterns,
+  isReturningRequester,
   setMessageAttachments,
   updateTicket,
 } from "@/lib/db/queries";
@@ -218,11 +219,17 @@ export async function isKnownSender(email: string): Promise<boolean> {
 export async function sendAutoAck(ticket: Ticket): Promise<void> {
   if (replyOutbound(ticket.channel, env.gmailConfigured) !== "email") return;
 
+  // Greet a returning contact by name and acknowledge we know them, rather than
+  // the flat first-time hello. Best-effort — a lookup failure just falls back.
+  const returning = await isReturningRequester(ticket.requester_email, ticket.created_at).catch(() => false);
   const name = firstNameFrom(ticket.requester_name);
-  const greeting = name === "there" ? "Hello," : `Hi ${name},`;
+  const greeting = name === "there" ? (returning ? "Hello again," : "Hello,") : returning ? `Welcome back, ${name},` : `Hi ${name},`;
+  const opener = returning
+    ? `Good to hear from you again — we've received your message and opened ticket #${ticket.reference}. `
+    : `Thanks for getting in touch — we've received your message and opened ticket #${ticket.reference}. `;
   const text =
     `${greeting}\n\n` +
-    `Thanks for getting in touch — we've received your message and opened ticket #${ticket.reference}. ` +
+    opener +
     `A member of the team will get back to you by email as soon as we can.\n\n` +
     `There's nothing you need to do in the meantime. If you'd like to add anything, just reply to this email.\n\n` +
     `— Travelgenix Support`;

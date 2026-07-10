@@ -71,6 +71,24 @@ export async function listRequesterTickets(email: string): Promise<Ticket[]> {
   return data ?? [];
 }
 
+/** True when this requester has an earlier ticket on record — lets us greet a
+ *  returning contact with a "welcome back" instead of a first-time hello. Counts
+ *  only tickets created strictly before `before` (the current ticket's own
+ *  timestamp) so two near-simultaneous emails don't each treat the other as
+ *  prior history. Callers should treat a throw as "not returning" (best-effort). */
+export async function isReturningRequester(email: string, before: string): Promise<boolean> {
+  const address = email.trim().toLowerCase();
+  if (!address) return false;
+  const { count, error } = await db()
+    .from("tickets")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", env.tenantId)
+    .eq("requester_email", address)
+    .lt("created_at", before);
+  if (error) throw new Error(`isReturningRequester: ${error.message}`);
+  return (count ?? 0) > 0;
+}
+
 export async function getRequesterTicket(
   id: string,
   email: string,
