@@ -2,6 +2,7 @@ import "server-only";
 import {
   addMessage,
   audit,
+  getKbSourcesForTicket,
   getTicketWithMessages,
   insertQaReview,
   listAiRepliesForQa,
@@ -37,9 +38,19 @@ export async function runQaReviews(): Promise<{ reviewed: number; flagged: numbe
         .filter((m) => m.role === "customer" && new Date(m.created_at) <= new Date(reply.created_at))
         .pop()?.body_text ?? loaded.ticket.subject;
 
+    // The KB the AI was allowed to draw on — lets the judge fact-check claims
+    // against the actual sources rather than guessing at plausibility. Best-effort.
+    let sources = "";
+    try {
+      const kb = await getKbSourcesForTicket(reply.ticket_id);
+      sources = kb.map((a) => `## ${a.title}\n${a.body.slice(0, 1800)}`).join("\n\n");
+    } catch (error) {
+      console.error("getKbSourcesForTicket failed:", error);
+    }
+
     let verdict: QaVerdict;
     try {
-      verdict = await qaJudgeReply({ subject: loaded.ticket.subject, question, reply: reply.body_text });
+      verdict = await qaJudgeReply({ subject: loaded.ticket.subject, question, reply: reply.body_text, sources });
     } catch (error) {
       // Leave it un-reviewed so the next run retries; don't record a false pass.
       console.error("qaJudgeReply failed:", error);
