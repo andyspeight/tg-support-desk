@@ -214,14 +214,21 @@ function buildExecutors(ticket: Ticket, retrieved: RetrievedArticle[]): ToolExec
   };
 }
 
-// Graduated autonomy: is this answer cleared to send itself? Only when shadow
-// mode is off, the AI is confident enough, and the ticket's intent is on the
-// auto-send allowlist (KB-answerable, low-risk). Everything else is held as a
-// draft for a human. Escalations never auto-send here.
+// Graduated autonomy: is this reply cleared to send itself? Never in shadow mode,
+// and never below the confidence bar. Beyond that we split by outcome:
+//  - A clarifying question is low-risk — it asks for information, it doesn't
+//    assert a fact or make a commitment, and commercial/legal/human-request
+//    topics never reach here (the mandatory-escalation guardrail runs first). So
+//    auto-send any confident clarification regardless of intent, so the
+//    information-gathering round needs no agent (e.g. "send me the page URL").
+//  - A definitive answer is higher-stakes (it could be wrong or ungrounded), so
+//    it stays gated to a KB-answerable, low-risk intent on the allowlist.
+// Escalations never auto-send here.
 function canAutoSend(ticket: Ticket, outcome: AgentOutcome): boolean {
   if (env.aiShadowMode) return false;
   if (outcome.kind !== "answered" && outcome.kind !== "clarified") return false;
   if (outcome.confidence < env.aiAutosendConfidence) return false;
+  if (outcome.kind === "clarified") return true;
   return Boolean(ticket.intent && env.aiAutosendIntents.includes(ticket.intent));
 }
 
