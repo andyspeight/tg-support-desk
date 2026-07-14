@@ -731,6 +731,35 @@ export async function getSurfacedKbForTicket(ticketId: string): Promise<KbPicker
   return (articles ?? []).sort((a, b) => Number(cited.get(b.id)) - Number(cited.get(a.id)));
 }
 
+/** The KB articles the AI actually used on a ticket, with their bodies — the
+ *  ground truth for source-grounded QA (checking the reply's claims are supported
+ *  by what the AI was allowed to say). Cited (link-in-reply) sources come first. */
+export async function getKbSourcesForTicket(
+  ticketId: string,
+  limit = 4,
+): Promise<{ title: string; body: string }[]> {
+  const { data: usage, error } = await db()
+    .from("kb_article_usage")
+    .select("article_id, cited")
+    .eq("tenant_id", env.tenantId)
+    .eq("ticket_id", ticketId);
+  if (error) throw new Error(`getKbSourcesForTicket: ${error.message}`);
+  const rows = usage ?? [];
+  if (rows.length === 0) return [];
+
+  const ordered = [...rows].sort((a, b) => Number(b.cited) - Number(a.cited)).slice(0, limit);
+  const { data: articles, error: aErr } = await db()
+    .from("kb_articles")
+    .select("id, title, body")
+    .in("id", ordered.map((r) => r.article_id));
+  if (aErr) throw new Error(`getKbSourcesForTicket articles: ${aErr.message}`);
+  const byId = new Map((articles ?? []).map((a) => [a.id, a]));
+  return ordered
+    .map((r) => byId.get(r.article_id))
+    .filter((a): a is { id: string; title: string; body: string } => Boolean(a))
+    .map((a) => ({ title: a.title, body: a.body }));
+}
+
 export async function createKbArticle(input: Omit<TablesInsert<"kb_articles">, "tenant_id">): Promise<KbArticle> {
   const result = await db()
     .from("kb_articles")
