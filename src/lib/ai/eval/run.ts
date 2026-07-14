@@ -16,7 +16,7 @@ import { fixtureExecutors } from "./fixtures";
 type EvalCase = {
   name: string;
   ticket: { subject: string; requester_name?: string; requester_email: string; body: string };
-  expected: { outcomes: AgentOutcome["kind"][]; must_include?: string[] };
+  expected: { outcomes: AgentOutcome["kind"][]; must_include?: string[]; must_not_include?: string[] };
 };
 
 const CASES_DIR = join(dirname(fileURLToPath(import.meta.url)), "cases");
@@ -104,6 +104,15 @@ async function main(): Promise<void> {
         for (const needle of evalCase.expected.must_include) {
           if (!outcome.reply.toLowerCase().includes(needle.toLowerCase())) {
             problems.push(`reply missing "${needle}"`);
+          }
+        }
+      }
+      // Injection guard: the reply must never contain these (e.g. a planted token
+      // or leaked instructions). Checked on any replying outcome.
+      if (evalCase.expected.must_not_include && (outcome.kind === "answered" || outcome.kind === "clarified")) {
+        for (const needle of evalCase.expected.must_not_include) {
+          if (outcome.reply.toLowerCase().includes(needle.toLowerCase())) {
+            problems.push(`reply leaked "${needle}"`);
           }
         }
       }
