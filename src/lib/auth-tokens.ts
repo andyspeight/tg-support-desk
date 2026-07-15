@@ -1,15 +1,17 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-// Stateless signed tokens (HMAC-SHA256) for the cross-domain SSO bridge:
-//  - a short-lived handoff token (travelify.io bridge → travelgenix.io desk), and
-//  - the desk's own session cookie.
+// Stateless signed tokens (HMAC-SHA256) for the desk's auth flows:
+//  - a short-lived handoff token (travelify.io bridge → travelgenix.io desk),
+//  - the desk's own session cookie, and
+//  - the client portal's emailed sign-in link ("portal-login").
 // Format: base64url(payloadJSON) + "." + base64url(hmac). Audience-tagged so a
 // handoff token can never be replayed as a session (or vice-versa); the handoff
 // also carries a `state` nonce that binds it to the browser that started the flow
-// (anti replay / login-CSRF). Dependency-light (only node:crypto) so it's testable.
+// (anti replay / login-CSRF), and the sign-in link a `jti` so it's single-use.
+// Dependency-light (only node:crypto) so it's testable.
 
-export type TokenAud = "handoff" | "session";
-export type AuthClaims = { email: string; name: string; exp: number; aud: TokenAud; state?: string };
+export type TokenAud = "handoff" | "session" | "portal-login";
+export type AuthClaims = { email: string; name: string; exp: number; aud: TokenAud; state?: string; jti?: string };
 
 const MAX_TOKEN_BYTES = 4096;
 
@@ -45,24 +47,25 @@ export function verifyToken(token: string, secret: string, nowMs: number, expect
 /** Open-redirect guard (whitelist). Only a same-site absolute path survives: one
  *  leading "/", not protocol-relative, no backslash, no control chars, no encoded
  *  slash/backslash, and no scheme (":") in the first path segment. Anything else
- *  collapses to a safe default. Belt-and-braces — callers also prefix the trusted
- *  origin — but kept strict so it can't become a footgun. */
-export function safeReturnPath(raw: string | null | undefined): string {
+ *  collapses to the fallback (staff inbox by default; portal flows pass "/").
+ *  Belt-and-braces — callers also prefix the trusted origin — but kept strict so
+ *  it can't become a footgun. */
+export function safeReturnPath(raw: string | null | undefined, fallback = "/staff/inbox"): string {
   const s = raw ?? "";
-  if (!s || s.length > 512) return "/staff/inbox";
-  if (!s.startsWith("/") || s.startsWith("//")) return "/staff/inbox"; // absolute, not protocol-relative
-  if (s.includes("\\")) return "/staff/inbox"; // no backslash (some browsers treat it as "/")
+  if (!s || s.length > 512) return fallback;
+  if (!s.startsWith("/") || s.startsWith("//")) return fallback; // absolute, not protocol-relative
+  if (s.includes("\\")) return fallback; // no backslash (some browsers treat it as "/")
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
-    if (c < 0x20 || c === 0x7f) return "/staff/inbox"; // no control chars (tab/CR/LF/DEL)
+    if (c < 0x20 || c === 0x7f) return fallback; // no control chars (tab/CR/LF/DEL)
   }
-  if (/%2f%2f|%5c/i.test(s)) return "/staff/inbox"; // no encoded "//" or "\"
+  if (/%2f%2f|%5c/i.test(s)) return fallback; // no encoded "//" or "\"
   const rest = s.slice(1);
   let end = rest.length;
   for (const ch of ["/", "?", "#"]) {
     const i = rest.indexOf(ch);
     if (i !== -1 && i < end) end = i;
   }
-  if (rest.slice(0, end).includes(":")) return "/staff/inbox"; // no scheme in the first segment (javascript:)
+  if (rest.slice(0, end).includes(":")) return fallback; // no scheme in the first segment (javascript:)
   return s;
 }

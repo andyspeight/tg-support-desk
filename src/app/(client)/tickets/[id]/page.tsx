@@ -36,7 +36,8 @@ export default async function PortalTicketPage({
   // can't authenticate that without a session — so we never render one here.
   // Point them at sign-in; their emailed receipt is the no-account way to follow up.
   if (!session) {
-    const signInHref = env.ssoBridgeUrl ? `/api/sso/login?return=${encodeURIComponent(`/tickets/${id}`)}` : null;
+    const signInHref =
+      env.portalLoginConfigured || env.ssoBridgeUrl ? `/signin?return=${encodeURIComponent(`/tickets/${id}`)}` : null;
     return (
       <div className="mx-auto max-w-md">
         <Link href="/" className="inline-flex items-center gap-1 text-xs text-ink-3 hover:text-ink">

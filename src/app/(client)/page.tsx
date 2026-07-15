@@ -65,7 +65,7 @@ export default async function PortalHome({
   // Anonymous visitor — the public help centre. No ticket history (that needs a
   // sign-in), just the assistant, a submit CTA, and a receipt after submitting.
   if (!view) {
-    const signInHref = env.ssoBridgeUrl ? `/api/sso/login?return=${encodeURIComponent("/")}` : null;
+    const signInHref = env.portalLoginConfigured || env.ssoBridgeUrl ? "/signin" : null;
     return (
       <div className="space-y-8 sm:space-y-10">
         {submitted && (
@@ -90,10 +90,10 @@ export default async function PortalHome({
                 <UserRound className="h-5 w-5" strokeWidth={1.75} />
               </span>
               <div>
-                <p className="text-sm font-semibold text-ink">Already a Travelgenix client?</p>
+                <p className="text-sm font-semibold text-ink">Raised tickets with us before?</p>
                 <p className="mt-0.5 text-xs leading-relaxed text-ink-2 sm:max-w-lg">
-                  Sign in to track and view the tickets you’ve raised and their progress. You don’t need an account to
-                  raise a ticket — signing in just keeps them all in one place.
+                  Sign in to track and view your tickets and their progress — we’ll email you a secure sign-in link, no
+                  password or account set-up needed. And you can always raise a ticket without signing in at all.
                 </p>
               </div>
             </div>

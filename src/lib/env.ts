@@ -142,6 +142,13 @@ export const env = {
     // param. Override with SSO_LOGIN_URL if the path or return-param changes.
     return optional("SSO_LOGIN_URL", "https://id.travelify.io/signin.html");
   },
+  // The client portal's own email-link sign-in ("magic link") — deliberately
+  // independent of the Travelify master account, because many help-centre users
+  // don't have one. Needs the session secret (sign/verify), the public base URL
+  // (the link itself) and Gmail (to send it).
+  get portalLoginConfigured() {
+    return Boolean(optional("AUTH_SESSION_SECRET") && optional("APP_BASE_URL") && this.gmailConfigured);
+  },
   get agentEmails() {
     return csv("AGENT_EMAILS").map((e) => e.toLowerCase());
   },
