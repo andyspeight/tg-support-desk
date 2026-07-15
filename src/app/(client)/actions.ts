@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import { z } from "zod";
 import { getSession, requireClient, type Session } from "@/lib/auth";
+import { clientIp } from "@/lib/client-ip";
 import { askKb, assistTicketDraft, type AskResult, type DraftAssist } from "@/lib/ai/copilot";
 import {
   addMessage,
@@ -47,9 +47,7 @@ async function attachTo(ticketId: string, messageId: string, files: OutboundFile
  *  the key we audit under — recentActionCount reads the audit log by actor. */
 async function actorFor(session: Session | null): Promise<string> {
   if (session) return session.email;
-  const fwd = (await headers()).get("x-forwarded-for") ?? "";
-  const ip = fwd.split(",")[0]!.trim() || "unknown";
-  return `ip:${ip}`;
+  return `ip:${await clientIp()}`;
 }
 
 /** Instant self-serve answer — no ticket created. Public: the help centre is
@@ -145,7 +143,8 @@ export async function raiseTicketAction(formData: FormData): Promise<void> {
   // email, not just on screen — and so the Gmail thread is captured up front,
   // letting their email reply thread straight back to this ticket. For anonymous
   // submitters this is also how they follow up — replies come back in by email.
-  await sendAutoAck(ticket);
+  // Anonymous = unverified recipient → neutral subject (no reflected attacker text).
+  await sendAutoAck(ticket, { verifiedRecipient: Boolean(session) });
 
   // Fire the AI immediately. Respects shadow mode (drafts for a human) and
   // fail-safe-escalates internally, so we never block the client on it.
