@@ -4,7 +4,7 @@ import { getClientSupportHistory, getSurfacedKbForTicket, getTicketSla, getTicke
 import { kbBestUrl } from "@/lib/kb-links";
 import { getSession } from "@/lib/auth";
 import type { ClockState } from "@/lib/sla";
-import { getClientById } from "@/lib/integrations/airtable-clients";
+import { getClientById, listAllClientCompanies } from "@/lib/integrations/airtable-clients";
 import { env } from "@/lib/env";
 import { allowPatternFor, sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
@@ -17,7 +17,7 @@ import { SupportHistoryPanel } from "@/components/support-history-panel";
 import { RelevantKbPanel } from "@/components/relevant-kb-panel";
 import { RunAiButton } from "@/components/run-ai-button";
 import { TicketPresence } from "@/components/ticket-presence";
-import { addNoteAction, approveSenderAction, blockSenderAction, mergeTicketAction, presenceHeartbeatAction, runAiAction, sendReplyAction, snoozeTicketAction, unmergeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
+import { addNoteAction, approveSenderAction, blockSenderAction, detachRequesterAction, linkRequesterAction, mergeTicketAction, presenceHeartbeatAction, runAiAction, sendReplyAction, snoozeTicketAction, unmergeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
 import {
   copilotDraftAction,
   copilotRephraseAction,
@@ -108,7 +108,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const latestCustomer = [...messages].reverse().find((m) => m.role === "customer");
   const pastQuery = (latestCustomer?.body_text || ticket.subject).slice(0, 500);
 
-  const [canned, clientRecord, sla, supportHistory, pastTickets, kbPickerRaw, surfacedKb] = await Promise.all([
+  const [canned, clientRecord, sla, supportHistory, pastTickets, kbPickerRaw, surfacedKb, companies] = await Promise.all([
     listCannedResponses().catch(() => []),
     ticket.client_id ? getClientById(ticket.client_id) : Promise.resolve(null),
     getTicketSla(ticket).catch(() => null),
@@ -120,6 +120,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
     searchPastTickets(pastQuery, ticket.client_id, 4).catch(() => []),
     listPublishedKbForPicker().catch(() => []),
     getSurfacedKbForTicket(ticket.id).catch(() => []),
+    // Company picker for the link-requester control — only needed when unmatched.
+    ticket.client_id ? Promise.resolve([]) : listAllClientCompanies().catch(() => []),
   ]);
   // "How we solved this before" — similar resolved tickets, current one excluded.
   const solvedBefore = pastTickets.filter((p) => p.ticket_id !== ticket.id).slice(0, 3);
@@ -398,11 +400,53 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         <div>
           <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Customer</h2>
           {clientRecord ? (
-            <ClientPanel record={clientRecord} />
+            <>
+              <ClientPanel record={clientRecord} />
+              {/* The ex-employee case: cut this address off from the company view.
+                  History stays on the company's record. */}
+              <form action={detachRequesterAction} className="mt-1.5 text-right">
+                <input type="hidden" name="ticketId" value={ticket.id} />
+                <button className="text-[11px] text-ink-3 underline-offset-2 hover:text-red-600 hover:underline dark:hover:text-red-400">
+                  Stop {ticket.requester_email} seeing this company’s tickets
+                </button>
+              </form>
+            </>
           ) : (
-            <p className="rounded-lg border border-dashed border-line bg-surface p-3 text-xs text-ink-3">
-              {ticket.client_id ? "Client record unavailable." : "No client record matched."}
-            </p>
+            <div className="rounded-lg border border-dashed border-line bg-surface p-3">
+              <p className="text-xs text-ink-3">
+                {ticket.client_id ? "Client record unavailable." : "No client record matched."}
+              </p>
+              {!ticket.client_id && companies.length > 0 && (
+                <>
+                  <form action={linkRequesterAction} className="mt-2 flex gap-1.5">
+                    <input type="hidden" name="ticketId" value={ticket.id} />
+                    <select
+                      name="clientId"
+                      required
+                      defaultValue=""
+                      className="min-w-0 flex-1 rounded-md border border-line bg-surface px-2 py-1.5 text-xs text-ink-2 focus:border-ink-3 focus:outline-none"
+                      aria-label="Link requester to a company"
+                    >
+                      <option value="" disabled>
+                        Choose a company…
+                      </option>
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button className="shrink-0 rounded-md bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 dark:bg-surface-2 dark:text-ink dark:hover:bg-line">
+                      Link
+                    </button>
+                  </form>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-ink-3">
+                    Links {ticket.requester_email} to the company — this ticket and their past ones join its history,
+                    and they’ll see the company’s tickets in the portal.
+                  </p>
+                </>
+              )}
+            </div>
           )}
         </div>
 
