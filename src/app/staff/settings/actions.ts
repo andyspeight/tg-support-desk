@@ -13,11 +13,16 @@ import {
   createCannedResponse,
   createTag,
   deleteCannedResponse,
+  deleteCompanyMember,
   deleteTag,
   removeAllowedSender,
   removeBlockedSender,
+  stampTicketsForEmail,
   updateCannedResponse,
+  upsertCompanyMember,
 } from "@/lib/db/queries";
+import { companyNameFrom, getClientById } from "@/lib/integrations/airtable-clients";
+import { invalidateCompanyFor } from "@/lib/portal-company";
 
 export type EraseResult = { ok: boolean; message: string };
 
@@ -159,5 +164,60 @@ export async function importAllowedAction(formData: FormData): Promise<void> {
   if (patterns.length === 0) return;
   const added = await addAllowedSenders(patterns, session.email);
   await audit("human", session.email, "allowlist.bulk_imported", undefined, { submitted: patterns.length, added });
+  revalidatePath("/staff/settings");
+}
+
+const linkCompanySchema = z.object({
+  email: z.string().trim().email().max(200),
+  // "none" = explicitly no company (blocks email/domain matching for this address).
+  clientId: z.string().trim().min(1).max(64),
+});
+
+/** Link a user's email to a client company (or explicitly to none). Overrides
+ *  the Airtable email/domain matching, backfills the email's historic tickets
+ *  onto the company, and shows up on the portal immediately. */
+export async function linkCompanyMemberAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const { email, clientId } = linkCompanySchema.parse({
+    email: formData.get("email"),
+    clientId: formData.get("clientId"),
+  });
+  const none = clientId === "none";
+  // Display name comes from the Airtable record (canonical), never the form.
+  let clientName: string | null = null;
+  if (!none) {
+    const record = await getClientById(clientId);
+    if (!record) throw new Error("That company record no longer exists in Airtable.");
+    clientName = companyNameFrom(record);
+  }
+  await upsertCompanyMember({
+    email,
+    clientId: none ? null : clientId,
+    clientName,
+    createdBy: session.email,
+  });
+  let stamped = 0;
+  if (!none) stamped = await stampTicketsForEmail(email, clientId);
+  invalidateCompanyFor(email);
+  await audit("human", session.email, "company_member.linked", undefined, {
+    email: email.toLowerCase(),
+    client_id: none ? null : clientId,
+    tickets_stamped: stamped,
+  });
+  revalidatePath("/staff/settings");
+}
+
+/** Remove an explicit link — the email goes back to normal Airtable matching. */
+export async function unlinkCompanyMemberAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const id = z.string().uuid().parse(formData.get("id"));
+  const removed = await deleteCompanyMember(id);
+  if (removed) {
+    invalidateCompanyFor(removed.email);
+    await audit("human", session.email, "company_member.unlinked", undefined, {
+      email: removed.email,
+      client_id: removed.client_id,
+    });
+  }
   revalidatePath("/staff/settings");
 }

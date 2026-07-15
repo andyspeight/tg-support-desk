@@ -119,6 +119,28 @@ function firstFieldString(fields: Record<string, unknown>, keys: readonly string
   return undefined;
 }
 
+export type ClientCompany = { id: string; name: string };
+
+/** Every client company (record id + display name), A–Z — the picker list for
+ *  linking a user to a company in Settings. Read-only; throws on Airtable error. */
+export async function listAllClientCompanies(): Promise<ClientCompany[]> {
+  const out: ClientCompany[] = [];
+  let offset: string | undefined;
+  do {
+    const params: Record<string, string> = { pageSize: "100" };
+    if (offset) params.offset = offset;
+    const data = (await airtableGet(encodeURIComponent(env.airtableClientsTable), params)) as {
+      records: { id: string; fields: Record<string, unknown> }[];
+      offset?: string;
+    };
+    for (const record of data.records) {
+      out.push({ id: record.id, name: companyNameFrom({ id: record.id, fields: record.fields }) });
+    }
+    offset = data.offset;
+  } while (offset && out.length < 5000);
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /**
  * Every client with a support email — the recipient pool for a "to all clients"
  * proactive outreach. Paginates the Clients base, skips records without a

@@ -77,6 +77,44 @@ export type Database = {
           },
         ]
       }
+      company_members: {
+        Row: {
+          client_id: string | null
+          client_name: string | null
+          created_at: string
+          created_by: string | null
+          email: string
+          id: string
+          tenant_id: string
+        }
+        Insert: {
+          client_id?: string | null
+          client_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          email: string
+          id?: string
+          tenant_id?: string
+        }
+        Update: {
+          client_id?: string | null
+          client_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string
+          id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_members_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       allowed_senders: {
         Row: {
           created_at: string
