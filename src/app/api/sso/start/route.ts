@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
 import { validateTgSession } from "@/lib/auth";
 import { signToken, safeReturnPath } from "@/lib/auth-tokens";
+import { buildSigninUrl, loginInterstitialHtml } from "@/lib/sso-login-page";
 
 export const dynamic = "force-dynamic";
 
@@ -16,21 +17,34 @@ export async function GET(request: NextRequest) {
     return new NextResponse("SSO is not configured.", { status: 503 });
   }
   const returnTo = safeReturnPath(request.nextUrl.searchParams.get("return"));
-  const state = request.nextUrl.searchParams.get("state") ?? "";
+  // Our own login route mints state as a UUID; anything else is noise — drop it
+  // before it's echoed into a URL/page.
+  const rawState = request.nextUrl.searchParams.get("state") ?? "";
+  const state = /^[A-Za-z0-9-]{0,64}$/.test(rawState) ? rawState : "";
   const tg = request.cookies.get("tg_session")?.value;
+  const user = tg ? await validateTgSession(tg) : null;
 
-  if (!tg) {
-    // Not signed into Travelgenix at all → bounce to the SSO login, returning here (state preserved).
+  if (!user) {
+    // No usable Travelgenix session (none, expired, or id briefly unreachable).
+    // Don't blind-redirect to signin.html — it doesn't reliably send the user
+    // back, which strands them on the Travelify side after logging in. Instead
+    // serve a small page that opens the sign-in in a popup and polls
+    // /api/sso/check; the moment the session exists it reloads this same URL,
+    // which then completes the handshake below and returns the user to the desk.
     if (env.ssoLoginUrl && env.ssoBridgeUrl) {
       const back = `${env.ssoBridgeUrl}/api/sso/start?return=${encodeURIComponent(returnTo)}&state=${encodeURIComponent(state)}`;
-      return NextResponse.redirect(`${env.ssoLoginUrl}?redirect=${encodeURIComponent(back)}`);
+      return new NextResponse(
+        loginInterstitialHtml({ signinUrl: buildSigninUrl(env.ssoLoginUrl, back), checkPath: "/api/sso/check" }),
+        {
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer", // the URL carries the state nonce
+          },
+        },
+      );
     }
     return new NextResponse("Please sign in to Travelgenix first, then reopen the desk.", { status: 401 });
-  }
-
-  const user = await validateTgSession(tg);
-  if (!user) {
-    return new NextResponse("Your Travelgenix session has expired — please sign in again.", { status: 401 });
   }
 
   const token = signToken(
