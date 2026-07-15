@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { requireAgent } from "@/lib/auth";
-import { addAllowedSender, addBlockedSender, addMessage, audit, getLatestAiDraft, getTicket, getTicketByReference, heartbeatPresence, mergeTickets, setMessageAttachments, unmergeTickets, updateTicket, type Viewer } from "@/lib/db/queries";
+import { addAllowedSender, addBlockedSender, addMessage, audit, getLatestAiDraft, getTicket, getTicketByReference, heartbeatPresence, mergeTickets, setMessageAttachments, stampTicketsForEmail, unmergeTickets, updateTicket, upsertCompanyMember, type Viewer } from "@/lib/db/queries";
+import { companyNameFrom, getClientById } from "@/lib/integrations/airtable-clients";
+import { invalidateCompanyFor } from "@/lib/portal-company";
 import { classifyEdit, isMaterialEdit } from "@/lib/ai/draft-diff";
 import type { Ticket } from "@/lib/db/types";
 import { notify } from "@/lib/db/notifications";
@@ -396,4 +398,62 @@ export async function blockSenderAction(formData: FormData): Promise<void> {
 
   revalidatePath("/staff/inbox");
   redirect("/staff/inbox?view=approval");
+}
+
+// ── Requester ↔ company links, from the Customer 360 panel ──────────────────
+
+const linkRequesterSchema = z.object({
+  ticketId: z.string().uuid(),
+  clientId: z.string().trim().min(1).max(64),
+});
+
+/** Link this ticket's requester to a client company (explicit company_members
+ *  link — same mechanism as Settings). Backfills their un-stamped tickets,
+ *  including this one, so the 360 panel fills in immediately. */
+export async function linkRequesterAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const { ticketId, clientId } = linkRequesterSchema.parse({
+    ticketId: formData.get("ticketId"),
+    clientId: formData.get("clientId"),
+  });
+  const ticket = await getTicket(ticketId);
+  if (!ticket) throw new Error("Ticket not found");
+  const record = await getClientById(clientId);
+  if (!record) throw new Error("That company record no longer exists in Airtable.");
+  await upsertCompanyMember({
+    email: ticket.requester_email,
+    clientId,
+    clientName: companyNameFrom(record),
+    createdBy: session.email,
+  });
+  const stamped = await stampTicketsForEmail(ticket.requester_email, clientId);
+  invalidateCompanyFor(ticket.requester_email);
+  await audit("human", session.email, "company_member.linked", { type: "ticket", id: ticketId }, {
+    email: ticket.requester_email,
+    client_id: clientId,
+    tickets_stamped: stamped,
+  });
+  revalidatePath(`/staff/ticket/${ticketId}`);
+}
+
+/** Cut this requester's email off from every company view (explicit "No
+ *  company" link — the ex-employee case). Historic tickets stay on the
+ *  company's record; the person just stops seeing the company view. */
+export async function detachRequesterAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const ticketId = z.string().uuid().parse(formData.get("ticketId"));
+  const ticket = await getTicket(ticketId);
+  if (!ticket) throw new Error("Ticket not found");
+  await upsertCompanyMember({
+    email: ticket.requester_email,
+    clientId: null,
+    clientName: null,
+    createdBy: session.email,
+  });
+  invalidateCompanyFor(ticket.requester_email);
+  await audit("human", session.email, "company_member.detached", { type: "ticket", id: ticketId }, {
+    email: ticket.requester_email,
+    was_client_id: ticket.client_id,
+  });
+  revalidatePath(`/staff/ticket/${ticketId}`);
 }
