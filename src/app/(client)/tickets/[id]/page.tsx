@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, LogIn, Paperclip } from "lucide-react";
 import { getSession, portalViewFor } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { getRequesterTicket } from "@/lib/db/queries";
+import { getPortalTicket } from "@/lib/db/queries";
+import { companyForEmail } from "@/lib/portal-company";
 import { replyAction, rateAction } from "@/app/(client)/actions";
 import { SubmitButton } from "@/components/portal/submit-button";
 import { AttachmentPicker } from "@/components/attachment-picker";
@@ -66,18 +67,22 @@ export default async function PortalTicketPage({
   }
 
   const view = portalViewFor(session, as);
-  const data = await getRequesterTicket(id, view.email);
+  // Colleagues at the same client company can open the company's tickets too.
+  const company = await companyForEmail(view.email);
+  const data = await getPortalTicket(id, view.email, company?.id ?? null);
   if (!data) notFound();
 
   const { ticket, messages } = data;
   const s = clientStatus(ticket.status);
   const isClosed = ticket.status === "closed";
   const readOnly = view.previewing;
-  const canRate = ticket.status === "resolved" && !ticket.csat_score && !readOnly;
+  const isRequester = ticket.requester_email.toLowerCase() === view.email.toLowerCase();
+  // The satisfaction rating stays with whoever raised the ticket — it's their
+  // experience being scored, not a colleague's.
+  const canRate = ticket.status === "resolved" && !ticket.csat_score && !readOnly && isRequester;
   const fromParam = from ? `&from=${encodeURIComponent(from)}` : "";
   const backHref = readOnly ? `/?as=${encodeURIComponent(view.email)}${fromParam}` : "/";
   const deskHref = from ? `/staff/ticket/${from}` : "/staff/inbox";
-  const custInitials = initialsOf(ticket.requester_name || ticket.requester_email);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -115,7 +120,9 @@ export default async function PortalTicketPage({
           <div className="min-w-0">
             <h1 className="text-lg font-semibold leading-snug">{ticket.subject}</h1>
             <p className="mt-1 text-xs tabular-nums text-ink-3">
-              #{ticket.reference} · opened {fmtDate(ticket.created_at)}
+              #{ticket.reference}
+              {!isRequester && ` · raised by ${ticket.requester_name || ticket.requester_email}`} · opened{" "}
+              {fmtDate(ticket.created_at)}
             </p>
           </div>
           <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${s.tone}`}>{s.label}</span>
@@ -126,6 +133,18 @@ export default async function PortalTicketPage({
       <div className="mt-6 space-y-4">
         {messages.map((m) => {
           const mine = m.role === "customer";
+          // Company view: a customer-side message may be a colleague's, not the
+          // viewer's — label it with who actually wrote it. Older messages with
+          // no author recorded fall back to the ticket's requester.
+          const author = (m.author ?? ticket.requester_email).toLowerCase();
+          const isViewer = author === view.email.toLowerCase();
+          const authorLabel = !mine
+            ? "Travelgenix Support"
+            : isViewer
+              ? "You"
+              : author === ticket.requester_email.toLowerCase()
+                ? ticket.requester_name || ticket.requester_email
+                : author;
           const atts = ((m.attachments as unknown as StoredAttachment[] | null) ?? [])
             .map((a, i) => ({ a, i }))
             .filter((x) => x.a.stored);
@@ -137,11 +156,11 @@ export default async function PortalTicketPage({
                 }`}
                 aria-hidden
               >
-                {mine ? custInitials : "T"}
+                {mine ? (isViewer ? initialsOf(view.name || view.email) : initialsOf(authorLabel)) : "T"}
               </div>
               <div className="min-w-0 max-w-[82%]">
                 <div className={`mb-1 flex items-center gap-2 text-[11px] text-ink-3 ${mine ? "flex-row-reverse" : ""}`}>
-                  <span className="font-medium text-ink-2">{mine ? "You" : "Travelgenix Support"}</span>
+                  <span className="max-w-[40vw] truncate font-medium text-ink-2">{authorLabel}</span>
                   <span className="tabular-nums">{fmtTime(m.created_at)}</span>
                 </div>
                 <div

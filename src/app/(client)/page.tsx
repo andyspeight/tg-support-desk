@@ -3,7 +3,8 @@ import { ArrowLeft, CheckCircle2, ChevronRight, Inbox, LogIn, Plus, UserRound } 
 import { getSession, portalViewFor } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { firstNameFrom } from "@/lib/names";
-import { listRequesterTickets } from "@/lib/db/queries";
+import { listPortalTickets } from "@/lib/db/queries";
+import { companyForEmail } from "@/lib/portal-company";
 import { AskBox } from "@/components/portal/ask-box";
 import { clientStatus } from "@/lib/portal-status";
 
@@ -124,7 +125,11 @@ export default async function PortalHome({
     );
   }
 
-  const tickets = await listRequesterTickets(view.email);
+  // Company view: colleagues at the same client see all the company's tickets,
+  // not just their own (matched via Airtable — exact contact email or company
+  // domain). Falls back cleanly to own-tickets-only when there's no match.
+  const company = await companyForEmail(view.email);
+  const tickets = await listPortalTickets(view.email, company?.id ?? null);
   const firstName = firstNameFrom(view.name);
   const fromParam = from && view.previewing ? `&from=${encodeURIComponent(from)}` : "";
   const suffix = view.previewing ? `?as=${encodeURIComponent(view.email)}${fromParam}` : "";
@@ -173,7 +178,14 @@ export default async function PortalHome({
       {/* Tickets */}
       <section>
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">{view.previewing ? "Their tickets" : "Your tickets"}</h2>
+          <div>
+            <h2 className="text-sm font-semibold">
+              {view.previewing ? "Their tickets" : company ? `Tickets at ${company.name}` : "Your tickets"}
+            </h2>
+            {company && !view.previewing && (
+              <p className="mt-0.5 text-xs text-ink-3">Yours and your colleagues’ — everyone at {company.name} sees these.</p>
+            )}
+          </div>
           {!view.previewing && (
             <Link
               href="/new"
@@ -218,8 +230,11 @@ export default async function PortalHome({
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-ink">{t.subject}</p>
-                      <p className="mt-0.5 text-xs tabular-nums text-ink-3">
-                        #{t.reference} · updated{" "}
+                      <p className="mt-0.5 truncate text-xs tabular-nums text-ink-3">
+                        #{t.reference}
+                        {t.requester_email.toLowerCase() !== view.email.toLowerCase() &&
+                          ` · raised by ${t.requester_name || t.requester_email}`}
+                        {" · updated "}
                         {new Date(t.updated_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
                       </p>
                     </div>

@@ -114,6 +114,56 @@ export async function getRequesterTicket(
   return { ticket, messages: unwrap(result, "getRequesterTicket") };
 }
 
+// Company tickets shown to a colleague never include held-for-approval
+// (unverified sender, likely spam) or spam-tagged ones.
+const companyVisible = (t: Ticket): boolean => t.status !== "awaiting_approval" && !t.tags.includes("spam");
+
+/** A ticket the signed-in portal viewer may open: their own, or — when their
+ *  email maps to a client company — any of that company's tickets. Same message
+ *  filtering as getRequesterTicket: internal notes / system never reach a client. */
+export async function getPortalTicket(
+  id: string,
+  email: string,
+  clientId: string | null,
+): Promise<{ ticket: Ticket; messages: Message[] } | null> {
+  const { data: ticket, error } = await db()
+    .from("tickets")
+    .select()
+    .eq("id", id)
+    .eq("tenant_id", env.tenantId)
+    .maybeSingle();
+  if (error) throw new Error(`getPortalTicket: ${error.message}`);
+  if (!ticket) return null;
+  const mine = ticket.requester_email === email.toLowerCase();
+  const colleagues = Boolean(clientId && ticket.client_id === clientId && companyVisible(ticket));
+  if (!mine && !colleagues) return null;
+  const result = await db()
+    .from("messages")
+    .select()
+    .eq("ticket_id", id)
+    .in("role", ["customer", "ai", "human"]) // never expose internal_note / system
+    .order("created_at", { ascending: true });
+  return { ticket, messages: unwrap(result, "getPortalTicket") };
+}
+
+/** Everything the viewer sees on the portal home: their own tickets plus their
+ *  company's (deduped, newest activity first). */
+export async function listPortalTickets(email: string, clientId: string | null): Promise<Ticket[]> {
+  const own = await listRequesterTickets(email);
+  if (!clientId) return own;
+  const { data, error } = await db()
+    .from("tickets")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .eq("client_id", clientId)
+    .order("updated_at", { ascending: false })
+    .limit(300);
+  if (error) throw new Error(`listPortalTickets: ${error.message}`);
+  const seen = new Set(own.map((t) => t.id));
+  const company = (data ?? []).filter((t) => companyVisible(t) && !seen.has(t.id));
+  return [...own, ...company].sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
+}
+
 /** Record a CSAT rating — only on resolved/closed tickets. Safe to call
  * from the public survey route (the caller verifies the signed token). */
 export async function recordCsat(ticketId: string, score: number, comment: string | null): Promise<boolean> {
