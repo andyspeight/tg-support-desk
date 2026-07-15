@@ -4,10 +4,12 @@ import {
   detectAutoReply,
   FREE_MAIL_DOMAINS,
   matchesBlocklist,
+  normaliseCid,
   normaliseSubject,
   parseAddress,
   parseAddressList,
   parseGmailMessage,
+  sanitizeEmailHtml,
   stripQuotedReply,
   type GmailMessage,
 } from "./email-parse";
@@ -172,5 +174,87 @@ describe("parseGmailMessage", () => {
     const parsed = parseGmailMessage(message);
     expect(parsed.html).toContain("<p>");
     expect(parsed.html).not.toContain("<script>");
+  });
+
+  it("marks a body-embedded image inline and leaves a plain attachment alone", () => {
+    const related: GmailMessage = {
+      id: "msg2",
+      threadId: "thread2",
+      payload: {
+        mimeType: "multipart/mixed",
+        headers: [
+          { name: "From", value: "Sarah Mills <sarah@sunshine.example.com>" },
+          { name: "Subject", value: "Screenshot" },
+        ],
+        parts: [
+          { mimeType: "text/html", body: { data: encode('<p>See this</p><img src="cid:shot@x">'), size: 40 } },
+          {
+            mimeType: "image/png",
+            filename: "shot.png",
+            headers: [{ name: "Content-ID", value: "<shot@x>" }],
+            body: { attachmentId: "att-inline", size: 1200 },
+          },
+          { mimeType: "application/pdf", filename: "invoice.pdf", body: { attachmentId: "att-file", size: 4000 } },
+        ],
+      },
+    };
+    const parsed = parseGmailMessage(related);
+    const inline = parsed.attachments.find((a) => a.filename === "shot.png");
+    const file = parsed.attachments.find((a) => a.filename === "invoice.pdf");
+    expect(inline?.contentId).toBe("shot@x");
+    expect(inline?.inline).toBe(true);
+    expect(file?.inline).toBeFalsy();
+  });
+});
+
+describe("normaliseCid", () => {
+  it("strips the cid: scheme, angle brackets and case", () => {
+    expect(normaliseCid("<ABC@Mail>")).toBe("abc@mail");
+    expect(normaliseCid("cid:ABC@Mail")).toBe("abc@mail");
+    expect(normaliseCid("  cid:<abc>  ")).toBe("abc");
+  });
+});
+
+describe("sanitizeEmailHtml — embedded images", () => {
+  it("ingest (no ctx) keeps a cid image but drops remote images and scripts", () => {
+    const html = '<p>hi</p><img src="cid:logo@x"><img src="https://tracker.example.com/p.gif"><script>alert(1)</script>';
+    const out = sanitizeEmailHtml(html);
+    expect(out).toContain('src="cid:logo@x"');
+    expect(out).not.toContain("tracker.example.com");
+    expect(out).not.toContain("<script>");
+  });
+
+  it("render (ctx) rewrites a matched cid image to its auth-gated attachment URL", () => {
+    const out = sanitizeEmailHtml('<p>x</p><img src="cid:logo@x">', {
+      messageId: "m1",
+      attachments: [{ contentId: "logo@x", mimeType: "image/png", stored: true }],
+    });
+    expect(out).toContain('src="/api/attachments/m1/0"');
+  });
+
+  it("render drops a cid with no matching stored image attachment", () => {
+    const out = sanitizeEmailHtml('<img src="cid:missing@x">', {
+      messageId: "m1",
+      attachments: [{ contentId: "other@x", mimeType: "image/png", stored: true }],
+    });
+    expect(out).not.toContain("<img");
+  });
+
+  it("render never emits an attacker-supplied non-cid image source (no cross-message leak)", () => {
+    const out = sanitizeEmailHtml('<img src="/api/attachments/OTHER/0"><img src="https://evil.example.com/x.png">', {
+      messageId: "m1",
+      attachments: [{ contentId: "logo@x", mimeType: "image/png", stored: true }],
+    });
+    expect(out).not.toContain("<img");
+    expect(out).not.toContain("OTHER");
+    expect(out).not.toContain("evil.example.com");
+  });
+
+  it("render will not point an <img> at a non-image attachment sharing the cid", () => {
+    const out = sanitizeEmailHtml('<img src="cid:doc@x">', {
+      messageId: "m1",
+      attachments: [{ contentId: "doc@x", mimeType: "application/pdf", stored: true }],
+    });
+    expect(out).not.toContain("<img");
   });
 });

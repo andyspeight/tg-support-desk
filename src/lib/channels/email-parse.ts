@@ -1,4 +1,5 @@
 import sanitizeHtmlLib from "sanitize-html";
+import { isImageMime } from "./attachment-rules";
 
 // Pure email-parsing helpers (no env / no network) so they stay unit-testable.
 
@@ -21,7 +22,17 @@ export type GmailMessage = {
   payload?: GmailMessagePart;
 };
 
-export type AttachmentMeta = { filename: string; mimeType: string; size: number; attachmentId?: string };
+export type AttachmentMeta = {
+  filename: string;
+  mimeType: string;
+  size: number;
+  attachmentId?: string;
+  /** Bare Content-ID (no <>/scheme) when the part is a cid-referenced image. */
+  contentId?: string;
+  /** True when this image is embedded in the HTML body (referenced by cid) — it
+   *  renders inline there and should not also appear in the attachment strip. */
+  inline?: boolean;
+};
 
 export type ParsedEmail = {
   fromName: string | null;
@@ -83,26 +94,88 @@ function findPart(part: GmailMessagePart | undefined, mimeType: string): GmailMe
 function collectAttachments(part: GmailMessagePart | undefined, out: AttachmentMeta[] = []): AttachmentMeta[] {
   if (!part) return out;
   if (part.filename && part.body?.attachmentId) {
+    const cidHeader = part.headers ? header(part.headers, "Content-ID") : null;
     out.push({
       filename: part.filename,
       mimeType: part.mimeType ?? "application/octet-stream",
       size: part.body.size ?? 0,
       attachmentId: part.body.attachmentId,
+      ...(cidHeader ? { contentId: normaliseCid(cidHeader) } : {}),
     });
   }
   for (const child of part.parts ?? []) collectAttachments(child, out);
   return out;
 }
 
-/** Ticket bodies are hostile input — strip everything but basic formatting. */
-export function sanitizeEmailHtml(html: string): string {
+/** Normalise a Content-ID header or a `cid:` URL reference to a bare, comparable
+ *  token: drop the "cid:" scheme, strip surrounding <>, lowercase. */
+export function normaliseCid(raw: string): string {
+  return raw.trim().replace(/^cid:/i, "").replace(/^<|>$/g, "").trim().toLowerCase();
+}
+
+/** Every distinct cid referenced by the HTML body, normalised. */
+function extractCidRefs(html: string): Set<string> {
+  const out = new Set<string>();
+  const re = /cid:([^"'\s>)]+)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html)) !== null) out.add(normaliseCid(match[1]));
+  return out;
+}
+
+/** Render-time context that resolves a message's embedded (cid:) images to their
+ *  auth-gated attachment URLs. Omitted at ingest, where cid refs are preserved
+ *  as-is for later resolution. */
+export type EmailImageCtx = {
+  messageId: string;
+  attachments: Array<{ contentId?: string; mimeType?: string; stored?: boolean }>;
+};
+
+/**
+ * Ticket bodies are hostile input — strip everything but basic formatting.
+ *
+ * Sender-embedded images (referenced by `cid:` in the HTML) are handled without
+ * ever allowing a remote fetch:
+ *  - **Ingest** (no `ctx`): the `cid:` reference is kept verbatim so it can be
+ *    resolved once the message + its stored attachments exist.
+ *  - **Render** (`ctx` given): each `cid:` is rewritten to this message's
+ *    auth-gated `/api/attachments/…` URL. Anything we can't resolve to a stored
+ *    image attachment — including every remote/http image (tracking pixels) — is
+ *    dropped. Non-cid image sources are never emitted.
+ */
+export function sanitizeEmailHtml(html: string, ctx?: EmailImageCtx): string {
+  const cidToIndex = new Map<string, number>();
+  if (ctx) {
+    ctx.attachments.forEach((a, i) => {
+      if (a.stored && a.contentId && a.mimeType && isImageMime(a.mimeType)) {
+        cidToIndex.set(normaliseCid(a.contentId), i);
+      }
+    });
+  }
   return sanitizeHtmlLib(html, {
-    allowedTags: ["p", "br", "a", "strong", "b", "em", "i", "u", "ul", "ol", "li", "blockquote", "pre", "code", "div", "span"],
-    allowedAttributes: { a: ["href"] },
+    allowedTags: ["p", "br", "a", "strong", "b", "em", "i", "u", "ul", "ol", "li", "blockquote", "pre", "code", "div", "span", "img"],
+    allowedAttributes: { a: ["href"], img: ["src", "alt"] },
     allowedSchemes: ["http", "https", "mailto"],
+    // Images may only carry a cid: source (ingest) or a root-relative URL our own
+    // transform produces (render). Remote image schemes are never allowed.
+    allowedSchemesByTag: { img: ["cid"] },
     transformTags: {
       a: sanitizeHtmlLib.simpleTransform("a", { rel: "noopener noreferrer", target: "_blank" }),
+      img: (_tag, attribs) => {
+        const src = (attribs.src ?? "").trim();
+        const alt = attribs.alt ?? "";
+        const keep = (newSrc: string): { tagName: string; attribs: Record<string, string> } => ({
+          tagName: "img",
+          attribs: { src: newSrc, alt },
+        });
+        if (/^cid:/i.test(src)) {
+          if (!ctx) return keep(src); // ingest: keep the cid ref for later
+          const idx = cidToIndex.get(normaliseCid(src));
+          if (idx !== undefined) return keep(`/api/attachments/${ctx.messageId}/${idx}`);
+        }
+        return { tagName: "img", attribs: {} as Record<string, string> }; // remote/unresolved → dropped below
+      },
     },
+    exclusiveFilter: (frame) => frame.tag === "img" && !frame.attribs.src,
   });
 }
 
@@ -268,6 +341,17 @@ export const FREE_MAIL_DOMAINS = new Set([
   "orange.net",
   "supanet.com",
   "care4free.net",
+  // US shared consumer-ISP domains (same rationale: many unrelated firms).
+  "comcast.net",
+  "verizon.net",
+  "att.net",
+  "sbcglobal.net",
+  "cox.net",
+  "bellsouth.net",
+  "charter.net",
+  "roadrunner.com",
+  "optonline.net",
+  "earthlink.net",
 ]);
 
 /**
@@ -336,6 +420,17 @@ export function parseGmailMessage(message: GmailMessage): ParsedEmail {
 
   const referencesRaw = header(headers, "References") ?? "";
 
+  // Flag images the HTML body embeds (cid-referenced) as inline: they render in
+  // the body, so the UI hides them from the attachment strip. An image with a
+  // Content-ID the body never references stays an ordinary attachment.
+  const attachments = collectAttachments(message.payload);
+  if (rawHtml) {
+    const cidRefs = extractCidRefs(rawHtml);
+    for (const a of attachments) {
+      if (a.contentId && cidRefs.has(a.contentId)) a.inline = true;
+    }
+  }
+
   return {
     fromName: from.name,
     fromEmail: from.email,
@@ -346,7 +441,7 @@ export function parseGmailMessage(message: GmailMessage): ParsedEmail {
     text: stripQuotedReply(text),
     html: rawHtml ? sanitizeEmailHtml(rawHtml) : null,
     cc: parseAddressList(header(headers, "Cc")).filter((e) => e !== from.email),
-    attachments: collectAttachments(message.payload),
+    attachments,
     senderVerified: parseAuthenticationResults(headers),
     isAutoReply: detectAutoReply(headers, subject, fromRaw),
   };
