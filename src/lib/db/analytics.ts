@@ -42,6 +42,9 @@ export type Analytics = {
   csat: { count: number; avg: number; aiAvg: number | null; humanAvg: number | null } | null;
   escalationReasons: { reason: string; count: number }[];
   topClients: { clientId: string; count: number }[];
+  // Confident answers held because the KB had nothing to ground them — i.e. the
+  // KB gaps. total + the recent held tickets, so agents see what to write next.
+  ungroundedHolds: { total: number; recent: { id: string; reference: number; subject: string; intent: string | null; at: string }[] };
 };
 
 const EMPTY: Analytics = {
@@ -56,6 +59,7 @@ const EMPTY: Analytics = {
   csat: null,
   escalationReasons: [],
   topClients: [],
+  ungroundedHolds: { total: 0, recent: [] },
 };
 
 function median(values: number[]): number {
@@ -67,6 +71,51 @@ function median(values: number[]): number {
 
 const avg = (values: number[]): number => (values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0);
 const pct = (num: number, denom: number): number => (denom > 0 ? Math.round((num / denom) * 100) : 0);
+
+type HeldTicket = { id: string; reference: number; subject: string; intent: string | null };
+
+// KB gaps: definitive answers the AI held in the last 30 days because search_kb
+// returned nothing to ground them (the grounding gate stamps channel_meta.ungrounded
+// on the held draft). One row per ticket (most recent hold), so the list reads as
+// "topics clients asked about that no published article covers." Tenant-scoped via
+// the ticket join; best-effort so it never blanks the page.
+async function getUngroundedHolds(client: ReturnType<typeof db>, tenant: string): Promise<Analytics["ungroundedHolds"]> {
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  // Filter on the typed `role` column, then read the ungrounded flag off the
+  // held draft's channel_meta in JS (a jsonb-path filter isn't in the generated
+  // column types). Internal notes are a bounded set, so the 1000 cap is ample.
+  const { data } = await client
+    .from("messages")
+    .select("ticket_id, created_at, channel_meta")
+    .eq("role", "internal_note")
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(1000);
+  const notes = (data as { ticket_id: string; created_at: string; channel_meta: { ungrounded?: unknown } | null }[] | null) ?? [];
+  const holds = notes.filter((n) => n.channel_meta?.ungrounded === true);
+  if (!holds.length) return { total: 0, recent: [] };
+
+  const latestByTicket = new Map<string, string>();
+  for (const h of holds) if (!latestByTicket.has(h.ticket_id)) latestByTicket.set(h.ticket_id, h.created_at);
+  const ids = [...latestByTicket.keys()];
+
+  const { data: tks } = await client
+    .from("tickets")
+    .select("id, reference, subject, intent")
+    .eq("tenant_id", tenant)
+    .in("id", ids);
+  const byId = new Map<string, HeldTicket>(((tks as HeldTicket[] | null) ?? []).map((t) => [t.id, t]));
+
+  const held = ids
+    .filter((id) => byId.has(id)) // intersect with tenant tickets = tenant scoping
+    .map((id) => ({ t: byId.get(id)!, at: latestByTicket.get(id)! }))
+    .sort((a, b) => (a.at < b.at ? 1 : -1));
+
+  return {
+    total: held.length,
+    recent: held.slice(0, 8).map(({ t, at }) => ({ id: t.id, reference: t.reference, subject: t.subject, intent: t.intent, at })),
+  };
+}
 
 export async function getAnalytics(): Promise<Analytics> {
   try {
@@ -165,6 +214,9 @@ export async function getAnalytics(): Promise<Analytics> {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
+    // Isolated so a failure here (jsonb filter, etc.) never blanks the page.
+    const ungroundedHolds = await getUngroundedHolds(client, tenant).catch(() => EMPTY.ungroundedHolds);
+
     return {
       connected: true,
       totals: {
@@ -191,6 +243,7 @@ export async function getAnalytics(): Promise<Analytics> {
         : null,
       escalationReasons,
       topClients,
+      ungroundedHolds,
     };
   } catch {
     return EMPTY;

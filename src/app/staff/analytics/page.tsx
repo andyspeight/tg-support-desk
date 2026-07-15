@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getAnalytics } from "@/lib/db/analytics";
 import { qaSummary } from "@/lib/db/queries";
 import { getClientById } from "@/lib/integrations/airtable-clients";
@@ -118,6 +119,11 @@ export default async function AnalyticsPage() {
           value={String(qa.flagged)}
           sub={qa.flagged > 0 ? "sent replies needing a look" : "none flagged"}
         />
+        <Stat
+          label="Ungrounded holds"
+          value={String(a.ungroundedHolds.total)}
+          sub={a.ungroundedHolds.total > 0 ? "KB gaps (30d) — need an article" : "none in 30d"}
+        />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -164,6 +170,32 @@ export default async function AnalyticsPage() {
           </div>
         </section>
       </div>
+
+      {/* Top KB gaps — ungrounded holds. The write-these-next list. */}
+      {a.ungroundedHolds.recent.length > 0 && (
+        <section className="mt-6">
+          <h2 className="text-sm font-semibold">Top KB gaps</h2>
+          <p className="text-xs text-ink-3">
+            Confident answers held because no published article backed them — write these and the AI resolves them itself next time.
+          </p>
+          <div className="mt-2 space-y-1">
+            {a.ungroundedHolds.recent.map((g) => (
+              <Link
+                key={g.id}
+                href={`/staff/ticket/${g.id}`}
+                className="flex items-center justify-between gap-3 rounded-md border border-line-soft bg-surface px-3 py-1.5 text-sm transition hover:border-ink-3"
+              >
+                <span className="min-w-0 flex-1 truncate text-ink">
+                  <span className="text-ink-3">#{g.reference}</span> {g.subject}
+                </span>
+                {g.intent && (
+                  <span className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[11px] text-ink-2">{g.intent}</span>
+                )}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Volume by client */}
       <section className="mt-6">
