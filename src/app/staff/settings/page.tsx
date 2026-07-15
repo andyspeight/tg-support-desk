@@ -11,10 +11,12 @@ import {
 } from "@/lib/db/queries";
 import { listAllClientCompanies } from "@/lib/integrations/airtable-clients";
 import { GdprPanel } from "@/components/gdpr-panel";
+import { AddCompanyForm } from "@/components/add-company-form";
 import {
   addAllowedAction,
   addBlockedAction,
   createCannedAction,
+  createCompanyAction,
   createTagAction,
   deleteCannedAction,
   deleteTagAction,
@@ -273,6 +275,15 @@ export default async function SettingsPage() {
             Link
           </button>
         </form>
+
+        {env.airtableWriteConfigured ? (
+          <AddCompanyForm action={createCompanyAction} />
+        ) : (
+          <p className="mt-3 border-t border-line-soft pt-3 text-[11px] leading-relaxed text-ink-3">
+            Adding a brand-new company from here isn’t switched on yet — it needs the desk’s Airtable write access
+            enabled. Until then, add the company in Airtable, then link the user above.
+          </p>
+        )}
       </section>
 
       <section className="mt-4 rounded-lg border border-line bg-surface p-4">

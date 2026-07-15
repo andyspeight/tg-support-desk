@@ -12,6 +12,7 @@ import { AlertTriangle, ArrowLeft, Download, Eye, EyeOff, GitMerge, LayoutDashbo
 import { isImageMime } from "@/lib/channels/attachment-rules";
 import { LightboxImage } from "@/components/image-lightbox";
 import { EmailBody } from "@/components/email-body";
+import { NewCompanyForTicket } from "@/components/new-company-for-ticket";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
@@ -20,7 +21,7 @@ import { SupportHistoryPanel } from "@/components/support-history-panel";
 import { RelevantKbPanel } from "@/components/relevant-kb-panel";
 import { RunAiButton } from "@/components/run-ai-button";
 import { TicketPresence } from "@/components/ticket-presence";
-import { addNoteAction, approveSenderAction, blockSenderAction, detachRequesterAction, linkRequesterAction, mergeTicketAction, presenceHeartbeatAction, runAiAction, sendReplyAction, snoozeTicketAction, unmergeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
+import { addNoteAction, approveSenderAction, blockSenderAction, createCompanyForTicketAction, detachRequesterAction, linkRequesterAction, mergeTicketAction, presenceHeartbeatAction, runAiAction, sendReplyAction, snoozeTicketAction, unmergeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
 import {
   copilotDraftAction,
   copilotRephraseAction,
@@ -480,6 +481,13 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                     and they’ll see the company’s tickets in the portal.
                   </p>
                 </>
+              )}
+              {!ticket.client_id && env.airtableWriteConfigured && (
+                <NewCompanyForTicket
+                  action={createCompanyForTicketAction}
+                  ticketId={ticket.id}
+                  requesterEmail={ticket.requester_email}
+                />
               )}
             </div>
           )}

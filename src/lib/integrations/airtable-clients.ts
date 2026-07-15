@@ -126,6 +126,60 @@ function firstFieldString(fields: Record<string, unknown>, keys: readonly string
   return undefined;
 }
 
+// The Clients base's business-name field. The Email field (the base's primary,
+// per env.airtableClientEmailFields) is the identity the desk matches on.
+const CLIENT_COMPANY_NAME_FIELD = "ClientName";
+
+export type NewClientCompanyInput = {
+  companyName: string;
+  email: string;
+  tradingName?: string;
+  contactName?: string;
+  website?: string;
+  createdBy: string; // agent email — provenance in Notes + audit
+};
+
+/**
+ * Create a client company in the Airtable Clients base and return the new
+ * record. Writes with the WRITE-scoped token (env.airtableWritePat) — the
+ * read-only PAT can't do this. The caller MUST duplicate-check first
+ * (matchClientByEmail): Airtable does not enforce uniqueness, and this base is
+ * the source of truth for client identity, so a stray second record would split
+ * a company's tickets. Only known, safe fields are written; the singleSelects
+ * (Plan/Status) are deliberately left for staff to set in Airtable so an
+ * unknown option can't error the create.
+ */
+export async function createClientCompany(input: NewClientCompanyInput): Promise<ClientRecord> {
+  const emailField = env.airtableClientEmailFields[0] ?? "Email";
+  const website = input.website?.trim();
+  const fields: Record<string, unknown> = {
+    [emailField]: input.email.trim().toLowerCase(),
+    [CLIENT_COMPANY_NAME_FIELD]: input.companyName.trim(),
+    CreatedAt: new Date().toISOString(),
+    Notes: `Added via TG Support Desk by ${input.createdBy}.`,
+  };
+  if (input.tradingName?.trim()) fields["Trading Name"] = input.tradingName.trim();
+  if (input.contactName?.trim()) fields["Primary Contact Name"] = input.contactName.trim();
+  if (website) fields["Website URL"] = /^https?:\/\//i.test(website) ? website : `https://${website}`;
+
+  const url = `${API_BASE}/${env.airtableClientsBaseId}/${encodeURIComponent(env.airtableClientsTable)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.airtableWritePat}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ fields }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) {
+    throw new Error(`Airtable create failed: ${res.status} ${await res.text().catch(() => "")}`);
+  }
+  const data = (await res.json()) as { id: string; fields: Record<string, unknown> };
+  return { id: data.id, fields: data.fields };
+}
+
 export type ClientCompany = { id: string; name: string };
 
 /** Every client company (record id + display name), A–Z — the picker list for
