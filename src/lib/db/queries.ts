@@ -739,6 +739,22 @@ export async function recentActionCount(actor: string, action: string, withinSec
   return count ?? 0;
 }
 
+/** Atomically consume a magic-link sign-in token by its jti. Returns true on the
+ *  FIRST use (caller may sign in), false if already used — single-use is enforced
+ *  by the primary key, not a racy check-then-write. Fails closed on a duplicate. */
+export async function consumeLoginToken(jti: string, email: string): Promise<boolean> {
+  const { data, error } = await db()
+    .from("used_login_tokens")
+    .insert({ jti, email: email.toLowerCase() })
+    .select("jti")
+    .maybeSingle();
+  if (error) {
+    if (error.code === "23505") return false; // unique violation = already used
+    throw new Error(`consumeLoginToken: ${error.message}`);
+  }
+  return Boolean(data);
+}
+
 export async function getMessageById(id: string): Promise<Message | null> {
   const { data, error } = await db().from("messages").select().eq("id", id).maybeSingle();
   if (error) throw new Error(`getMessageById: ${error.message}`);

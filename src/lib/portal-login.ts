@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { env } from "@/lib/env";
-import { signToken } from "@/lib/auth-tokens";
+import { signToken, verifyToken } from "@/lib/auth-tokens";
 import { sendEmail } from "@/lib/channels/gmail";
 import { renderCustomerEmail, textToEmailHtml } from "@/lib/channels/email-template";
 import { audit, listRequesterTickets, recentActionCount } from "@/lib/db/queries";
@@ -18,6 +18,15 @@ import { firstNameFrom, isEmailish, nameFromEmail } from "@/lib/names";
 export const LOGIN_LINK_TTL_MS = 15 * 60 * 1000;
 export const LOGIN_REQUEST_ACTION = "portal.login_link_requested";
 export const LOGIN_USED_ACTION = "portal.login_link_used";
+
+/** Verify a magic-link token WITHOUT consuming it — lets the confirm page show
+ *  who is about to sign in. Returns null if invalid/expired/wrong-audience.
+ *  Kept out of the page component so the Date.now() stays out of render. */
+export function peekLoginToken(token: string): { email: string } | null {
+  if (!env.authSessionSecret) return null;
+  const claims = verifyToken(token, env.authSessionSecret, Date.now(), "portal-login");
+  return claims?.jti ? { email: claims.email } : null;
+}
 
 /** Send a sign-in link, silently rate-limited (3/15min per email, 10/h per IP —
  *  the caller shows the same "check your inbox" either way, so the endpoint
@@ -50,7 +59,9 @@ export async function requestLoginLink(email: string, ip: string, returnTo: stri
     env.authSessionSecret,
   );
   const base = env.appBaseUrl.replace(/\/$/, "");
-  const link = `${base}/api/portal-auth/verify?token=${encodeURIComponent(token)}&return=${encodeURIComponent(returnTo)}`;
+  // Lands on the confirm page (a bare GET never establishes a session); the
+  // explicit "Sign in" POST there consumes the token and mints the cookie.
+  const link = `${base}/signin/verify?token=${encodeURIComponent(token)}&return=${encodeURIComponent(returnTo)}`;
 
   const greeting = isEmailish(name) ? "Hi," : `Hi ${firstNameFrom(name)},`;
   const text = `${greeting}
