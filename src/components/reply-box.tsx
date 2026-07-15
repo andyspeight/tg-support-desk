@@ -162,6 +162,11 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
 
   const editor = useEditor({
     immediatelyRender: false,
+    // tiptap v3 no longer re-renders the React component on every transaction by
+    // default — without this, `isEmpty` (and the toolbar active-states) never
+    // recompute as you type, so the Send button stays disabled until some other
+    // state change forces a render. Opt back in so the composer is reactive.
+    shouldRerenderOnTransaction: true,
     extensions: [
       StarterKit.configure({ heading: { levels: [2, 3] } }),
       Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
