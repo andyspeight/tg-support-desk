@@ -1,6 +1,7 @@
 import "server-only";
 import { env } from "@/lib/env";
 import { FREE_MAIL_DOMAINS } from "@/lib/channels/email-parse";
+import { pickDomainMatch, pickExactEmailMatch } from "./client-match";
 
 /**
  * Read-only access to the Airtable Clients base — the source of truth for
@@ -50,30 +51,36 @@ function escapeFormulaString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
-async function searchByFormula(formula: string): Promise<ClientRecord | null> {
+/** Coarse prefilter: records where FIND() (substring) hits — narrows what we
+ *  fetch, but the precise decision is made by the pure matchers in code. */
+async function searchCandidates(formula: string, maxRecords: number): Promise<ClientRecord[]> {
   const data = (await airtableGet(encodeURIComponent(env.airtableClientsTable), {
     filterByFormula: formula,
-    maxRecords: "1",
+    maxRecords: String(maxRecords),
   })) as { records: { id: string; fields: Record<string, unknown> }[] };
-  const record = data.records[0];
-  return record ? { id: record.id, fields: record.fields } : null;
+  return data.records.map((r) => ({ id: r.id, fields: r.fields }));
 }
 
-/** Match a requester to a client record: exact email first, then company domain. */
+/** Match a requester to a client record: an exact contact-email match first,
+ *  then an exact company-domain match. Both are verified precisely in code —
+ *  Airtable FIND() is substring containment, so on its own "bob@x.co" would
+ *  falsely match "bob@x.co.uk" (and "@acme.co" would match "acme.co.uk"), which
+ *  is a cross-company data leak given magic-link auth. Domain matching is only
+ *  attempted for a real corporate domain — never a free/shared-ISP mailbox. */
 export async function matchClientByEmail(email: string): Promise<ClientRecord | null> {
-  const lower = email.toLowerCase();
+  const lower = email.trim().toLowerCase();
+  const domain = lower.split("@")[1];
   const fields = env.airtableClientEmailFields;
   const term = (needle: string) =>
     fields.map((f) => `FIND('${escapeFormulaString(needle)}', LOWER({${f}}&''))`).join(", ");
   const wrap = (terms: string) => (fields.length === 1 ? terms : `OR(${terms})`);
 
   try {
-    const exact = await searchByFormula(wrap(term(lower)));
+    const exact = pickExactEmailMatch(await searchCandidates(wrap(term(lower)), 10), lower, fields);
     if (exact) return exact;
 
-    const domain = lower.split("@")[1];
     if (domain && !GENERIC_DOMAINS.has(domain)) {
-      return await searchByFormula(wrap(term(`@${domain}`)));
+      return pickDomainMatch(await searchCandidates(wrap(term(`@${domain}`)), 50), domain, fields);
     }
   } catch (error) {
     console.error("matchClientByEmail failed:", error);
