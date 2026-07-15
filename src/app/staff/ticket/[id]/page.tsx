@@ -8,7 +8,8 @@ import { getClientById, listAllClientCompanies } from "@/lib/integrations/airtab
 import { env } from "@/lib/env";
 import { allowPatternFor, sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
-import { AlertTriangle, ArrowLeft, Eye, EyeOff, GitMerge, LayoutDashboard, Lightbulb, Loader2, Paperclip, Users } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, Eye, EyeOff, GitMerge, LayoutDashboard, Lightbulb, Loader2, Paperclip, Users } from "lucide-react";
+import { isImageMime } from "@/lib/channels/attachment-rules";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
@@ -43,6 +44,7 @@ type MessageAttachment = {
   size: number;
   stored: boolean;
   rejected?: string;
+  mimeType?: string;
 };
 
 function formatBytes(bytes: number): string {
@@ -62,30 +64,44 @@ function MessageAttachments({ messageId, attachments }: { messageId: string; att
   const list = (Array.isArray(attachments) ? attachments : []) as MessageAttachment[];
   if (list.length === 0) return null;
   return (
-    <div className="mt-2 flex flex-wrap gap-2 border-t border-black/5 pt-2 dark:border-white/10">
-      {list.map((a, i) =>
-        a.stored ? (
-          <a
-            key={i}
-            href={`/api/attachments/${messageId}/${i}`}
-            className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink hover:border-ink-3"
-          >
-            <Paperclip className="h-3.5 w-3.5" strokeWidth={1.75} />
-            <span className="max-w-[200px] truncate">{a.filename}</span>
-            <span className="text-ink-3">{formatBytes(a.size)}</span>
-          </a>
-        ) : (
-          <span
-            key={i}
-            title={a.rejected}
-            className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-line px-2 py-1 text-xs text-ink-3"
-          >
-            <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} />
-            <span className="max-w-[200px] truncate line-through">{a.filename}</span>
-            <span>blocked</span>
+    <div className="mt-2 flex flex-wrap items-start gap-2 border-t border-black/5 pt-2 dark:border-white/10">
+      {list.map((a, i) => {
+        if (!a.stored) {
+          return (
+            <span
+              key={i}
+              title={a.rejected}
+              className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-line px-2 py-1 text-xs text-ink-3"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <span className="max-w-[200px] truncate line-through">{a.filename}</span>
+              <span>blocked</span>
+            </span>
+          );
+        }
+        const src = `/api/attachments/${messageId}/${i}`;
+        if (a.mimeType && isImageMime(a.mimeType)) {
+          // Screenshots render inline; click to open full-size in a new tab.
+          return (
+            <a key={i} href={src} target="_blank" rel="noreferrer" title={a.filename} className="block overflow-hidden rounded-md border border-line hover:border-ink-3">
+              {/* eslint-disable-next-line @next/next/no-img-element -- signed-redirect URL, next/image would need the storage host allow-listed */}
+              <img src={src} alt={a.filename} loading="lazy" className="max-h-48 max-w-[240px] bg-surface-2 object-contain" />
+            </a>
+          );
+        }
+        return (
+          <span key={i} className="inline-flex items-center overflow-hidden rounded-md border border-line bg-surface text-xs text-ink">
+            <a href={src} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-2 py-1 hover:bg-surface-2">
+              <Paperclip className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <span className="max-w-[200px] truncate">{a.filename}</span>
+              <span className="text-ink-3">{formatBytes(a.size)}</span>
+            </a>
+            <a href={`${src}?download=1`} title="Download" className="border-l border-line px-1.5 py-1 text-ink-3 hover:bg-surface-2 hover:text-ink">
+              <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+            </a>
           </span>
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }

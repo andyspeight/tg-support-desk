@@ -30,6 +30,12 @@ export type StoredAttachment = {
   rejected?: string;
 };
 
+/** Raster image types that are safe to render inline as <img> (the allowlist has
+ *  no SVG/HTML, so nothing active). Everything else opens/downloads via a link. */
+export function isImageMime(mime: string): boolean {
+  return /^image\/(png|jpe?g|gif|webp)$/i.test((mime || "").trim());
+}
+
 /** Allowlist + cap check. Tickets are hostile input — deny by default. */
 export function checkAttachment(meta: { mimeType: string; size: number }): { ok: true } | { ok: false; reason: string } {
   if (!ALLOWED_MIME.has(meta.mimeType.toLowerCase())) {

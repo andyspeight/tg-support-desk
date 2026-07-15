@@ -3,6 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Loader2, Sparkles } from "lucide-react";
 import { askAction } from "@/app/(client)/actions";
+import { safeHttpUrl } from "@/lib/kb-links";
 
 type Result = Awaited<ReturnType<typeof askAction>>;
 
@@ -118,7 +119,7 @@ export function AskBox() {
                   {result.sources.map((s) => (
                     <a
                       key={s.url}
-                      href={s.url}
+                      href={safeHttpUrl(s.url)}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex max-w-full items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-accent-700 transition hover:border-accent-300 dark:text-accent-300"
