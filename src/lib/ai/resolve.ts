@@ -1,5 +1,6 @@
 import "server-only";
 import { runResolutionAgent } from "./agent";
+import { canAutoSend } from "./autosend";
 import { mandatoryEscalation } from "./guardrails";
 import { classifyTicket } from "./triage";
 import { searchKb } from "./kb-search";
@@ -214,24 +215,6 @@ function buildExecutors(ticket: Ticket, retrieved: RetrievedArticle[]): ToolExec
   };
 }
 
-// Graduated autonomy: is this reply cleared to send itself? Never in shadow mode,
-// and never below the confidence bar. Beyond that we split by outcome:
-//  - A clarifying question is low-risk — it asks for information, it doesn't
-//    assert a fact or make a commitment, and commercial/legal/human-request
-//    topics never reach here (the mandatory-escalation guardrail runs first). So
-//    auto-send any confident clarification regardless of intent, so the
-//    information-gathering round needs no agent (e.g. "send me the page URL").
-//  - A definitive answer is higher-stakes (it could be wrong or ungrounded), so
-//    it stays gated to a KB-answerable, low-risk intent on the allowlist.
-// Escalations never auto-send here.
-function canAutoSend(ticket: Ticket, outcome: AgentOutcome): boolean {
-  if (env.aiShadowMode) return false;
-  if (outcome.kind !== "answered" && outcome.kind !== "clarified") return false;
-  if (outcome.confidence < env.aiAutosendConfidence) return false;
-  if (outcome.kind === "clarified") return true;
-  return Boolean(ticket.intent && env.aiAutosendIntents.includes(ticket.intent));
-}
-
 // A held AI draft is a "human needed" moment — someone has to review and send it.
 // Ping the owner + watchers, or the whole team when nobody owns it yet, so a
 // draft on an unassigned ticket is never left silent (it would otherwise only
@@ -263,9 +246,20 @@ async function applyOutcome(
     // (no hallucinated sources). We don't append a CSAT "rate us" prompt.
     const body = sanitiseReplyLinks(outcome.reply, retrievedLinks);
     const langPatch = outcome.language ? { language: outcome.language } : {};
+    // Grounded = the run surfaced at least one KB article to base the answer on.
+    const grounded = retrieved.length > 0;
 
-    if (canAutoSend(ticket, outcome)) {
-      // Confident + cleared intent → the AI answers the customer itself.
+    if (
+      canAutoSend(outcome, {
+        shadowMode: env.aiShadowMode,
+        confidenceBar: env.aiAutosendConfidence,
+        allowedIntents: env.aiAutosendIntents,
+        intent: ticket.intent,
+        grounded,
+      })
+    ) {
+      // Confident + cleared intent (+ grounded, for answers) → the AI answers the
+      // customer itself.
       await sendTicketReply(ticket, body, { role: "ai", author: AI_ACTOR });
       sentBody = body;
       await updateTicket(ticket.id, {
@@ -284,17 +278,30 @@ async function applyOutcome(
       // Not cleared to send — hold the drafted answer for a human to approve,
       // edit and send (loadable via "Use AI draft"). The team sign-off stays out;
       // the sending agent's name is added on send.
+      //
+      // Flag the ungrounded case specially: a confident answer with no KB article
+      // behind it would have auto-sent but for the grounding gate — so it's the
+      // assistant's own unverified knowledge. Tell the reviewer to verify it (it
+      // usually also signals a KB gap worth filling).
+      const ungrounded =
+        outcome.kind === "answered" &&
+        !env.aiShadowMode &&
+        outcome.confidence >= env.aiAutosendConfidence &&
+        !grounded;
+      const draftNote = ungrounded
+        ? `AI DRAFT — verify before sending.\n\n⚠ No knowledge-base article backed this answer, so it's the assistant's own (unverified) knowledge. Check it's correct — and consider adding a KB article — before sending.\n\n${body}`
+        : `AI DRAFT — ready to review and send.\n\n${body}`;
       await addMessage({
         ticket_id: ticket.id,
         role: "internal_note",
         author: AI_ACTOR,
-        body_text: `AI DRAFT — ready to review and send.\n\n${body}`,
-        channel_meta: { kind: "shadow_draft", would_be: outcome.kind, draft_text: body },
+        body_text: draftNote,
+        channel_meta: { kind: "shadow_draft", would_be: outcome.kind, draft_text: body, ungrounded },
       });
       await updateTicket(ticket.id, { ...langPatch, status: "needs_review", ai_resolved: false });
       await audit("ai", AI_ACTOR, "ai.drafted", { type: "ticket", id: ticket.id }, {
         confidence: outcome.confidence,
-        held: env.aiShadowMode ? "shadow_mode" : "below_gate",
+        held: env.aiShadowMode ? "shadow_mode" : ungrounded ? "ungrounded" : "below_gate",
         intent: ticket.intent,
       });
       await notifyDraftReview(ticket);
