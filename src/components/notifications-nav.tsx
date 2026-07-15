@@ -9,7 +9,7 @@ import { Bell } from "lucide-react";
 // cadence as the inbox poller; refreshes on navigation too.
 export function NotificationsNavItem() {
   const pathname = usePathname();
-  const active = pathname === "/notifications";
+  const active = pathname === "/staff/notifications";
   const [unread, setUnread] = useState(0);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function NotificationsNavItem() {
 
   return (
     <Link
-      href="/notifications"
+      href="/staff/notifications"
       className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm ${
         active ? "bg-surface-2 font-medium text-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink"
       }`}

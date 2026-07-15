@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         `• Breaching SLA: ${c.breaching}`,
         `• Escalated (needs a human): ${c.escalated}`,
         "",
-        base ? `Open the inbox: ${base}/inbox` : "Open the inbox to get started.",
+        base ? `Open the inbox: ${base}/staff/inbox` : "Open the inbox to get started.",
       ].join("\n");
       await sendEmail({ to: agent, subject: "[TG Support] Your morning summary", text });
       sent++;

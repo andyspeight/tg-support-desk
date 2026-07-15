@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Download, ShieldAlert } from "lucide-react";
-import type { EraseResult } from "@/app/(app)/settings/actions";
+import type { EraseResult } from "@/app/staff/settings/actions";
 
 // Owner-only GDPR tools: export everything held for a customer email (download),
 // or erase it (right to be forgotten). Erase needs the email typed twice.

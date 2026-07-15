@@ -82,7 +82,7 @@ export function SupportHistoryPanel({ history }: { history: ClientSupportHistory
             {recent.map((t) => (
               <li key={t.id}>
                 <Link
-                  href={`/ticket/${t.id}`}
+                  href={`/staff/ticket/${t.id}`}
                   className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-surface-2"
                 >
                   <span

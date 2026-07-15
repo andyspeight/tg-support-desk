@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Loader2, Sparkles } from "lucide-react";
-import { askAction } from "@/app/portal/actions";
+import { askAction } from "@/app/(client)/actions";
 
 type Result = Awaited<ReturnType<typeof askAction>>;
 
@@ -43,7 +43,7 @@ export function AskBox() {
   // Smart handoff: carry the question + the assistant's attempt into a new
   // ticket so nothing is retyped and the agent has full context.
   const handoffHref =
-    `/portal/new?subject=${encodeURIComponent(asked.slice(0, 180))}` +
+    `/new?subject=${encodeURIComponent(asked.slice(0, 180))}` +
     `&body=${encodeURIComponent(
       `I asked the assistant: "${asked}"\n\nIts answer:\n${result?.answer ?? ""}\n\nThis didn't fully solve it — here's what I still need:\n`,
     )}`;

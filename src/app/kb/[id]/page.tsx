@@ -35,7 +35,7 @@ export default async function KbArticlePage({ params }: { params: Promise<{ id: 
     <div className="min-h-[100dvh] bg-canvas text-ink">
       <header className="border-b border-line bg-surface/80 backdrop-blur supports-[backdrop-filter]:bg-surface/70">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
-          <Link href="/portal" className="flex items-center gap-2.5">
+          <Link href="/" className="flex items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-semibold text-white">
               T
             </span>
@@ -55,13 +55,13 @@ export default async function KbArticlePage({ params }: { params: Promise<{ id: 
         <div className="mt-10 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-6 text-sm text-ink-2">
           <span>
             Still need a hand?{" "}
-            <Link href="/portal/new" className="font-medium text-accent-700 hover:text-accent-800 dark:text-accent-300 dark:hover:text-accent-200">
+            <Link href="/new" className="font-medium text-accent-700 hover:text-accent-800 dark:text-accent-300 dark:hover:text-accent-200">
               Contact support
             </Link>
             .
           </span>
           <Link
-            href="/portal"
+            href="/"
             className="inline-flex items-center gap-1.5 text-ink-3 hover:text-ink"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.75} /> Help centre

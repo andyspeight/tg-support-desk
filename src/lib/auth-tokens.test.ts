@@ -37,8 +37,8 @@ describe("signToken / verifyToken", () => {
 
 describe("safeReturnPath", () => {
   it("keeps same-site paths", () => {
-    expect(safeReturnPath("/inbox")).toBe("/inbox");
-    expect(safeReturnPath("/ticket/abc?x=1#h")).toBe("/ticket/abc?x=1#h");
+    expect(safeReturnPath("/staff/inbox")).toBe("/staff/inbox");
+    expect(safeReturnPath("/staff/ticket/abc?x=1#h")).toBe("/staff/ticket/abc?x=1#h");
   });
 
   it("blocks every cross-origin escape", () => {
@@ -55,7 +55,7 @@ describe("safeReturnPath", () => {
       "",
       null,
     ]) {
-      expect(safeReturnPath(bad)).toBe("/inbox");
+      expect(safeReturnPath(bad)).toBe("/staff/inbox");
     }
   });
 });

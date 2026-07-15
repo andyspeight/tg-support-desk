@@ -12,7 +12,7 @@ import { latestCustomerThreadMeta } from "./email";
 // "Client not responding" handling. Hourly (from the stale-tickets cron): for
 // email tickets sitting in waiting_on_customer, after a few business days of
 // silence send one reminder, then a few days later auto-close (a reply reopens
-// it via the inbound channel). Email channel only — web-form/portal tickets are
+// it via the inbound channel). Email channel only — web-form/ tickets are
 // out of scope. Templated system emails, so this runs regardless of shadow mode.
 
 export type InactivitySummary = { reminded: number; closed: number; skipped?: string };

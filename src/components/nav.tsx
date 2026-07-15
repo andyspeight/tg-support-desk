@@ -16,14 +16,14 @@ import {
 import { NotificationsNavItem } from "@/components/notifications-nav";
 
 const LINKS: { href: string; label: string; icon: LucideIcon; ownerOnly?: boolean }[] = [
-  { href: "/home", label: "My day", icon: House },
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, ownerOnly: true },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/proactive", label: "Proactive", icon: Siren },
-  { href: "/search", label: "Search", icon: Search },
-  { href: "/kb", label: "Knowledge base", icon: BookOpen },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/staff/home", label: "My day", icon: House },
+  { href: "/staff/dashboard", label: "Dashboard", icon: LayoutDashboard, ownerOnly: true },
+  { href: "/staff/inbox", label: "Inbox", icon: Inbox },
+  { href: "/staff/proactive", label: "Proactive", icon: Siren },
+  { href: "/staff/search", label: "Search", icon: Search },
+  { href: "/staff/kb", label: "Knowledge base", icon: BookOpen },
+  { href: "/staff/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/staff/settings", label: "Settings", icon: Settings },
 ];
 
 export function Nav({ isOwner }: { isOwner: boolean }) {
@@ -31,7 +31,7 @@ export function Nav({ isOwner }: { isOwner: boolean }) {
   return (
     <nav className="flex flex-col gap-0.5 p-2">
       {LINKS.filter((link) => isOwner || !link.ownerOnly).map((link) => {
-        const active = pathname === link.href || pathname.startsWith(`${link.href}/`) || (link.href === "/inbox" && pathname.startsWith("/ticket"));
+        const active = pathname === link.href || pathname.startsWith(`${link.href}/`) || (link.href === "/staff/inbox" && pathname.startsWith("/staff/ticket"));
         const Icon = link.icon;
         return (
           <Link
