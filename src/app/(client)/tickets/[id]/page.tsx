@@ -11,6 +11,7 @@ import { SubmitButton } from "@/components/portal/submit-button";
 import { AttachmentPicker } from "@/components/attachment-picker";
 import { AutoRefresh } from "@/components/portal/auto-refresh";
 import { clientStatus } from "@/lib/portal-status";
+import { LightboxImage } from "@/components/image-lightbox";
 import { isImageMime, type StoredAttachment } from "@/lib/channels/attachment-rules";
 
 function initialsOf(value: string): string {
@@ -181,12 +182,15 @@ export default async function PortalTicketPage({
                       {atts.map(({ a, i }) => {
                         const src = `/api/attachments/${m.id}/${i}`;
                         if (a.mimeType && isImageMime(a.mimeType)) {
-                          // Screenshots render inline; tap to open full-size.
+                          // Screenshots render inline; tap opens a full-size preview in place.
                           return (
-                            <a key={i} href={src} target="_blank" rel="noreferrer" title={a.filename} className="block overflow-hidden rounded-lg border border-white/20">
-                              {/* eslint-disable-next-line @next/next/no-img-element -- signed-redirect URL */}
-                              <img src={src} alt={a.filename} loading="lazy" className="max-h-56 max-w-[220px] bg-white/10 object-contain" />
-                            </a>
+                            <LightboxImage
+                              key={i}
+                              src={src}
+                              alt={a.filename}
+                              thumbClassName="block overflow-hidden rounded-lg border border-white/20"
+                              imgClassName="max-h-56 max-w-[220px] bg-white/10 object-contain"
+                            />
                           );
                         }
                         return (

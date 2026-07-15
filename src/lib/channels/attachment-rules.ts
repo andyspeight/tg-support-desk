@@ -28,6 +28,10 @@ export type StoredAttachment = {
   storageKey?: string;
   stored: boolean;
   rejected?: string;
+  /** Bare Content-ID for a cid-referenced inline image (resolves body <img> src). */
+  contentId?: string;
+  /** True when embedded in the HTML body — rendered inline, hidden from the strip. */
+  inline?: boolean;
 };
 
 /** Raster image types that are safe to render inline as <img> (the allowlist has

@@ -17,10 +17,12 @@ import {
   X,
   Loader2,
   Sparkles,
+  Check,
 } from "lucide-react";
 import { applyCannedVars, type CannedVars } from "@/lib/canned";
 import { KbPicker, type KbPickerItem } from "@/components/kb-picker";
 import { KB_INSERT_EVENT, kbLinkHtml, type KbLinkRef } from "@/lib/kb-links";
+import { markDraftDirty } from "@/lib/draft-guard";
 
 type CannedOption = { id: string; title: string; body: string };
 type ComposerResult = { ok: true; note?: string } | { ok: false; error: string };
@@ -75,6 +77,31 @@ function sameText(a: string, b: string): boolean {
   return a.replace(/\s+/g, " ").trim() === b.replace(/\s+/g, " ").trim();
 }
 
+// Persist the in-progress reply per ticket so a page reload (a Vercel deploy
+// forces one via Next.js skew protection) never loses what the agent typed.
+const draftKey = (ticketId: string) => `tg-reply-draft:${ticketId}`;
+function loadDraft(ticketId: string): string | null {
+  try {
+    return localStorage.getItem(draftKey(ticketId));
+  } catch {
+    return null;
+  }
+}
+function saveDraft(ticketId: string, html: string): void {
+  try {
+    localStorage.setItem(draftKey(ticketId), html);
+  } catch {
+    /* private mode / quota — the in-page draft still stands, just not across reloads */
+  }
+}
+function clearDraft(ticketId: string): void {
+  try {
+    localStorage.removeItem(draftKey(ticketId));
+  } catch {
+    /* ignore */
+  }
+}
+
 function ToolbarButton({
   onClick,
   active,
@@ -117,6 +144,21 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
   const [afterStatus, setAfterStatus] = useState(defaultAfterStatus ?? "waiting_on_customer"); // status to set when replying
   const fileInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Mirror the composer's dirty state to localStorage + the poller guard on
+  // every keystroke (storage write debounced; the guard flips immediately so a
+  // refresh can't fire mid-word). No React state here — the "Draft saved" chip
+  // is derived from the editor being non-empty.
+  function trackDraft(html: string, isEmpty: boolean) {
+    markDraftDirty(ticketId, !isEmpty);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (isEmpty) {
+      clearDraft(ticketId);
+      return;
+    }
+    saveTimer.current = setTimeout(() => saveDraft(ticketId, html), 400);
+  }
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -131,7 +173,24 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
         class: "tg-prose min-h-[180px] max-h-[420px] overflow-y-auto px-3 py-2.5 text-sm text-ink focus:outline-none",
       },
     },
+    onUpdate: ({ editor }) => trackDraft(editor.getHTML(), editor.isEmpty),
   });
+
+  // Restore a saved draft on mount (survives the deploy reload), and clear the
+  // poller guard when this composer unmounts so it can't get stuck "dirty".
+  useEffect(() => {
+    if (!editor) return;
+    const saved = loadDraft(ticketId);
+    if (saved && editor.isEmpty) {
+      editor.commands.setContent(saved);
+      // Re-run the normal dirty tracking (marks the poller guard + flips the
+      // "saved" chip on its debounce, off the effect's synchronous path).
+      trackDraft(saved, false);
+    }
+    return () => markDraftDirty(ticketId, false);
+    // Run once the editor is ready; ticketId is stable for a mounted ticket.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   // Insert a KB reference from the side-panel suggestions or the in-box picker
   // (both fire KB_INSERT_EVENT) at the cursor in the reply.
@@ -172,6 +231,8 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
         return;
       }
       editor.commands.clearContent();
+      clearDraft(ticketId);
+      markDraftDirty(ticketId, false);
       setFiles([]);
       setSummary(null);
       setReview(null);
@@ -474,9 +535,17 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
           Internal note
         </button>
         <KbPicker articles={kbArticles ?? []} />
+        {!isEmpty && (
+          <span
+            className="ml-auto inline-flex items-center gap-1 text-[11px] text-ink-3"
+            title="Your draft is saved on this device — a deploy or refresh won't lose it."
+          >
+            <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" strokeWidth={2} /> Draft saved
+          </span>
+        )}
         {canned.length > 0 && (
           <select
-            className="ml-auto rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink-2"
+            className={`${!isEmpty ? "" : "ml-auto "}rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink-2`}
             value=""
             onChange={(e) => {
               const found = canned.find((c) => c.id === e.target.value);

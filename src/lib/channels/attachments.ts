@@ -37,6 +37,10 @@ export async function storeAttachments(
       size: meta.size,
       attachmentId: meta.attachmentId,
       stored: false,
+      // Carry the inline-image markers through so the UI can place cid images in
+      // the body and keep them out of the attachment strip.
+      ...(meta.contentId ? { contentId: meta.contentId } : {}),
+      ...(meta.inline ? { inline: true } : {}),
     };
 
     const check = checkAttachment(meta);

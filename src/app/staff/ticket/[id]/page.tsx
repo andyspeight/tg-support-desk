@@ -10,6 +10,8 @@ import { allowPatternFor, sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
 import { AlertTriangle, ArrowLeft, Download, Eye, EyeOff, GitMerge, LayoutDashboard, Lightbulb, Loader2, Paperclip, Users } from "lucide-react";
 import { isImageMime } from "@/lib/channels/attachment-rules";
+import { LightboxImage } from "@/components/image-lightbox";
+import { EmailBody } from "@/components/email-body";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
@@ -45,6 +47,8 @@ type MessageAttachment = {
   stored: boolean;
   rejected?: string;
   mimeType?: string;
+  contentId?: string;
+  inline?: boolean;
 };
 
 function formatBytes(bytes: number): string {
@@ -62,10 +66,15 @@ const CLOCK_LABEL: Record<ClockState, { text: string; cls: string }> = {
 
 function MessageAttachments({ messageId, attachments }: { messageId: string; attachments: unknown }) {
   const list = (Array.isArray(attachments) ? attachments : []) as MessageAttachment[];
-  if (list.length === 0) return null;
+  // Hide an image from the strip only when it will actually render inline in the
+  // body (embedded + stored + a real image type) — so a storage failure can
+  // never drop it from both places. Preserve each item's original index for its URL.
+  const rendersInBody = (a: MessageAttachment) => Boolean(a.inline && a.stored && a.mimeType && isImageMime(a.mimeType));
+  const shown = list.map((a, i) => ({ a, i })).filter(({ a }) => !rendersInBody(a));
+  if (shown.length === 0) return null;
   return (
     <div className="mt-2 flex flex-wrap items-start gap-2 border-t border-black/5 pt-2 dark:border-white/10">
-      {list.map((a, i) => {
+      {shown.map(({ a, i }) => {
         if (!a.stored) {
           return (
             <span
@@ -81,12 +90,15 @@ function MessageAttachments({ messageId, attachments }: { messageId: string; att
         }
         const src = `/api/attachments/${messageId}/${i}`;
         if (a.mimeType && isImageMime(a.mimeType)) {
-          // Screenshots render inline; click to open full-size in a new tab.
+          // Screenshots render inline; click opens a full-size preview in place.
           return (
-            <a key={i} href={src} target="_blank" rel="noreferrer" title={a.filename} className="block overflow-hidden rounded-md border border-line hover:border-ink-3">
-              {/* eslint-disable-next-line @next/next/no-img-element -- signed-redirect URL, next/image would need the storage host allow-listed */}
-              <img src={src} alt={a.filename} loading="lazy" className="max-h-48 max-w-[240px] bg-surface-2 object-contain" />
-            </a>
+            <LightboxImage
+              key={i}
+              src={src}
+              alt={a.filename}
+              thumbClassName="block overflow-hidden rounded-md border border-line hover:border-ink-3"
+              imgClassName="max-h-48 max-w-[240px] bg-surface-2 object-contain"
+            />
           );
         }
         return (
@@ -372,9 +384,16 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   <span className="text-xs text-ink-3">{formatDateTime(message.created_at)}</span>
                 </div>
                 {message.body_html ? (
-                  <div
+                  <EmailBody
                     className="tg-prose mt-1.5 text-sm text-ink"
-                    dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(message.body_html) }}
+                    html={sanitizeEmailHtml(message.body_html, {
+                      messageId: message.id,
+                      attachments: (Array.isArray(message.attachments) ? message.attachments : []) as {
+                        contentId?: string;
+                        mimeType?: string;
+                        stored?: boolean;
+                      }[],
+                    })}
                   />
                 ) : (
                   <pre className="mt-1.5 whitespace-pre-wrap font-sans text-sm text-ink">{message.body_text}</pre>
