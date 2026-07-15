@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
+import { LogOut } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { env } from "@/lib/env";
+import { signOutAction } from "@/lib/logout-action";
 import { Nav } from "@/components/nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { MobileNav } from "@/components/mobile-nav";
@@ -34,13 +36,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {session.name.toLowerCase() !== session.email.toLowerCase() && (
             <p className="truncate text-[11px] text-ink-3">{session.email}</p>
           )}
+          <form action={signOutAction} className="mt-2">
+            <button
+              type="submit"
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/30"
+            >
+              <LogOut className="h-3.5 w-3.5" strokeWidth={1.75} /> Sign out
+            </button>
+          </form>
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Mobile top bar with the menu drawer. */}
         <header className="flex items-center gap-2 border-b border-line bg-surface px-3 py-2 md:hidden">
-          <MobileNav isOwner={isOwner} name={session.name} email={session.email} />
+          <MobileNav isOwner={isOwner} name={session.name} email={session.email} signOut={signOutAction} />
           <span className="text-sm font-semibold tracking-tight">TG Support Desk</span>
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>

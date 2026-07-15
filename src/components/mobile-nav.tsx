@@ -1,13 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
 import { Nav } from "@/components/nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 /** Hamburger + slide-in drawer for the agent app on mobile. The desktop sidebar
  *  (md+) is rendered separately by the layout; this is shown only below md. */
-export function MobileNav({ isOwner, name, email }: { isOwner: boolean; name: string; email: string }) {
+export function MobileNav({
+  isOwner,
+  name,
+  email,
+  signOut,
+}: {
+  isOwner: boolean;
+  name: string;
+  email: string;
+  signOut: () => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -46,6 +56,14 @@ export function MobileNav({ isOwner, name, email }: { isOwner: boolean; name: st
             <div className="border-t border-line-soft px-4 py-3">
               <p className="truncate text-xs font-medium text-ink">{name}</p>
               {name.toLowerCase() !== email.toLowerCase() && <p className="truncate text-[11px] text-ink-3">{email}</p>}
+              <form action={signOut} className="mt-2">
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink"
+                >
+                  <LogOut className="h-3.5 w-3.5" strokeWidth={1.75} /> Sign out
+                </button>
+              </form>
             </div>
           </div>
         </div>
