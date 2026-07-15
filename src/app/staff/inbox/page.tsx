@@ -15,6 +15,7 @@ const VIEWS: { key: InboxView; label: string }[] = [
   { key: "waiting", label: "Waiting on customer" },
   { key: "breaching", label: "Breaching SLA" },
   { key: "approval", label: "Pending approval" },
+  { key: "resolved", label: "Resolved" },
   { key: "all", label: "All" },
 ];
 
