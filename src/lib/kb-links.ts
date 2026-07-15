@@ -17,6 +17,14 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Only http(s)/mailto survive as a link target; anything else (javascript:,
+ *  data:, …) collapses to "#". Defense-in-depth for any stored/source URL that
+ *  gets rendered into an href — React does not strip dangerous schemes. */
+export function safeHttpUrl(url: string | null | undefined): string {
+  const u = (url ?? "").trim();
+  return /^(https?:\/\/|mailto:)/i.test(u) ? u : "#";
+}
+
 /** Public help-page URL for a published article. Absolute when a base URL is
  *  configured (so it works in emails); relative otherwise. */
 export function buildKbHref(baseUrl: string | undefined, id: string): string {
@@ -32,7 +40,7 @@ export function kbBestUrl(baseUrl: string | undefined, item: { id: string; sourc
 
 /** The snippet inserted into the reply when an agent picks an article. */
 export function kbLinkHtml({ title, url }: KbLinkRef): string {
-  return `<p>You might find this helpful: <a href="${escapeHtml(url)}">${escapeHtml(title)}</a></p>`;
+  return `<p>You might find this helpful: <a href="${escapeHtml(safeHttpUrl(url))}">${escapeHtml(title)}</a></p>`;
 }
 
 export function dispatchKbInsert(ref: KbLinkRef): void {

@@ -114,11 +114,19 @@ export async function storeOutboundAttachments(
   return out;
 }
 
-/** Short-lived signed URL for a stored attachment, forcing download. */
-export async function signedAttachmentUrl(storageKey: string, filename: string): Promise<string | null> {
+/** Short-lived signed URL for a stored attachment. `download` forces a download
+ *  (Content-Disposition: attachment); otherwise it is served inline so the
+ *  browser can view it (image/PDF preview). Safe to view inline: the private
+ *  bucket is a separate, script-less origin from the app, and the allowlist has
+ *  no active types (no SVG/HTML), so nothing executes in the desk's origin. */
+export async function signedAttachmentUrl(
+  storageKey: string,
+  filename: string,
+  download = false,
+): Promise<string | null> {
   const { data, error } = await db()
     .storage.from(ATTACHMENTS_BUCKET)
-    .createSignedUrl(storageKey, 120, { download: safeFilename(filename) });
+    .createSignedUrl(storageKey, 120, download ? { download: safeFilename(filename) } : undefined);
   if (error || !data) return null;
   return data.signedUrl;
 }

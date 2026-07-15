@@ -11,7 +11,7 @@ import { SubmitButton } from "@/components/portal/submit-button";
 import { AttachmentPicker } from "@/components/attachment-picker";
 import { AutoRefresh } from "@/components/portal/auto-refresh";
 import { clientStatus } from "@/lib/portal-status";
-import type { StoredAttachment } from "@/lib/channels/attachment-rules";
+import { isImageMime, type StoredAttachment } from "@/lib/channels/attachment-rules";
 
 function initialsOf(value: string): string {
   return (value.match(/\b\w/g) ?? []).slice(0, 2).join("").toUpperCase() || "Y";
@@ -177,23 +177,35 @@ export default async function PortalTicketPage({
                 >
                   <p className="whitespace-pre-wrap">{m.body_text}</p>
                   {atts.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {atts.map(({ a, i }) => (
-                        <a
-                          key={i}
-                          href={`/api/attachments/${m.id}/${i}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
-                            mine
-                              ? "bg-white/15 text-white hover:bg-white/25"
-                              : "border border-line bg-canvas text-ink-2 hover:bg-surface-2"
-                          }`}
-                        >
-                          <Paperclip className="h-3 w-3" strokeWidth={1.75} />
-                          {a.filename}
-                        </a>
-                      ))}
+                    <div className="mt-2 flex flex-wrap items-start gap-1.5">
+                      {atts.map(({ a, i }) => {
+                        const src = `/api/attachments/${m.id}/${i}`;
+                        if (a.mimeType && isImageMime(a.mimeType)) {
+                          // Screenshots render inline; tap to open full-size.
+                          return (
+                            <a key={i} href={src} target="_blank" rel="noreferrer" title={a.filename} className="block overflow-hidden rounded-lg border border-white/20">
+                              {/* eslint-disable-next-line @next/next/no-img-element -- signed-redirect URL */}
+                              <img src={src} alt={a.filename} loading="lazy" className="max-h-56 max-w-[220px] bg-white/10 object-contain" />
+                            </a>
+                          );
+                        }
+                        return (
+                          <a
+                            key={i}
+                            href={src}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
+                              mine
+                                ? "bg-white/15 text-white hover:bg-white/25"
+                                : "border border-line bg-canvas text-ink-2 hover:bg-surface-2"
+                            }`}
+                          >
+                            <Paperclip className="h-3 w-3" strokeWidth={1.75} />
+                            {a.filename}
+                          </a>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

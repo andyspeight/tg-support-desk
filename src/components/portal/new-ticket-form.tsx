@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { ArrowUpRight, BookOpen, Lightbulb, Loader2 } from "lucide-react";
 import type { DraftAssist } from "@/lib/ai/copilot";
+import { safeHttpUrl } from "@/lib/kb-links";
 import { AttachmentPicker } from "@/components/attachment-picker";
 
 const FIELD =
@@ -119,7 +120,7 @@ export function NewTicketForm({
           <p className="text-xs font-semibold uppercase tracking-wide text-accent-700 dark:text-accent-300">Before you send</p>
           {assistResult!.article && (
             <a
-              href={assistResult!.article.url}
+              href={safeHttpUrl(assistResult!.article.url)}
               target="_blank"
               rel="noreferrer"
               className="group flex items-start gap-2.5 text-sm text-ink hover:text-accent-700 dark:hover:text-accent-300"
