@@ -95,21 +95,25 @@ export async function requireClient(): Promise<Session> {
   return session;
 }
 
-/** Resolve whose support portal to render. An agent may preview a client's
- *  portal read-only via ?as=<email> — so they can see exactly what the client
- *  sees — but everyone else (and any non-agent passing ?as=) only ever gets
- *  their own. Fails closed to self. */
-export async function resolvePortalView(asEmail?: string): Promise<{
-  email: string;
-  name: string;
-  previewing: boolean;
-  isAgent: boolean;
-}> {
-  const session = await getSession();
-  if (!session) throw new Error("Not authorised: sign in required");
+export type PortalView = { email: string; name: string; previewing: boolean; isAgent: boolean };
+
+/** Resolve whose support portal to render from an *already-fetched* session.
+ *  An agent may preview a client's portal read-only via ?as=<email> — so they
+ *  can see exactly what the client sees — but everyone else (and any non-agent
+ *  passing ?as=) only ever gets their own. Fails closed to self. Pure: takes the
+ *  session in, so a page that already called getSession() (e.g. to branch on the
+ *  public/anonymous case) doesn't pay for a second SSO round-trip. */
+export function portalViewFor(session: Session, asEmail?: string): PortalView {
   const as = asEmail?.trim().toLowerCase();
   if (as && session.isAgent && as !== session.email.toLowerCase()) {
     return { email: as, name: as, previewing: true, isAgent: true };
   }
   return { email: session.email, name: session.name, previewing: false, isAgent: session.isAgent };
+}
+
+/** Session-required convenience wrapper around portalViewFor. */
+export async function resolvePortalView(asEmail?: string): Promise<PortalView> {
+  const session = await getSession();
+  if (!session) throw new Error("Not authorised: sign in required");
+  return portalViewFor(session, asEmail);
 }

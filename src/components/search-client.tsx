@@ -164,7 +164,7 @@ export function SearchClient({ search, agents, initialQuery = "" }: Props) {
               {results.tickets.map((ticket) => (
                 <Link
                   key={ticket.id}
-                  href={`/ticket/${ticket.id}`}
+                  href={`/staff/ticket/${ticket.id}`}
                   className="block rounded-md border border-line-soft bg-surface p-3 transition hover:border-ink-3"
                 >
                   <div className="flex items-center gap-2">
@@ -194,7 +194,7 @@ export function SearchClient({ search, agents, initialQuery = "" }: Props) {
                 {results.pastTickets.map((pastTicket) => (
                   <Link
                     key={pastTicket.ticket_id}
-                    href={`/ticket/${pastTicket.ticket_id}`}
+                    href={`/staff/ticket/${pastTicket.ticket_id}`}
                     className="flex items-center gap-2 rounded-md border border-line-soft bg-surface p-3 transition hover:border-ink-3"
                   >
                     <span className="shrink-0 text-xs text-ink-3">#{pastTicket.reference}</span>
@@ -215,7 +215,7 @@ export function SearchClient({ search, agents, initialQuery = "" }: Props) {
               {results.kb.map((article) => (
                 <div key={article.id} className="rounded-md border border-line-soft bg-surface p-3">
                   <div className="flex items-center gap-2">
-                    <Link href={`/kb?id=${article.id}`} className="min-w-0 flex-1 truncate text-sm font-medium text-ink hover:underline">
+                    <Link href={`/staff/kb?id=${article.id}`} className="min-w-0 flex-1 truncate text-sm font-medium text-ink hover:underline">
                       {article.title}
                     </Link>
                     {article.url && (

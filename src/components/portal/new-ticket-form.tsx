@@ -17,11 +17,13 @@ export function NewTicketForm({
   assist,
   defaultSubject,
   defaultBody,
+  signedIn,
 }: {
   raise: (formData: FormData) => Promise<void>;
   assist: (input: { subject: string; message: string }) => Promise<DraftAssist>;
   defaultSubject?: string;
   defaultBody?: string;
+  signedIn: boolean;
 }) {
   const [subject, setSubject] = useState(defaultSubject ?? "");
   const [message, setMessage] = useState(defaultBody ?? "");
@@ -66,6 +68,30 @@ export function NewTicketForm({
 
   return (
     <form ref={formRef} action={raise} onSubmit={onSubmit} className="space-y-3">
+      {!signedIn && (
+        <div className="space-y-3 rounded-xl border border-line bg-surface-2/40 p-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              name="name"
+              required
+              maxLength={120}
+              autoComplete="name"
+              placeholder="Your name"
+              className={FIELD}
+            />
+            <input
+              name="email"
+              type="email"
+              required
+              maxLength={200}
+              autoComplete="email"
+              placeholder="Your email"
+              className={FIELD}
+            />
+          </div>
+          <p className="text-xs text-ink-3">We’ll email ticket updates here — no account needed.</p>
+        </div>
+      )}
       <input
         name="subject"
         required

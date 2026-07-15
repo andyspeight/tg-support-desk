@@ -13,9 +13,42 @@ const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=63072000" },
 ];
 
+// Staff desk lives under /staff; the client help centre is the site root. These
+// legacy bases used to sit at the root (and the client portal under /portal), so
+// old bookmarks + any internal link the move missed still resolve instead of 404ing.
+const STAFF_BASES = [
+  "home",
+  "dashboard",
+  "inbox",
+  "proactive",
+  "search",
+  "analytics",
+  "settings",
+  "notifications",
+  "clients",
+  "ticket",
+];
+
 const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
+  },
+  async redirects() {
+    const staff = STAFF_BASES.flatMap((base) => [
+      { source: `/${base}`, destination: `/staff/${base}`, permanent: false },
+      { source: `/${base}/:path*`, destination: `/staff/${base}/:path*`, permanent: false },
+    ]);
+    return [
+      // Client help centre moved from /portal to the site root.
+      { source: "/portal", destination: "/", permanent: false },
+      { source: "/portal/new", destination: "/new", permanent: false },
+      { source: "/portal/ticket/:id", destination: "/tickets/:id", permanent: false },
+      // Staff desk moved under /staff.
+      ...staff,
+      // KB: only the exact staff index moved. /kb/:id is the PUBLIC article page
+      // at the root and must never redirect — so no /kb/:path* rule here.
+      { source: "/kb", destination: "/staff/kb", permanent: false },
+    ];
   },
 };
 

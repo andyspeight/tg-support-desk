@@ -49,7 +49,7 @@ export async function GET(request: Request) {
     `KB candidates awaiting review: ${d.kbReview.count}`,
     ...d.kbReview.titles.map((t) => `  • ${t}`),
     "",
-    ...(base ? [`Review queue → ${base}/kb`, `Full analytics → ${base}/analytics`] : []),
+    ...(base ? [`Review queue → ${base}/staff/kb`, `Full analytics → ${base}/staff/analytics`] : []),
   ].join("\n");
 
   let sent = 0;

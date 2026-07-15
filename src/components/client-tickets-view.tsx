@@ -78,7 +78,7 @@ export function ClientTicketsView({ tickets }: { tickets: Ticket[] }) {
         <ul className="mt-2 divide-y divide-line-soft sm:hidden">
           {rows.map((t) => (
             <li key={t.id}>
-              <Link href={`/ticket/${t.id}`} className="flex items-start gap-3 py-3">
+              <Link href={`/staff/ticket/${t.id}`} className="flex items-start gap-3 py-3">
                 <span className="min-w-0 flex-1">
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="truncate text-sm font-medium text-ink">{t.subject}</span>
@@ -117,7 +117,7 @@ export function ClientTicketsView({ tickets }: { tickets: Ticket[] }) {
               <tr key={t.id} className="border-t border-line-soft hover:bg-surface-2">
                 <td className="hidden py-2.5 text-ink-3 sm:table-cell">#{t.reference}</td>
                 <td className="truncate py-2.5 pr-4">
-                  <Link href={`/ticket/${t.id}`} className="font-medium text-ink hover:underline">
+                  <Link href={`/staff/ticket/${t.id}`} className="font-medium text-ink hover:underline">
                     {t.subject}
                   </Link>
                   {t.ai_resolved && (

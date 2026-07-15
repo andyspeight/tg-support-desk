@@ -49,20 +49,20 @@ export function verifyToken(token: string, secret: string, nowMs: number, expect
  *  origin — but kept strict so it can't become a footgun. */
 export function safeReturnPath(raw: string | null | undefined): string {
   const s = raw ?? "";
-  if (!s || s.length > 512) return "/inbox";
-  if (!s.startsWith("/") || s.startsWith("//")) return "/inbox"; // absolute, not protocol-relative
-  if (s.includes("\\")) return "/inbox"; // no backslash (some browsers treat it as "/")
+  if (!s || s.length > 512) return "/staff/inbox";
+  if (!s.startsWith("/") || s.startsWith("//")) return "/staff/inbox"; // absolute, not protocol-relative
+  if (s.includes("\\")) return "/staff/inbox"; // no backslash (some browsers treat it as "/")
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
-    if (c < 0x20 || c === 0x7f) return "/inbox"; // no control chars (tab/CR/LF/DEL)
+    if (c < 0x20 || c === 0x7f) return "/staff/inbox"; // no control chars (tab/CR/LF/DEL)
   }
-  if (/%2f%2f|%5c/i.test(s)) return "/inbox"; // no encoded "//" or "\"
+  if (/%2f%2f|%5c/i.test(s)) return "/staff/inbox"; // no encoded "//" or "\"
   const rest = s.slice(1);
   let end = rest.length;
   for (const ch of ["/", "?", "#"]) {
     const i = rest.indexOf(ch);
     if (i !== -1 && i < end) end = i;
   }
-  if (rest.slice(0, end).includes(":")) return "/inbox"; // no scheme in the first segment (javascript:)
+  if (rest.slice(0, end).includes(":")) return "/staff/inbox"; // no scheme in the first segment (javascript:)
   return s;
 }

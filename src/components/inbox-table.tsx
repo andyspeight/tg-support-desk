@@ -116,7 +116,7 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
           break;
         case "Enter":
           e.preventDefault();
-          if (tickets[focus]) router.push(`/ticket/${tickets[focus].id}`);
+          if (tickets[focus]) router.push(`/staff/ticket/${tickets[focus].id}`);
           break;
         case "a":
           e.preventDefault();
@@ -205,7 +205,7 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
       <ul className="divide-y divide-line-soft sm:hidden">
         {tickets.map((ticket) => (
           <li key={ticket.id}>
-            <Link href={`/ticket/${ticket.id}`} className="flex items-start gap-3 py-3">
+            <Link href={`/staff/ticket/${ticket.id}`} className="flex items-start gap-3 py-3">
               <span className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="truncate text-sm font-medium text-ink">{ticket.subject}</span>
@@ -265,7 +265,7 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
               </td>
               <td className="hidden py-2.5 text-ink-3 sm:table-cell">#{ticket.reference}</td>
               <td className="truncate py-2.5 pr-4">
-                <Link href={`/ticket/${ticket.id}`} className="font-medium text-ink hover:underline">
+                <Link href={`/staff/ticket/${ticket.id}`} className="font-medium text-ink hover:underline">
                   {ticket.subject}
                 </Link>
                 {ticket.ai_resolved && (

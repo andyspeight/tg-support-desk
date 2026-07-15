@@ -45,7 +45,7 @@ export async function GET(request: Request) {
         "",
         ...lines,
         "",
-        base ? `Open the desk: ${base}/notifications` : "Open the desk to action these.",
+        base ? `Open the desk: ${base}/staff/notifications` : "Open the desk to action these.",
       ].join("\n");
       try {
         await sendEmail({
