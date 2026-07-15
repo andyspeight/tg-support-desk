@@ -86,6 +86,12 @@ export type ClientContact = { email: string; name?: string };
 // Preference order for a client's display name (real fields on the Clients base,
 // per SAFE_CLIENT_FIELDS): a contact person first, then the company/trading name.
 const CLIENT_NAME_FIELDS = ["Primary Contact Name", "ClientName", "Trading Name"] as const;
+
+/** Company display name — the business, never a contact person. Used where the
+ *  portal shows a shared company view ("Tickets at Acme Travel"). */
+export function companyNameFrom(record: ClientRecord): string {
+  return firstFieldString(record.fields, ["ClientName", "Trading Name"]) ?? "your company";
+}
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function firstFieldString(fields: Record<string, unknown>, keys: readonly string[]): string | undefined {

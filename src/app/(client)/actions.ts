@@ -10,11 +10,13 @@ import {
   addMessage,
   audit,
   createTicket,
+  getPortalTicket,
   getRequesterTicket,
   recentActionCount,
   setMessageAttachments,
   updateTicket,
 } from "@/lib/db/queries";
+import { companyForEmail } from "@/lib/portal-company";
 import { resolveTicket } from "@/lib/ai/resolve";
 import { sendAutoAck } from "@/lib/channels/email";
 import { isValidScore } from "@/lib/csat";
@@ -171,7 +173,10 @@ export async function replyAction(formData: FormData): Promise<void> {
     ticketId: formData.get("ticketId"),
     body: formData.get("body"),
   });
-  const owned = await getRequesterTicket(ticketId, session.email); // ownership check
+  // Access check: their own ticket, or a colleague's at the same client company
+  // (resolved server-side — never trusted from the form).
+  const company = await companyForEmail(session.email);
+  const owned = await getPortalTicket(ticketId, session.email, company?.id ?? null);
   if (!owned) throw new Error("Ticket not found");
   // Replies re-run the AI loop too — same rate-limit posture (brief §10).
   if ((await recentActionCount(session.email, "ticket.customer_reply", 60)) >= 20) {
@@ -203,6 +208,8 @@ export async function rateAction(formData: FormData): Promise<void> {
     score: formData.get("score"),
   });
   if (!isValidScore(score)) return;
+  // Deliberately requester-only (not company-wide): the rating scores the
+  // experience of whoever raised the ticket.
   const owned = await getRequesterTicket(ticketId, session.email); // ownership check
   if (!owned) throw new Error("Ticket not found");
   // CSAT only applies once a ticket is resolved/closed (mirrors recordCsat).
