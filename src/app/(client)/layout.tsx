@@ -2,6 +2,7 @@ import Link from "next/link";
 import { LogIn, LogOut, Plus } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { env } from "@/lib/env";
+import { bestDisplayName } from "@/lib/names";
 import { signOutAction } from "@/lib/logout-action";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -12,8 +13,12 @@ import { ThemeToggle } from "@/components/theme-toggle";
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
 
-  const initials = session ? (session.name.match(/\b\w/g) ?? []).slice(0, 2).join("").toUpperCase() || "U" : "";
-  const hasName = session ? session.name.toLowerCase() !== session.email.toLowerCase() : false;
+  // Never derive display bits from a raw email (it produced avatars like "DG"
+  // from darrenswan@gmail.com): show a name only when we honestly have one.
+  const displayName = session ? bestDisplayName(session.name, session.email) : null;
+  const initials = displayName
+    ? (displayName.match(/\b\w/g) ?? []).slice(0, 2).join("").toUpperCase()
+    : (session?.email.charAt(0).toUpperCase() ?? "");
   // Where to send a not-signed-in visitor who wants their history: the portal's
   // own sign-in page (emailed link, with Travelify SSO as the secondary route).
   const signInHref = env.portalLoginConfigured || env.ssoBridgeUrl ? "/signin" : null;
@@ -38,8 +43,8 @@ export default async function PortalLayout({ children }: { children: React.React
             {session ? (
               <div className="flex items-center gap-2.5">
                 <div className="hidden text-right leading-tight sm:block">
-                  <p className="text-sm font-semibold text-ink">{session.name}</p>
-                  {hasName && <p className="text-xs text-ink-3">{session.email}</p>}
+                  <p className="text-sm font-semibold text-ink">{displayName ?? session.email}</p>
+                  {displayName && <p className="text-xs text-ink-3">{session.email}</p>}
                 </div>
                 <span
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600/10 text-sm font-semibold text-brand-700 dark:bg-brand-500/20 dark:text-brand-200"

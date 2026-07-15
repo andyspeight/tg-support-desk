@@ -92,6 +92,19 @@ const CLIENT_NAME_FIELDS = ["Primary Contact Name", "ClientName", "Trading Name"
 export function companyNameFrom(record: ClientRecord): string {
   return firstFieldString(record.fields, ["ClientName", "Trading Name"]) ?? "your company";
 }
+
+/** The contact's name — but only when this exact email is recorded as a contact
+ *  on the client record. A domain-matched colleague must not inherit the primary
+ *  contact's name. */
+export function contactNameFromRecord(record: ClientRecord, email: string): string | null {
+  const lower = email.trim().toLowerCase();
+  const listed = env.airtableClientEmailFields.some((f) => {
+    const value = record.fields[f];
+    const items = Array.isArray(value) ? value : [value];
+    return items.some((v) => typeof v === "string" && v.toLowerCase().includes(lower));
+  });
+  return listed ? (firstFieldString(record.fields, ["Primary Contact Name"]) ?? null) : null;
+}
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function firstFieldString(fields: Record<string, unknown>, keys: readonly string[]): string | undefined {
