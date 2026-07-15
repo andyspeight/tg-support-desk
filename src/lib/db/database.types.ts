@@ -77,6 +77,24 @@ export type Database = {
           },
         ]
       }
+      used_login_tokens: {
+        Row: {
+          email: string
+          jti: string
+          used_at: string
+        }
+        Insert: {
+          email: string
+          jti: string
+          used_at?: string
+        }
+        Update: {
+          email?: string
+          jti?: string
+          used_at?: string
+        }
+        Relationships: []
+      }
       company_members: {
         Row: {
           client_id: string | null
