@@ -14,9 +14,9 @@ export default async function PortalLayout({ children }: { children: React.React
 
   const initials = session ? (session.name.match(/\b\w/g) ?? []).slice(0, 2).join("").toUpperCase() || "U" : "";
   const hasName = session ? session.name.toLowerCase() !== session.email.toLowerCase() : false;
-  // Where to send a not-signed-in visitor who wants their history: through the
-  // cross-domain SSO bridge, back to the home page. Only offered when SSO exists.
-  const signInHref = env.ssoBridgeUrl ? `/api/sso/login?return=${encodeURIComponent("/")}` : null;
+  // Where to send a not-signed-in visitor who wants their history: the portal's
+  // own sign-in page (emailed link, with Travelify SSO as the secondary route).
+  const signInHref = env.portalLoginConfigured || env.ssoBridgeUrl ? "/signin" : null;
 
   return (
     <div className="min-h-[100dvh] bg-canvas text-ink">
