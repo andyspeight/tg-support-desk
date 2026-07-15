@@ -136,7 +136,12 @@ export const env = {
     return optional("SSO_BRIDGE_URL").replace(/\/$/, ""); // *.travelify.io host of this app, e.g. https://auth.travelify.io
   },
   get ssoLoginUrl() {
-    return optional("SSO_LOGIN_URL"); // id.travelify.io login page for users with no session yet
+    // Travelgenix id login for users with no session yet. Defaults to id's login
+    // on the same host as TG_AUTH_SESSION_URL, so cross-domain sign-in forwards
+    // there out of the box (no Vercel env needed). The SSO bridge appends
+    // ?redirect=<return-url>, so this page must honour a `redirect` param.
+    // Override with SSO_LOGIN_URL if the real login path or return-param differs.
+    return optional("SSO_LOGIN_URL", "https://id.travelify.io/login");
   },
   get agentEmails() {
     return csv("AGENT_EMAILS").map((e) => e.toLowerCase());
