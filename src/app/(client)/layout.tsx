@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { LogIn, Plus } from "lucide-react";
+import { LogIn, LogOut, Plus } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { env } from "@/lib/env";
+import { signOutAction } from "@/lib/logout-action";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 // Public client help centre (help.travelgenix.io). Open to everyone — anyone can
@@ -47,6 +48,15 @@ export default async function PortalLayout({ children }: { children: React.React
                 >
                   {initials}
                 </span>
+                <form action={signOutAction}>
+                  <button
+                    type="submit"
+                    title="Sign out"
+                    className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-line px-3 py-2 text-sm font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/30"
+                  >
+                    <LogOut className="h-4 w-4" strokeWidth={1.75} /> <span className="hidden sm:inline">Sign out</span>
+                  </button>
+                </form>
               </div>
             ) : (
               signInHref && (
