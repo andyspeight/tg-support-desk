@@ -19,7 +19,8 @@ import {
 } from "@/lib/db/queries";
 import { notify, ticketRecipients } from "@/lib/db/notifications";
 import type { Message, Ticket } from "@/lib/db/types";
-import { getClientById, matchClientByEmail, summariseClient } from "@/lib/integrations/airtable-clients";
+import { getClientById, summariseClient } from "@/lib/integrations/airtable-clients";
+import { companyForEmail } from "@/lib/portal-company";
 import { sendTicketReply } from "@/lib/channels/email";
 import { env } from "@/lib/env";
 
@@ -149,7 +150,8 @@ async function applyTriage(ticket: Ticket, body: string): Promise<Ticket> {
 
 async function ensureClientMatch(ticket: Ticket): Promise<Ticket> {
   if (ticket.client_id) return ticket;
-  const match = await matchClientByEmail(ticket.requester_email);
+  // Explicit links set in Settings win over (and can block) Airtable matching.
+  const match = await companyForEmail(ticket.requester_email);
   if (!match) return ticket;
   await audit("system", AI_ACTOR, "ticket.client_matched", { type: "ticket", id: ticket.id }, { client_id: match.id });
   return updateTicket(ticket.id, { client_id: match.id });

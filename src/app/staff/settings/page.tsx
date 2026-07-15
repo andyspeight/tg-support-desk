@@ -1,7 +1,15 @@
 import { X } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { listAllowedSenders, listBlockedSenders, listCannedResponses, listSlaPolicies, listTags } from "@/lib/db/queries";
+import {
+  listAllowedSenders,
+  listBlockedSenders,
+  listCannedResponses,
+  listCompanyMembers,
+  listSlaPolicies,
+  listTags,
+} from "@/lib/db/queries";
+import { listAllClientCompanies } from "@/lib/integrations/airtable-clients";
 import { GdprPanel } from "@/components/gdpr-panel";
 import {
   addAllowedAction,
@@ -12,8 +20,10 @@ import {
   deleteTagAction,
   eraseCustomerDataAction,
   importAllowedAction,
+  linkCompanyMemberAction,
   removeAllowedAction,
   removeBlockedAction,
+  unlinkCompanyMemberAction,
   updateCannedAction,
 } from "./actions";
 
@@ -22,12 +32,14 @@ function show(value: string | undefined): string {
 }
 
 export default async function SettingsPage() {
-  const [slaPolicies, canned, tags, blocked, allowed] = await Promise.all([
+  const [slaPolicies, canned, tags, blocked, allowed, companyLinks, companies] = await Promise.all([
     listSlaPolicies().catch(() => []),
     listCannedResponses().catch(() => []),
     listTags().catch(() => []),
     listBlockedSenders().catch(() => []),
     listAllowedSenders().catch(() => []),
+    listCompanyMembers().catch(() => []),
+    listAllClientCompanies().catch(() => []), // Airtable — empty on a wobble, the panel says so
   ]);
   const agents = (process.env.AGENT_EMAILS ?? "")
     .split(",")
@@ -199,6 +211,66 @@ export default async function SettingsPage() {
           />
           <button className="mt-2 rounded-md border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink">
             Import to allow-list
+          </button>
+        </form>
+      </section>
+
+      <section className="mt-4 rounded-lg border border-line bg-surface p-4">
+        <h2 className="text-sm font-semibold">
+          Company links {companyLinks.length > 0 && <span className="font-normal text-ink-3">({companyLinks.length})</span>}
+        </h2>
+        <p className="mt-1 text-xs text-ink-3">
+          Who belongs to which client company. Most users match automatically (their email or its{" "}
+          <code className="rounded bg-surface-2 px-1">@domain</code> is on the Airtable client record) — add a link here
+          when someone doesn’t (a gmail address, a consultant), or pick{" "}
+          <span className="font-medium">No company</span> to cut an address off from a company it would otherwise match
+          (e.g. someone who’s left). Linked users see all their company’s tickets in the portal, and their past tickets
+          join the company’s history.
+        </p>
+        <div className="mt-2 space-y-1.5">
+          {companyLinks.length === 0 && <p className="text-sm text-ink-3">None yet — everything is matching automatically.</p>}
+          {companyLinks.map((m) => (
+            <div key={m.id} className="flex items-center gap-2 rounded-md border border-line-soft px-2.5 py-1.5 text-sm">
+              <span className="min-w-0 flex-1 truncate text-ink">{m.email}</span>
+              <span className={`shrink-0 truncate text-xs ${m.client_id ? "text-ink-2" : "font-medium text-amber-700 dark:text-amber-400"}`}>
+                {m.client_id ? (m.client_name ?? m.client_id) : "No company"}
+              </span>
+              <form action={unlinkCompanyMemberAction} className="inline">
+                <input type="hidden" name="id" value={m.id} />
+                <button className="text-ink-3 hover:text-red-600 dark:hover:text-red-400" aria-label={`Remove link for ${m.email}`}>
+                  <X className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </form>
+            </div>
+          ))}
+        </div>
+        <form action={linkCompanyMemberAction} className="mt-3 flex flex-col gap-2 border-t border-line-soft pt-3 sm:flex-row">
+          <input
+            name="email"
+            type="email"
+            required
+            placeholder="person@example.com"
+            className="flex-1 rounded-md border border-line bg-surface px-2 py-1.5 text-sm placeholder:text-ink-3 focus:border-ink-3 focus:outline-none"
+          />
+          <select
+            name="clientId"
+            required
+            defaultValue=""
+            className="rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink-2 focus:border-ink-3 focus:outline-none sm:max-w-56"
+            aria-label="Company"
+          >
+            <option value="" disabled>
+              {companies.length > 0 ? "Choose a company…" : "Companies unavailable (Airtable)"}
+            </option>
+            <option value="none">No company (block matching)</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <button className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-surface-2 dark:text-ink dark:hover:bg-line">
+            Link
           </button>
         </form>
       </section>

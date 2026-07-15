@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "./client";
 import { env } from "@/lib/env";
-import type { Json, TablesInsert, TablesUpdate } from "./database.types";
+import type { Json, Tables, TablesInsert, TablesUpdate } from "./database.types";
 import { ticketSla, type TicketSla } from "@/lib/sla";
 import { aggregateKbEffectiveness, type KbEffectiveness, type KbUsageRow } from "@/lib/kb-effectiveness";
 import { sanitizeSearchTerm } from "./search-term";
@@ -144,6 +144,81 @@ export async function getPortalTicket(
     .in("role", ["customer", "ai", "human"]) // never expose internal_note / system
     .order("created_at", { ascending: true });
   return { ticket, messages: unwrap(result, "getPortalTicket") };
+}
+
+// --- Explicit user → company links (override Airtable matching; see 0024). ---
+
+export type CompanyMember = Tables<"company_members">;
+
+export async function listCompanyMembers(): Promise<CompanyMember[]> {
+  const { data, error } = await db()
+    .from("company_members")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`listCompanyMembers: ${error.message}`);
+  return data ?? [];
+}
+
+/** The explicit link for an email, if Travelgenix has set one. A row with a
+ *  null client_id means "explicitly no company" — it blocks heuristic matching. */
+export async function getCompanyMember(email: string): Promise<CompanyMember | null> {
+  const { data, error } = await db()
+    .from("company_members")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .eq("email", email.trim().toLowerCase())
+    .maybeSingle();
+  if (error) throw new Error(`getCompanyMember: ${error.message}`);
+  return data;
+}
+
+export async function upsertCompanyMember(input: {
+  email: string;
+  clientId: string | null;
+  clientName: string | null;
+  createdBy: string;
+}): Promise<void> {
+  const { error } = await db()
+    .from("company_members")
+    .upsert(
+      {
+        tenant_id: env.tenantId,
+        email: input.email.trim().toLowerCase(),
+        client_id: input.clientId,
+        client_name: input.clientName,
+        created_by: input.createdBy,
+      },
+      { onConflict: "tenant_id,email" },
+    );
+  if (error) throw new Error(`upsertCompanyMember: ${error.message}`);
+}
+
+/** Backfill: when Travelgenix links an email to a company, stamp that email's
+ *  historic un-stamped tickets with the client so the whole history joins the
+ *  company view (and the 360 panel). Never overwrites an existing client_id. */
+export async function stampTicketsForEmail(email: string, clientId: string): Promise<number> {
+  const { data, error } = await db()
+    .from("tickets")
+    .update({ client_id: clientId })
+    .eq("tenant_id", env.tenantId)
+    .eq("requester_email", email.trim().toLowerCase())
+    .is("client_id", null)
+    .select("id");
+  if (error) throw new Error(`stampTicketsForEmail: ${error.message}`);
+  return data?.length ?? 0;
+}
+
+export async function deleteCompanyMember(id: string): Promise<CompanyMember | null> {
+  const { data, error } = await db()
+    .from("company_members")
+    .delete()
+    .eq("id", id)
+    .eq("tenant_id", env.tenantId)
+    .select()
+    .maybeSingle();
+  if (error) throw new Error(`deleteCompanyMember: ${error.message}`);
+  return data;
 }
 
 /** Everything the viewer sees on the portal home: their own tickets plus their
