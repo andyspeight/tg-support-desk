@@ -230,7 +230,7 @@ export async function isKnownSender(email: string): Promise<boolean> {
  * Threads into the conversation and captures the Gmail thread id, so the
  * customer's reply to the receipt lands back on this ticket.
  */
-export async function sendAutoAck(ticket: Ticket): Promise<void> {
+export async function sendAutoAck(ticket: Ticket, opts: { verifiedRecipient?: boolean } = {}): Promise<void> {
   if (replyOutbound(ticket.channel, env.gmailConfigured) !== "email") return;
 
   // Greet a returning contact by name and acknowledge we know them, rather than
@@ -255,7 +255,16 @@ export async function sendAutoAck(ticket: Ticket): Promise<void> {
 
   try {
     const { messageId, references } = await latestCustomerThreadMeta(ticket.id);
-    const subject = /^re:/i.test(ticket.subject) ? ticket.subject : `Re: ${ticket.subject}`;
+    // An anonymous portal submitter's email is unverified — never reflect their
+    // attacker-controllable subject into an outbound from the trusted mailbox
+    // (that would let it send "Re: <anything>" to any address). Use a neutral,
+    // fixed subject for those; verified recipients keep the threaded subject.
+    const subject =
+      opts.verifiedRecipient === false
+        ? `We've received your support request — ticket #${ticket.reference}`
+        : /^re:/i.test(ticket.subject)
+          ? ticket.subject
+          : `Re: ${ticket.subject}`;
     const sent = await sendMessage(
       await buildReplyMime({
         to: ticket.requester_email,

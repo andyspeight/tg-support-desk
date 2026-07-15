@@ -1,10 +1,11 @@
 "use server";
 
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { env } from "@/lib/env";
 import { safeReturnPath, signToken, verifyToken } from "@/lib/auth-tokens";
+import { clientIp } from "@/lib/client-ip";
 import { requestLoginLink } from "@/lib/portal-login";
 import { consumeLoginToken } from "@/lib/db/queries";
 
@@ -24,10 +25,8 @@ export async function requestLinkAction(formData: FormData): Promise<void> {
   const returnTo = safeReturnPath(parsed.success ? parsed.data.return : "/", "/");
   if (!parsed.success) redirect(`/signin?return=${encodeURIComponent(returnTo)}`);
 
-  const fwd = (await headers()).get("x-forwarded-for") ?? "";
-  const ip = fwd.split(",")[0]!.trim() || "unknown";
   try {
-    await requestLoginLink(parsed.data.email, ip, returnTo);
+    await requestLoginLink(parsed.data.email, await clientIp(), returnTo);
   } catch {
     // Fail to the same confirmation — never block on (or reveal) send trouble;
     // the client can simply request another link.
