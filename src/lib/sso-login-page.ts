@@ -42,7 +42,7 @@ export function loginInterstitialHtml(opts: { signinUrl: string; checkPath: stri
 <meta name="robots" content="noindex">
 <title>Sign in — Travelgenix Support</title>
 <style>
-  :root { color-scheme: light dark; }
+  :root { color-scheme: light; }
   * { box-sizing: border-box; margin: 0; }
   body {
     min-height: 100dvh; display: flex; align-items: center; justify-content: center;
@@ -75,15 +75,6 @@ export function loginInterstitialHtml(opts: { signinUrl: string; checkPath: stri
   @keyframes r { to { transform: rotate(360deg); } }
   .alts { margin-top: 16px; font-size: 12px; color: #7a8093; }
   .alts a { color: #2a3f7a; }
-  @media (prefers-color-scheme: dark) {
-    body { background: #0d1017; color: #e8eaf1; }
-    .card { background: #151924; border-color: #262c3b; }
-    p, .status { color: #a3aabc; }
-    .alts { color: #7a8093; }
-    .alts a { color: #8ca0c8; }
-    button { background: #2a3f7a; }
-    button:hover { background: #35519b; }
-  }
 </style>
 </head>
 <body>
