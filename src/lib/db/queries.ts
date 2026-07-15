@@ -5,6 +5,7 @@ import type { Json, Tables, TablesInsert, TablesUpdate } from "./database.types"
 import { ticketSla, type TicketSla } from "@/lib/sla";
 import { aggregateKbEffectiveness, type KbEffectiveness, type KbUsageRow } from "@/lib/kb-effectiveness";
 import { sanitizeSearchTerm } from "./search-term";
+import type { InsightsSnapshot } from "@/lib/insights/types";
 import type {
   AiOutcome,
   CannedResponse,
@@ -1204,6 +1205,28 @@ export async function setSyncState(channel: TicketChannel, state: Json): Promise
     .from("channel_sync_state")
     .upsert({ tenant_id: env.tenantId, channel, state, updated_at: new Date().toISOString() });
   if (error) throw new Error(`setSyncState: ${error.message}`);
+}
+
+// ── Insights snapshot (trending issues + client watch) ───────────────────────
+
+/** The latest computed insights snapshot, or null if the detector hasn't run.
+ *  Read by the Insights page and the inbox trends banner. */
+export async function getTrendSnapshot(): Promise<{ payload: InsightsSnapshot; computedAt: string } | null> {
+  const { data, error } = await db()
+    .from("trend_snapshots")
+    .select("payload, computed_at")
+    .eq("tenant_id", env.tenantId)
+    .maybeSingle();
+  if (error) throw new Error(`getTrendSnapshot: ${error.message}`);
+  if (!data) return null;
+  return { payload: data.payload as unknown as InsightsSnapshot, computedAt: data.computed_at };
+}
+
+export async function setTrendSnapshot(payload: InsightsSnapshot): Promise<void> {
+  const { error } = await db()
+    .from("trend_snapshots")
+    .upsert({ tenant_id: env.tenantId, payload: payload as unknown as Json, computed_at: new Date().toISOString() });
+  if (error) throw new Error(`setTrendSnapshot: ${error.message}`);
 }
 
 // ── Proactive outreach ───────────────────────────────────────────────────────

@@ -95,6 +95,24 @@ export type Database = {
         }
         Relationships: []
       }
+      trend_snapshots: {
+        Row: {
+          computed_at: string
+          payload: Json
+          tenant_id: string
+        }
+        Insert: {
+          computed_at?: string
+          payload?: Json
+          tenant_id: string
+        }
+        Update: {
+          computed_at?: string
+          payload?: Json
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       company_members: {
         Row: {
           client_id: string | null

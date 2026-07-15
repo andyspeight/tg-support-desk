@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
-import { awaitingResponse, inboxCounts, listTickets, type InboxView } from "@/lib/db/queries";
+import { awaitingResponse, getTrendSnapshot, inboxCounts, listTickets, type InboxView } from "@/lib/db/queries";
 import { env } from "@/lib/env";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { InboxTable } from "@/components/inbox-table";
+import { TrendsBanner } from "@/components/trends-banner";
 import { bulkUpdateTicketsAction } from "./actions";
 
 const VIEWS: { key: InboxView; label: string }[] = [
@@ -24,17 +25,26 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const { view: rawView } = await searchParams;
   const view: InboxView = VIEWS.some((v) => v.key === rawView) ? (rawView as InboxView) : "open";
 
-  const [tickets, counts, awaiting] = await Promise.all([
+  const [tickets, counts, awaiting, trends] = await Promise.all([
     listTickets(view, session.email),
     inboxCounts(session.email),
     awaitingResponse().catch(() => []),
+    getTrendSnapshot().catch(() => null),
   ]);
   const awaitingMap: Record<string, string> = {};
   for (const a of awaiting) awaitingMap[a.ticketId] = a.waitingSince;
 
+  const clusters = trends?.payload.clusters ?? [];
+
   return (
     <div className="p-4 sm:p-6">
       <RefreshPoller />
+      {trends?.payload.computed && clusters.length > 0 && (
+        <TrendsBanner
+          computedAt={trends.payload.computedAt}
+          clusters={clusters.map((c) => ({ key: c.key, label: c.label, count: c.count, emerging: c.emerging }))}
+        />
+      )}
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Inbox</h1>
       </div>

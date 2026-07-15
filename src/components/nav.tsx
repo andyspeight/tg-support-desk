@@ -11,6 +11,7 @@ import {
   Search,
   Settings,
   Siren,
+  TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 import { NotificationsNavItem } from "@/components/notifications-nav";
@@ -22,6 +23,7 @@ const LINKS: { href: string; label: string; icon: LucideIcon; ownerOnly?: boolea
   { href: "/staff/proactive", label: "Proactive", icon: Siren },
   { href: "/staff/search", label: "Search", icon: Search },
   { href: "/staff/kb", label: "Knowledge base", icon: BookOpen },
+  { href: "/staff/insights", label: "Insights", icon: TrendingUp },
   { href: "/staff/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/staff/settings", label: "Settings", icon: Settings },
 ];
