@@ -5,7 +5,8 @@ import { signToken } from "@/lib/auth-tokens";
 import { sendEmail } from "@/lib/channels/gmail";
 import { renderCustomerEmail, textToEmailHtml } from "@/lib/channels/email-template";
 import { audit, listRequesterTickets, recentActionCount } from "@/lib/db/queries";
-import { firstNameFrom } from "@/lib/names";
+import { matchClientByEmail, contactNameFromRecord } from "@/lib/integrations/airtable-clients";
+import { firstNameFrom, isEmailish, nameFromEmail } from "@/lib/names";
 
 // Email-link sign-in for the client help centre. Identity here is simply "you
 // control this inbox" — the same standard the email channel itself trusts (a
@@ -30,10 +31,19 @@ export async function requestLoginLink(email: string, ip: string, returnTo: stri
   await audit("human", addr, LOGIN_REQUEST_ACTION);
   await audit("human", `ip:${ip}`, LOGIN_REQUEST_ACTION);
 
-  // Greet by the name we know them by (their latest ticket), else the email.
-  const name = (await listRequesterTickets(addr).catch(() => []))
-    .map((t) => t.requester_name)
-    .find((n): n is string => Boolean(n && n.toLowerCase() !== addr)) ?? addr;
+  // The name that goes into the session (and greeting): their name from ticket
+  // history, else the Airtable contact record (only when this exact email is a
+  // listed contact), else a clean recovery from the email itself — never a raw
+  // email posing as a name ("Hi Darrenswan").
+  let name =
+    (await listRequesterTickets(addr).catch(() => []))
+      .map((t) => t.requester_name)
+      .find((n): n is string => Boolean(n && !isEmailish(n))) ?? null;
+  if (!name) {
+    const record = await matchClientByEmail(addr);
+    if (record) name = contactNameFromRecord(record, addr);
+  }
+  name = name ?? nameFromEmail(addr) ?? addr;
 
   const token = signToken(
     { email: addr, name, exp: Date.now() + LOGIN_LINK_TTL_MS, aud: "portal-login", jti: randomUUID() },
@@ -42,8 +52,7 @@ export async function requestLoginLink(email: string, ip: string, returnTo: stri
   const base = env.appBaseUrl.replace(/\/$/, "");
   const link = `${base}/api/portal-auth/verify?token=${encodeURIComponent(token)}&return=${encodeURIComponent(returnTo)}`;
 
-  const first = firstNameFrom(name);
-  const greeting = first && first.toLowerCase() !== addr ? `Hi ${first},` : "Hi,";
+  const greeting = isEmailish(name) ? "Hi," : `Hi ${firstNameFrom(name)},`;
   const text = `${greeting}
 
 Here's your sign-in link for Travelgenix Support:

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, LogIn, Paperclip } from "lucide-react";
 import { getSession, portalViewFor } from "@/lib/auth";
 import { env } from "@/lib/env";
+import { bestDisplayName, isEmailish } from "@/lib/names";
 import { getPortalTicket } from "@/lib/db/queries";
 import { companyForEmail } from "@/lib/portal-company";
 import { replyAction, rateAction } from "@/app/(client)/actions";
@@ -14,6 +15,10 @@ import type { StoredAttachment } from "@/lib/channels/attachment-rules";
 
 function initialsOf(value: string): string {
   return (value.match(/\b\w/g) ?? []).slice(0, 2).join("").toUpperCase() || "Y";
+}
+/** Avatar letters that never mangle an email ("darrenswan@gmail.com" → "D", not "DG"). */
+function avatarInitials(label: string): string {
+  return isEmailish(label) ? label.charAt(0).toUpperCase() : initialsOf(label);
 }
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
@@ -156,7 +161,7 @@ export default async function PortalTicketPage({
                 }`}
                 aria-hidden
               >
-                {mine ? (isViewer ? initialsOf(view.name || view.email) : initialsOf(authorLabel)) : "T"}
+                {mine ? avatarInitials(isViewer ? (bestDisplayName(view.name, view.email) ?? view.email) : authorLabel) : "T"}
               </div>
               <div className="min-w-0 max-w-[82%]">
                 <div className={`mb-1 flex items-center gap-2 text-[11px] text-ink-3 ${mine ? "flex-row-reverse" : ""}`}>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, CheckCircle2, ChevronRight, Inbox, LogIn, Plus, UserRound } from "lucide-react";
 import { getSession, portalViewFor } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { firstNameFrom } from "@/lib/names";
+import { bestDisplayName, firstNameFrom, isEmailish } from "@/lib/names";
 import { listPortalTickets } from "@/lib/db/queries";
 import { companyForEmail } from "@/lib/portal-company";
 import { AskBox } from "@/components/portal/ask-box";
@@ -130,7 +130,15 @@ export default async function PortalHome({
   // domain). Falls back cleanly to own-tickets-only when there's no match.
   const company = await companyForEmail(view.email);
   const tickets = await listPortalTickets(view.email, company?.id ?? null);
-  const firstName = firstNameFrom(view.name);
+  // Greet by a name only when we honestly have one: the session's real name,
+  // else the name on their own past tickets, else a clean recovery from the
+  // email ("darren.swan@…" → Darren) — never a mangled guess ("Darrenswan").
+  const ticketName =
+    tickets.find(
+      (t) => t.requester_email.toLowerCase() === view.email.toLowerCase() && t.requester_name && !isEmailish(t.requester_name),
+    )?.requester_name ?? null;
+  const displayName = bestDisplayName(view.name, view.email) ?? ticketName;
+  const firstName = displayName ? firstNameFrom(displayName) : null;
   const fromParam = from && view.previewing ? `&from=${encodeURIComponent(from)}` : "";
   const suffix = view.previewing ? `?as=${encodeURIComponent(view.email)}${fromParam}` : "";
   const deskHref = from ? `/staff/ticket/${from}` : "/staff/inbox";
@@ -164,7 +172,7 @@ export default async function PortalHome({
         </div>
       )}
 
-      <Hero title={view.previewing ? "How can we help?" : `Hi ${firstName}, how can we help?`} />
+      <Hero title={view.previewing || !firstName ? "How can we help?" : `Hi ${firstName}, how can we help?`} />
 
       {/* At-a-glance — divided row, not a stack of cards. */}
       {tickets.length > 0 && (
