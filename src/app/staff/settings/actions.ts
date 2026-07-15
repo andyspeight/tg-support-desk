@@ -169,8 +169,9 @@ export async function importAllowedAction(formData: FormData): Promise<void> {
 
 const linkCompanySchema = z.object({
   email: z.string().trim().email().max(200),
-  // "none" = explicitly no company (blocks email/domain matching for this address).
-  clientId: z.string().trim().min(1).max(64),
+  // "none" = explicitly no company (blocks email/domain matching); otherwise an
+  // Airtable record id (constrained to shape so it can't alter the API path).
+  clientId: z.string().trim().refine((v) => v === "none" || /^rec[A-Za-z0-9]{14}$/.test(v), "invalid company id"),
 });
 
 /** Link a user's email to a client company (or explicitly to none). Overrides

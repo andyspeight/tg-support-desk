@@ -37,7 +37,7 @@ async function airtableGet(path: string, params: Record<string, string>): Promis
 
 export async function getClientById(recordId: string): Promise<ClientRecord | null> {
   try {
-    const data = (await airtableGet(`${encodeURIComponent(env.airtableClientsTable)}/${recordId}`, {})) as {
+    const data = (await airtableGet(`${encodeURIComponent(env.airtableClientsTable)}/${encodeURIComponent(recordId)}`, {})) as {
       id: string;
       fields: Record<string, unknown>;
     };

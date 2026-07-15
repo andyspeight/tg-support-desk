@@ -31,7 +31,7 @@ function unwrap<T>(result: { data: T | null; error: { message: string } | null }
 
 // ── Tickets ──────────────────────────────────────────────────────────────────
 
-export type InboxView = "mine" | "unassigned" | "escalated" | "review" | "waiting" | "breaching" | "approval" | "open" | "all";
+export type InboxView = "mine" | "unassigned" | "escalated" | "review" | "waiting" | "breaching" | "approval" | "open" | "resolved" | "all";
 
 const OPEN_STATUSES = ["new", "ai_working", "waiting_on_customer", "escalated", "needs_review", "pending"] as const;
 
@@ -45,7 +45,7 @@ export async function createTicket(input: Omit<TablesInsert<"tickets">, "tenant_
 }
 
 export async function getTicket(id: string): Promise<Ticket | null> {
-  const { data, error } = await db().from("tickets").select().eq("id", id).maybeSingle();
+  const { data, error } = await db().from("tickets").select().eq("id", id).eq("tenant_id", env.tenantId).maybeSingle();
   if (error) throw new Error(`getTicket: ${error.message}`);
   return data;
 }
@@ -101,6 +101,7 @@ export async function getRequesterTicket(
     .from("tickets")
     .select()
     .eq("id", id)
+    .eq("tenant_id", env.tenantId)
     .eq("requester_email", email.toLowerCase())
     .maybeSingle();
   if (error) throw new Error(`getRequesterTicket: ${error.message}`);
@@ -317,6 +318,9 @@ export async function listTickets(view: InboxView, agentEmail: string): Promise<
     case "open":
       query = query.in("status", [...OPEN_STATUSES]).or(activeNotSnoozed);
       break;
+    case "resolved":
+      query = query.in("status", ["resolved", "closed"]);
+      break;
     case "all":
       break;
   }
@@ -327,7 +331,7 @@ export async function listTickets(view: InboxView, agentEmail: string): Promise<
 export async function inboxCounts(agentEmail: string): Promise<Record<InboxView, number>> {
   const activeNotSnoozed = `snoozed_until.is.null,snoozed_until.lte.${new Date().toISOString()}`;
   const base = () => db().from("tickets").select("id", { count: "exact", head: true }).eq("tenant_id", env.tenantId);
-  const [mine, unassigned, escalated, review, waiting, approval, open, all, breaching] = await Promise.all([
+  const [mine, unassigned, escalated, review, waiting, approval, open, resolved, all, breaching] = await Promise.all([
     base().eq("assignee", agentEmail).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
     base().is("assignee", null).in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
     base().eq("status", "escalated"),
@@ -335,6 +339,7 @@ export async function inboxCounts(agentEmail: string): Promise<Record<InboxView,
     base().eq("status", "waiting_on_customer"),
     base().eq("status", "awaiting_approval"),
     base().in("status", [...OPEN_STATUSES]).or(activeNotSnoozed),
+    base().in("status", ["resolved", "closed"]),
     base(),
     listBreachingTickets(),
   ]);
@@ -347,6 +352,7 @@ export async function inboxCounts(agentEmail: string): Promise<Record<InboxView,
     approval: approval.count ?? 0,
     breaching: breaching.length,
     open: open.count ?? 0,
+    resolved: resolved.count ?? 0,
     all: all.count ?? 0,
   };
 }

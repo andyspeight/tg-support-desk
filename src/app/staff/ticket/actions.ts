@@ -404,7 +404,8 @@ export async function blockSenderAction(formData: FormData): Promise<void> {
 
 const linkRequesterSchema = z.object({
   ticketId: z.string().uuid(),
-  clientId: z.string().trim().min(1).max(64),
+  // Airtable record id, shape-constrained so it can't alter the API path.
+  clientId: z.string().trim().regex(/^rec[A-Za-z0-9]{14}$/, "invalid company id"),
 });
 
 /** Link this ticket's requester to a client company (explicit company_members
