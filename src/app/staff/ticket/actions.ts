@@ -5,7 +5,7 @@ import { z } from "zod";
 import { redirect } from "next/navigation";
 import { requireAgent } from "@/lib/auth";
 import { addAllowedSender, addBlockedSender, addMessage, audit, getLatestAiDraft, getTicket, getTicketByReference, heartbeatPresence, mergeTickets, setMessageAttachments, stampTicketsForEmail, unmergeTickets, updateTicket, upsertCompanyMember, type Viewer } from "@/lib/db/queries";
-import { companyNameFrom, getClientById } from "@/lib/integrations/airtable-clients";
+import { companyNameFrom, createClientCompany, getClientById, matchClientByEmail } from "@/lib/integrations/airtable-clients";
 import { invalidateCompanyFor } from "@/lib/portal-company";
 import { classifyEdit, isMaterialEdit } from "@/lib/ai/draft-diff";
 import type { Ticket } from "@/lib/db/types";
@@ -435,6 +435,60 @@ export async function linkRequesterAction(formData: FormData): Promise<void> {
     tickets_stamped: stamped,
   });
   revalidatePath(`/staff/ticket/${ticketId}`);
+}
+
+const newCompanyForTicketSchema = z.object({
+  ticketId: z.string().uuid(),
+  companyName: z.string().trim().min(1).max(200),
+});
+
+export type NewCompanyResult = { ok: boolean; message: string };
+
+/** Create a brand-new client company straight from an unmatched ticket and link
+ *  this requester to it — the "#8000 is from a company not in the list" flow, in
+ *  one step (create in Airtable → link → backfill their tickets). Agent-gated,
+ *  and duplicate-guarded so we don't split a company across two records. */
+export async function createCompanyForTicketAction(
+  _prev: NewCompanyResult | null,
+  formData: FormData,
+): Promise<NewCompanyResult> {
+  const session = await requireAgent();
+  if (!env.airtableWriteConfigured) return { ok: false, message: "Adding companies isn't enabled yet." };
+  const parsed = newCompanyForTicketSchema.safeParse({
+    ticketId: formData.get("ticketId"),
+    companyName: formData.get("companyName"),
+  });
+  if (!parsed.success) return { ok: false, message: "Enter the company name." };
+  const ticket = await getTicket(parsed.data.ticketId);
+  if (!ticket) return { ok: false, message: "Ticket not found." };
+  const email = ticket.requester_email;
+
+  const existing = await matchClientByEmail(email).catch(() => null);
+  if (existing) {
+    return { ok: false, message: `${email} already matches ${companyNameFrom(existing)} — use “link” instead of adding a new company.` };
+  }
+  try {
+    const record = await createClientCompany({
+      companyName: parsed.data.companyName,
+      email,
+      contactName: ticket.requester_name ?? undefined,
+      createdBy: session.email,
+    });
+    await upsertCompanyMember({ email, clientId: record.id, clientName: companyNameFrom(record), createdBy: session.email });
+    const stamped = await stampTicketsForEmail(email, record.id);
+    invalidateCompanyFor(email);
+    await audit("human", session.email, "client_company.created", { type: "ticket", id: ticket.id }, {
+      client_id: record.id,
+      email: email.toLowerCase(),
+      name: parsed.data.companyName,
+      tickets_stamped: stamped,
+    });
+    revalidatePath(`/staff/ticket/${ticket.id}`);
+    return { ok: true, message: `Created ${companyNameFrom(record)} and linked ${email}.` };
+  } catch (error) {
+    console.error("createCompanyForTicketAction failed:", error);
+    return { ok: false, message: "Airtable wouldn't save the new company (the desk's write token may be missing create access). Nothing was saved." };
+  }
 }
 
 /** Cut this requester's email off from every company view (explicit "No

@@ -81,6 +81,18 @@ export const env = {
   get airtablePat() {
     return required("AIRTABLE_PAT");
   },
+  // Creating a client company from the desk WRITES to the Clients base, so it
+  // needs a write-scoped token — deliberately separate from the read-only
+  // AIRTABLE_PAT (least privilege, per the security brief). The "Add a company"
+  // UI stays dark until this is set. Point it at a dedicated PAT with
+  // data.records:write on just the Clients base (recommended), or a widened
+  // main token.
+  get airtableWritePat() {
+    return required("AIRTABLE_WRITE_PAT");
+  },
+  get airtableWriteConfigured() {
+    return Boolean(optional("AIRTABLE_WRITE_PAT"));
+  },
   get airtableClientsBaseId() {
     return required("AIRTABLE_CLIENTS_BASE_ID");
   },

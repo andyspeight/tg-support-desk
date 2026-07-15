@@ -21,7 +21,7 @@ import {
   updateCannedResponse,
   upsertCompanyMember,
 } from "@/lib/db/queries";
-import { companyNameFrom, getClientById } from "@/lib/integrations/airtable-clients";
+import { companyNameFrom, createClientCompany, getClientById, matchClientByEmail } from "@/lib/integrations/airtable-clients";
 import { invalidateCompanyFor } from "@/lib/portal-company";
 
 export type EraseResult = { ok: boolean; message: string };
@@ -206,6 +206,50 @@ export async function linkCompanyMemberAction(formData: FormData): Promise<void>
     tickets_stamped: stamped,
   });
   revalidatePath("/staff/settings");
+}
+
+const createCompanySchema = z.object({
+  companyName: z.string().trim().min(1).max(200),
+  email: z.string().trim().email().max(200),
+  tradingName: z.string().trim().max(200).optional(),
+  contactName: z.string().trim().max(200).optional(),
+  website: z.string().trim().max(300).optional(),
+});
+
+export type CreateCompanyResult = { ok: boolean; message: string };
+
+/** Create a brand-new client company in Airtable from the desk, so staff don't
+ *  have to open Airtable to onboard a company that isn't in the list yet.
+ *  Agent-gated, and duplicate-guarded against the identity base. */
+export async function createCompanyAction(
+  _prev: CreateCompanyResult | null,
+  formData: FormData,
+): Promise<CreateCompanyResult> {
+  const session = await requireAgent();
+  if (!env.airtableWriteConfigured) return { ok: false, message: "Adding companies isn't enabled yet." };
+  const parsed = createCompanySchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { ok: false, message: "Enter a company name and a valid main contact email." };
+  const { companyName, email, tradingName, contactName, website } = parsed.data;
+
+  // Don't split a company across two records: if this email already resolves to
+  // a client, tell the agent to link to it instead.
+  const existing = await matchClientByEmail(email).catch(() => null);
+  if (existing) {
+    return { ok: false, message: `${email} already belongs to ${companyNameFrom(existing)} — link them to it (below) instead of adding a new company.` };
+  }
+  try {
+    const record = await createClientCompany({ companyName, email, tradingName, contactName, website, createdBy: session.email });
+    await audit("human", session.email, "client_company.created", undefined, {
+      client_id: record.id,
+      email: email.toLowerCase(),
+      name: companyName,
+    });
+    revalidatePath("/staff/settings");
+    return { ok: true, message: `Added “${companyNameFrom(record)}”. It's in the company list now, and ${email}'s tickets will match it.` };
+  } catch (error) {
+    console.error("createCompanyAction failed:", error);
+    return { ok: false, message: "Airtable wouldn't save the new company (the desk's write token may be missing create access). Nothing was saved." };
+  }
 }
 
 /** Remove an explicit link — the email goes back to normal Airtable matching. */
