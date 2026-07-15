@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, ChevronRight, Inbox, LogIn, Plus } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronRight, Inbox, LogIn, Plus, UserRound } from "lucide-react";
 import { getSession, portalViewFor } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { firstNameFrom } from "@/lib/names";
@@ -81,20 +81,37 @@ export default async function PortalHome({
           </div>
         )}
 
+        {/* Sign-in — its own section at the top, so returning clients know they
+            can log in to track tickets (while raising one stays account-free). */}
+        {signInHref && (
+          <section className="flex flex-col gap-3 rounded-2xl border border-line bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600/10 text-brand-700 dark:bg-brand-500/20 dark:text-brand-200">
+                <UserRound className="h-5 w-5" strokeWidth={1.75} />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-ink">Already a Travelgenix client?</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-ink-2 sm:max-w-lg">
+                  Sign in to track and view the tickets you’ve raised and their progress. You don’t need an account to
+                  raise a ticket — signing in just keeps them all in one place.
+                </p>
+              </div>
+            </div>
+            <Link
+              href={signInHref}
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 self-start rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40 sm:self-auto"
+            >
+              <LogIn className="h-4 w-4" strokeWidth={1.75} /> Sign in
+            </Link>
+          </section>
+        )}
+
         <Hero title="How can we help?" />
 
         <section className="rounded-2xl border border-line bg-surface px-6 py-8 text-center">
           <p className="text-sm font-medium text-ink">Didn’t find your answer?</p>
           <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-ink-3">
-            Raise a ticket and our team takes it from there — no account needed. Already worked with us?{" "}
-            {signInHref ? (
-              <Link href={signInHref} className="font-medium text-brand-600 hover:underline dark:text-brand-300">
-                Sign in
-              </Link>
-            ) : (
-              "Sign in"
-            )}{" "}
-            to track your tickets here.
+            Raise a ticket and our team takes it from there — no account needed.
           </p>
           <Link
             href="/new"
@@ -102,14 +119,6 @@ export default async function PortalHome({
           >
             <Plus className="h-4 w-4" strokeWidth={2} /> Raise a ticket
           </Link>
-          {signInHref && (
-            <Link
-              href={signInHref}
-              className="ml-2 mt-4 inline-flex items-center gap-1.5 rounded-lg border border-line px-3.5 py-2 text-sm font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink"
-            >
-              <LogIn className="h-4 w-4" strokeWidth={1.75} /> Sign in
-            </Link>
-          )}
         </section>
       </div>
     );
