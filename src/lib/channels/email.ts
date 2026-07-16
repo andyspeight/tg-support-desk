@@ -73,18 +73,31 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
   }
 
   if (!ticket) {
+    // Auto-responders (out-of-office), bounces and delivery-status notifications
+    // are machine mail, never a support request. When one lands on an existing
+    // thread it's still recorded below as context but kept away from the AI; with
+    // no thread to attach to it must NOT open a brand-new ticket — that's pure
+    // queue noise (and from an unverified sender it would even escalate a ticket
+    // no human needs, as the OOO backscatter did on #8004). Drop it here, with an
+    // audit trail so the volume stays visible.
+    if (parsed.isAutoReply) {
+      await audit("system", "email-channel", "auto_reply.dropped", undefined, {
+        from: parsed.fromEmail,
+        subject: parsed.subject,
+      });
+      return null;
+    }
+
     const tags: string[] = [];
     // Sender verification failed → the ticket still exists, but the AI must
     // not act on it. Fail closed by escalating straight away.
     const unverified = parsed.senderVerified === "fail";
     if (unverified) tags.push("unverified-sender");
-    if (parsed.isAutoReply) tags.push("auto-notification");
 
     // Spam gate: a first-time sender who is neither allow-listed nor a known
     // Airtable client is parked in the approval queue. Skipped for spoof-failed
-    // senders (already escalated above) and machine auto-notifications (no human
-    // to approve — the existing auto-reply suppression handles those).
-    if (!unverified && !parsed.isAutoReply && !(await isKnown())) {
+    // senders (already escalated above).
+    if (!unverified && !(await isKnown())) {
       held = true;
       tags.push("unknown-sender");
     }
