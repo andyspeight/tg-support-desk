@@ -4,7 +4,8 @@ import { getClientSupportHistory, getSurfacedKbForTicket, getTicketSla, getTicke
 import { kbBestUrl } from "@/lib/kb-links";
 import { getSession } from "@/lib/auth";
 import type { ClockState } from "@/lib/sla";
-import { getClientById, listAllClientCompanies } from "@/lib/integrations/airtable-clients";
+import { companyNameFrom, getClientById, listAllClientCompanies } from "@/lib/integrations/airtable-clients";
+import { getCareSignal } from "@/lib/integrations/crm-seam";
 import { env } from "@/lib/env";
 import { allowPatternFor, sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
@@ -17,6 +18,7 @@ import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { ReplyBox } from "@/components/reply-box";
 import { ClientPanel } from "@/components/client-panel";
+import { CrmPanel } from "@/components/crm-panel";
 import { SupportHistoryPanel } from "@/components/support-history-panel";
 import { RelevantKbPanel } from "@/components/relevant-kb-panel";
 import { RunAiButton } from "@/components/run-ai-button";
@@ -155,6 +157,16 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   ]);
   // "How we solved this before" — similar resolved tickets, current one excluded.
   const solvedBefore = pastTickets.filter((p) => p.ticket_id !== ticket.id).slice(0, 3);
+
+  // CRM care signal for the 360 panel — matched by requester email (via CRM
+  // Contacts) then exact company name. Gated + best-effort, so an unconfigured
+  // CRM or a lookup hiccup never affects the ticket view.
+  const careSignal = env.crmConfigured
+    ? await getCareSignal({
+        companyName: clientRecord ? companyNameFrom(clientRecord) : null,
+        email: ticket.requester_email,
+      }).catch(() => null)
+    : null;
 
   // KB referencing: every published article is available to link from the reply
   // box; the ones the AI already surfaced on this ticket are suggested up front.
@@ -494,6 +506,20 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             </div>
           )}
         </div>
+
+        {careSignal ? (
+          <div>
+            <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Care (CRM)</h2>
+            <CrmPanel signal={careSignal} />
+          </div>
+        ) : env.crmConfigured && clientRecord ? (
+          <div>
+            <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Care (CRM)</h2>
+            <p className="rounded-lg border border-dashed border-line bg-surface p-3 text-xs text-ink-3">
+              No CRM record matched this client yet.
+            </p>
+          </div>
+        ) : null}
 
         {supportHistory && (
           <div>

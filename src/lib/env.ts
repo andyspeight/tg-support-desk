@@ -93,6 +93,19 @@ export const env = {
   get airtableWriteConfigured() {
     return Boolean(optional("AIRTABLE_WRITE_PAT"));
   },
+  // TG B2B CRM (Airtable base) — read seam for the Customer 360 care panel.
+  // Set AIRTABLE_CRM_BASE_ID to switch it on; the token (AIRTABLE_CRM_PAT, else
+  // the main read PAT) must have read access to that base. Dark until the base
+  // id is set, so a missing CRM never breaks the ticket view.
+  get airtableCrmBaseId() {
+    return optional("AIRTABLE_CRM_BASE_ID");
+  },
+  get airtableCrmPat() {
+    return optional("AIRTABLE_CRM_PAT") || required("AIRTABLE_PAT");
+  },
+  get crmConfigured() {
+    return Boolean(optional("AIRTABLE_CRM_BASE_ID"));
+  },
   get airtableClientsBaseId() {
     return required("AIRTABLE_CLIENTS_BASE_ID");
   },
