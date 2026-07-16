@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { requireAgent } from "@/lib/auth";
 import { audit } from "@/lib/db/queries";
-import { copilotDraft, copilotRephrase, copilotReview, copilotSummarise, copilotTranslate, type ReplyReview } from "@/lib/ai/copilot";
+import { copilotDraft, copilotProofread, copilotRephrase, copilotReview, copilotSummarise, copilotTranslate, type ReplyReview } from "@/lib/ai/copilot";
 
 // Copilot actions return text for the agent to review in the reply box —
 // they never send. Errors surface as a readable string the UI can show.
@@ -36,6 +36,11 @@ export async function copilotSummariseAction(ticketId: string) {
 export async function copilotRephraseAction(text: string) {
   await requireAgent();
   return guard(() => copilotRephrase(textSchema.parse(text)));
+}
+
+export async function copilotProofreadAction(text: string) {
+  await requireAgent();
+  return guard(() => copilotProofread(textSchema.parse(text)));
 }
 
 export async function copilotTranslateAction(text: string, language: string) {
