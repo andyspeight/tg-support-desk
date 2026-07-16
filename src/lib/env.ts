@@ -106,6 +106,15 @@ export const env = {
   get crmConfigured() {
     return Boolean(optional("AIRTABLE_CRM_BASE_ID"));
   },
+  // Write-back to the CRM (support summary on the Company + activity timeline).
+  // Needs a WRITE-scoped token on the CRM base — separate from the read PAT.
+  // Dark until AIRTABLE_CRM_WRITE_PAT is set (and the base id above).
+  get airtableCrmWritePat() {
+    return required("AIRTABLE_CRM_WRITE_PAT");
+  },
+  get crmWriteConfigured() {
+    return Boolean(optional("AIRTABLE_CRM_BASE_ID") && optional("AIRTABLE_CRM_WRITE_PAT"));
+  },
   get airtableClientsBaseId() {
     return required("AIRTABLE_CLIENTS_BASE_ID");
   },

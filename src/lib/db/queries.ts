@@ -1229,6 +1229,68 @@ export async function setTrendSnapshot(payload: InsightsSnapshot): Promise<void>
   if (error) throw new Error(`setTrendSnapshot: ${error.message}`);
 }
 
+// ── CRM write-back sync (support summary + activity timeline) ─────────────────
+
+export type CrmActivityTicket = { id: string; reference: number; subject: string; status: string; client_id: string; requester_email: string };
+
+/** Terminal tickets (resolved/closed/escalated) not yet pushed to the CRM
+ *  timeline, oldest first. client_id present (only client-matched tickets sync). */
+export async function crmPendingActivityTickets(limit = 100): Promise<CrmActivityTicket[]> {
+  const { data, error } = await db()
+    .from("tickets")
+    .select("id, reference, subject, status, client_id, requester_email")
+    .eq("tenant_id", env.tenantId)
+    .in("status", ["resolved", "closed", "escalated"])
+    .is("crm_activity_at", null)
+    .not("client_id", "is", null)
+    .order("resolved_at", { ascending: true, nullsFirst: false })
+    .limit(limit);
+  if (error) throw new Error(`crmPendingActivityTickets: ${error.message}`);
+  return ((data as CrmActivityTicket[]) ?? []).filter((t) => Boolean(t.client_id));
+}
+
+/** Stamp tickets as pushed so the next sync doesn't re-log them. */
+export async function markCrmActivityLogged(ticketIds: string[]): Promise<void> {
+  if (ticketIds.length === 0) return;
+  const { error } = await db()
+    .from("tickets")
+    .update({ crm_activity_at: new Date().toISOString() })
+    .in("id", ticketIds)
+    .eq("tenant_id", env.tenantId);
+  if (error) throw new Error(`markCrmActivityLogged: ${error.message}`);
+}
+
+/** Distinct client ids with any ticket touched since `sinceIso` — the clients
+ *  whose CRM support summary is worth refreshing this run. */
+export async function crmClientsRecentlyActive(sinceIso: string): Promise<string[]> {
+  const { data, error } = await db()
+    .from("tickets")
+    .select("client_id")
+    .eq("tenant_id", env.tenantId)
+    .gte("updated_at", sinceIso)
+    .not("client_id", "is", null)
+    .limit(2000);
+  if (error) throw new Error(`crmClientsRecentlyActive: ${error.message}`);
+  return [...new Set(((data as { client_id: string | null }[]) ?? []).map((r) => r.client_id).filter((c): c is string => Boolean(c)))];
+}
+
+export type CrmClientTicketRow = { client_id: string; status: string; created_at: string; subject: string; csat_score: number | null; tags: string[] };
+
+/** Recent tickets for the given clients, used to compute each support summary.
+ *  Real tickets only (spam / awaiting-approval excluded). */
+export async function crmClientTickets(clientIds: string[], sinceIso: string): Promise<CrmClientTicketRow[]> {
+  if (clientIds.length === 0) return [];
+  const { data, error } = await db()
+    .from("tickets")
+    .select("client_id, status, created_at, subject, csat_score, tags")
+    .eq("tenant_id", env.tenantId)
+    .in("client_id", clientIds)
+    .gte("created_at", sinceIso)
+    .limit(5000);
+  if (error) throw new Error(`crmClientTickets: ${error.message}`);
+  return ((data as CrmClientTicketRow[]) ?? []).filter((r) => r.status !== "awaiting_approval" && !(r.tags ?? []).includes("spam"));
+}
+
 // ── Proactive outreach ───────────────────────────────────────────────────────
 
 export async function listOutreachIncidents(): Promise<OutreachIncident[]> {
