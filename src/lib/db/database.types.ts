@@ -861,6 +861,7 @@ export type Database = {
           channel: Database["public"]["Enums"]["ticket_channel"]
           client_id: string | null
           created_at: string
+          crm_activity_at: string | null
           csat_comment: string | null
           csat_score: number | null
           email_thread_key: string | null
@@ -890,6 +891,7 @@ export type Database = {
           channel?: Database["public"]["Enums"]["ticket_channel"]
           client_id?: string | null
           created_at?: string
+          crm_activity_at?: string | null
           csat_comment?: string | null
           csat_score?: number | null
           email_thread_key?: string | null
@@ -919,6 +921,7 @@ export type Database = {
           channel?: Database["public"]["Enums"]["ticket_channel"]
           client_id?: string | null
           created_at?: string
+          crm_activity_at?: string | null
           csat_comment?: string | null
           csat_score?: number | null
           email_thread_key?: string | null
