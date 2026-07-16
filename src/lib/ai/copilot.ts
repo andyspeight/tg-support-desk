@@ -94,6 +94,16 @@ export async function copilotRephrase(text: string): Promise<string> {
   return complete(env.utilityModel, system, text);
 }
 
+/** Fix spelling, grammar and punctuation only — UK English — without touching
+ *  meaning, facts, names, links, tone or formatting. A clean final pass. */
+export async function copilotProofread(text: string): Promise<string> {
+  const system =
+    "You are a proofreader. Correct only spelling, grammar and punctuation in the agent's message, using UK English " +
+    "(e.g. organise, colour, apologise). Do NOT change the meaning, facts, names, URLs, tone or formatting, and do not " +
+    "add, remove or reword content beyond fixing errors. If it is already correct, return it unchanged. Return only the corrected text.";
+  return complete(env.utilityModel, system, text);
+}
+
 /** Translate text into the target language, preserving meaning and tone. */
 export async function copilotTranslate(text: string, targetLanguage: string): Promise<string> {
   const system = `Translate the text into ${targetLanguage}. Preserve meaning, tone and formatting. Return only the translation.`;

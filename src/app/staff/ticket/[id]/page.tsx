@@ -24,6 +24,7 @@ import { TicketPresence } from "@/components/ticket-presence";
 import { addNoteAction, approveSenderAction, blockSenderAction, createCompanyForTicketAction, detachRequesterAction, linkRequesterAction, mergeTicketAction, presenceHeartbeatAction, runAiAction, sendReplyAction, snoozeTicketAction, unmergeTicketAction, updateTicketAction, watchTicketAction } from "../actions";
 import {
   copilotDraftAction,
+  copilotProofreadAction,
   copilotRephraseAction,
   copilotReviewAction,
   copilotSummariseAction,
@@ -419,6 +420,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               draft: copilotDraftAction,
               summarise: copilotSummariseAction,
               rephrase: copilotRephraseAction,
+              proofread: copilotProofreadAction,
               translate: copilotTranslateAction,
               review: copilotReviewAction,
             }}

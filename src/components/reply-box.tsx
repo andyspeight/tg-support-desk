@@ -46,6 +46,7 @@ type Props = {
     draft: (ticketId: string) => Promise<CopilotResult>;
     summarise: (ticketId: string) => Promise<CopilotResult>;
     rephrase: (text: string) => Promise<CopilotResult>;
+    proofread: (text: string) => Promise<CopilotResult>;
     translate: (text: string, language: string) => Promise<CopilotResult>;
     review: (ticketId: string, text: string) => Promise<ReviewResult>;
   };
@@ -176,6 +177,8 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
     editorProps: {
       attributes: {
         class: "tg-prose min-h-[180px] max-h-[420px] overflow-y-auto px-3 py-2.5 text-sm text-ink focus:outline-none",
+        // Native browser spell check (red squiggles) as the agent types.
+        spellcheck: "true",
       },
     },
     onUpdate: ({ editor }) => trackDraft(editor.getHTML(), editor.isEmpty),
@@ -362,6 +365,14 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
                 className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
               >
                 {busy === "rephrase" ? "Rephrasing…" : "Rephrase"}
+              </button>
+              <button
+                onClick={() => editor && !isEmpty && runCopilot("proofread", () => copilot.proofread(editor.getText()), (t) => editor.commands.setContent(textToHtml(t)))}
+                disabled={!!busy || isPending || isEmpty}
+                title="Fix spelling & grammar (UK English)"
+                className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
+              >
+                {busy === "proofread" ? "Checking…" : "Proofread"}
               </button>
               <button
                 onClick={() => {
