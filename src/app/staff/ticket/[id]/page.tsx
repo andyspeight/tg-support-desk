@@ -9,7 +9,8 @@ import { getCareSignal } from "@/lib/integrations/crm-seam";
 import { env } from "@/lib/env";
 import { allowPatternFor, sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
-import { AlertTriangle, ArrowLeft, Download, Eye, EyeOff, GitMerge, LayoutDashboard, Lightbulb, Loader2, Paperclip, Users } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, Eye, EyeOff, GitMerge, LayoutDashboard, Lightbulb, Loader2, Mail, Paperclip, Users } from "lucide-react";
+import { handoverDiagnosis, truncate } from "@/lib/handover";
 import { isImageMime } from "@/lib/channels/attachment-rules";
 import { LightboxImage } from "@/components/image-lightbox";
 import { EmailBody } from "@/components/email-body";
@@ -176,6 +177,9 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const handover = [...messages]
     .reverse()
     .find((m) => m.role === "internal_note" && (m.channel_meta as { kind?: string })?.kind === "handover");
+  // When escalated, the latest handover is pinned in full at the top of the
+  // thread — so don't render that same note again inline (de-dupe).
+  const pinnedHandoverId = ticket.status === "escalated" ? handover?.id : undefined;
 
   // The AI's shadow-mode draft, if one is still waiting for a human to send it
   // (no reply has gone out since). Surfaced into the composer so an agent can
@@ -354,7 +358,16 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           {ticket.status === "escalated" && handover && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/25 dark:bg-red-500/10">
               <p className="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">AI handover</p>
-              <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-ink">{handover.body_text}</pre>
+              <p className="mt-1.5 text-sm text-ink">{handoverDiagnosis(handover.body_text)}</p>
+              <details className="group mt-2">
+                <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-red-700 hover:underline dark:text-red-300">
+                  <span className="group-open:hidden">Show full handover</span>
+                  <span className="hidden group-open:inline">Hide full handover</span>
+                </summary>
+                <pre className="mt-2 whitespace-pre-wrap border-t border-red-200/60 pt-2 font-sans text-sm text-ink dark:border-red-500/20">
+                  {handover.body_text}
+                </pre>
+              </details>
             </div>
           )}
 
@@ -387,6 +400,48 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                 </div>
               );
             }
+            const noteKind = (message.channel_meta as { kind?: string } | null)?.kind;
+
+            // Auto-acknowledgement receipt ("we've got it") — not a reply, so show
+            // it as a slim one-line event instead of a full-height message card.
+            if (message.role === "system" && noteKind === "auto_ack") {
+              return (
+                <div key={message.id} className="flex items-center gap-2 px-1 text-xs text-ink-3">
+                  <Mail className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                  <span>Auto-acknowledgement sent</span>
+                  <span>· {formatDateTime(message.created_at)}</span>
+                </div>
+              );
+            }
+
+            // AI handover — the escalation reasoning package. It's long, and when
+            // escalated it's already pinned in full at the top. Skip that pinned
+            // copy (de-dupe); render any other handover as a collapsed card led by
+            // its one-line diagnosis, so the essay doesn't dominate the thread.
+            if (message.role === "internal_note" && noteKind === "handover") {
+              if (message.id === pinnedHandoverId) return null;
+              return (
+                <details
+                  key={message.id}
+                  className="group rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/25 dark:bg-amber-500/10"
+                >
+                  <summary className="cursor-pointer list-none">
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span className="text-xs font-semibold text-ink">AI handover</span>
+                      <span className="text-xs text-ink-3">{formatDateTime(message.created_at)}</span>
+                    </span>
+                    <span className="mt-1 block text-sm text-ink-2 group-open:hidden">
+                      {truncate(handoverDiagnosis(message.body_text), 160)}
+                    </span>
+                    <span className="mt-1 hidden text-xs font-medium text-ink-3 group-open:inline">Hide details</span>
+                  </summary>
+                  <pre className="mt-2 whitespace-pre-wrap border-t border-amber-200/60 pt-2 font-sans text-sm text-ink dark:border-amber-500/20">
+                    {message.body_text}
+                  </pre>
+                </details>
+              );
+            }
+
             const style = ROLE_STYLES[message.role];
             return (
               <div key={message.id} className={`rounded-lg border p-3 ${style.className}`}>
