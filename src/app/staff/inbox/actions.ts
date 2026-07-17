@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAgent } from "@/lib/auth";
-import { audit, bulkUpdateTickets } from "@/lib/db/queries";
+import { audit, bulkUpdateTickets, getTicket, stampTicketsForEmail, upsertCompanyMember } from "@/lib/db/queries";
+import { companyNameFrom, getClientById } from "@/lib/integrations/airtable-clients";
+import { invalidateCompanyFor } from "@/lib/portal-company";
 import { notify } from "@/lib/db/notifications";
 import { env } from "@/lib/env";
 
@@ -49,5 +51,40 @@ export async function bulkUpdateTicketsAction(formData: FormData): Promise<void>
   }
 
   await audit("human", session.email, "ticket.bulk_update", undefined, { op, value: value ?? null, count: ids.length });
+  revalidatePath("/staff/inbox");
+}
+
+const setCompanySchema = z.object({
+  ticketId: z.string().uuid(),
+  clientId: z.string().trim().min(1),
+});
+
+/**
+ * Set (or correct) the company on a ticket straight from the inbox. Company is a
+ * property of the requester, so this links their email to the chosen company and
+ * back-stamps their existing tickets — the same operation as the ticket-page
+ * "link" control, just reachable inline. Membership is stored in Supabase, so it
+ * needs no Airtable write access.
+ */
+export async function setTicketCompanyAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const { ticketId, clientId } = setCompanySchema.parse(Object.fromEntries(formData));
+  const ticket = await getTicket(ticketId);
+  if (!ticket) throw new Error("Ticket not found");
+  const record = await getClientById(clientId);
+  if (!record) throw new Error("That company no longer exists in Airtable.");
+  await upsertCompanyMember({
+    email: ticket.requester_email,
+    clientId,
+    clientName: companyNameFrom(record),
+    createdBy: session.email,
+  });
+  await stampTicketsForEmail(ticket.requester_email, clientId);
+  invalidateCompanyFor(ticket.requester_email);
+  await audit("human", session.email, "company_member.linked", { type: "ticket", id: ticketId }, {
+    email: ticket.requester_email,
+    client_id: clientId,
+    via: "inbox",
+  });
   revalidatePath("/staff/inbox");
 }

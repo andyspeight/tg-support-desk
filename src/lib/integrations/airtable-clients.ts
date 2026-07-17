@@ -202,6 +202,19 @@ export async function listAllClientCompanies(): Promise<ClientCompany[]> {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// The full company list changes rarely but the inbox reads it on every refresh
+// (and the poller refreshes often), so cache it briefly to stay well inside
+// Airtable's rate limit. A newly-created company appears within the TTL.
+let companiesCache: { at: number; data: ClientCompany[] } | null = null;
+const COMPANIES_CACHE_MS = 5 * 60_000;
+
+export async function listClientCompaniesCached(): Promise<ClientCompany[]> {
+  if (companiesCache && Date.now() - companiesCache.at < COMPANIES_CACHE_MS) return companiesCache.data;
+  const data = await listAllClientCompanies();
+  companiesCache = { at: Date.now(), data };
+  return data;
+}
+
 /**
  * Every client with a support email — the recipient pool for a "to all clients"
  * proactive outreach. Paginates the Clients base, skips records without a

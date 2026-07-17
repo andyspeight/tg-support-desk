@@ -131,7 +131,15 @@ export async function sendReplyAction(formData: FormData): Promise<ComposerResul
       if (!ticket.resolved_at) statusPatch.resolved_at = new Date().toISOString();
       statusPatch.ai_resolved = false; // human-resolved
     }
+    // Auto-assign to the first human who replies, so an answered ticket has a
+    // clear owner. Only when it's currently unassigned — never reassigns a
+    // ticket someone already owns; the assignee control still changes it freely.
+    const autoAssigned = !ticket.assignee;
+    if (autoAssigned) statusPatch.assignee = session.email;
     await updateTicket(ticketId, statusPatch);
+    if (autoAssigned) {
+      await audit("human", session.email, "ticket.auto_assigned", { type: "ticket", id: ticketId }).catch(() => {});
+    }
     // Learning loop: record how much the agent changed the AI's draft (if this
     // reply acted on one). Best-effort — never blocks or fails the reply.
     await captureDraftReview(ticket, text, session.email).catch((e) => console.error("captureDraftReview:", e));
