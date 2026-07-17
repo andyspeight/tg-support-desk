@@ -72,6 +72,22 @@ function formatBytes(bytes: number): string {
   if (bytes < 1048576) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
+/** Image files from a clipboard/drag payload — used to turn a pasted or dropped
+ *  screenshot into an attachment. Falls back to DataTransferItems for browsers
+ *  that expose a pasted image only there, not on `.files`. */
+function imageFilesFrom(data: DataTransfer | null): File[] {
+  if (!data) return [];
+  const fromFiles = Array.from(data.files ?? []).filter((f) => f.type.startsWith("image/"));
+  if (fromFiles.length > 0) return fromFiles;
+  const out: File[] = [];
+  for (const item of Array.from(data.items ?? [])) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      const f = item.getAsFile();
+      if (f) out.push(f);
+    }
+  }
+  return out;
+}
 /** Whitespace-insensitive compare, so an unedited AI draft round-tripped through
  *  the rich editor still matches its source text. */
 function sameText(a: string, b: string): boolean {
@@ -146,6 +162,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
   const fileInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pasteSeq = useRef(0); // names clipboard images that arrive without a filename
 
   // Mirror the composer's dirty state to localStorage + the poller guard on
   // every keystroke (storage write debounced; the guard flips immediately so a
@@ -180,6 +197,21 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
         // Native browser spell check (red squiggles) as the agent types.
         spellcheck: "true",
       },
+      // Paste (Cmd/Ctrl-V a screenshot) or drag an image straight into the reply
+      // — it attaches, instead of making the agent use the file picker. Returning
+      // true when we grab an image stops the editor inserting broken markup for it.
+      handlePaste: (_view, event) => {
+        const images = imageFilesFrom(event.clipboardData);
+        if (images.length === 0) return false;
+        addFiles(images);
+        return true;
+      },
+      handleDrop: (_view, event) => {
+        const dropped = Array.from(event.dataTransfer?.files ?? []);
+        if (dropped.length === 0) return false;
+        addFiles(dropped);
+        return true;
+      },
     },
     onUpdate: ({ editor }) => trackDraft(editor.getHTML(), editor.isEmpty),
   });
@@ -211,13 +243,24 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
     return () => window.removeEventListener(KB_INSERT_EVENT, onInsert);
   }, [editor]);
 
-  function addFiles(list: FileList | null) {
-    if (!list) return;
+  // Add attachments from any source — the file pickers, a drag-drop, or an image
+  // pasted/dropped into the editor. Dedupes (a drop caught by both the editor and
+  // the outer container can't double-add) and gives a clipboard image that
+  // arrives without a filename a sensible name.
+  function addFiles(incoming: File[]) {
+    if (incoming.length === 0) return;
     setError(null);
-    const incoming = Array.from(list);
-    const tooBig = incoming.find((f) => f.size > MAX_FILE_BYTES);
+    const named = incoming.map((f) =>
+      f.name ? f : new File([f], `pasted-image-${(pasteSeq.current += 1)}.${f.type.split("/")[1] || "png"}`, { type: f.type }),
+    );
+    const tooBig = named.find((f) => f.size > MAX_FILE_BYTES);
     if (tooBig) setError(`"${tooBig.name}" is over the 25 MB limit.`);
-    setFiles((prev) => [...prev, ...incoming.filter((f) => f.size <= MAX_FILE_BYTES)].slice(0, MAX_FILES));
+    setFiles((prev) => {
+      const sig = (f: File) => `${f.name}|${f.size}|${f.lastModified}`;
+      const seen = new Set(prev.map(sig));
+      const fresh = named.filter((f) => f.size <= MAX_FILE_BYTES && !seen.has(sig(f)));
+      return [...prev, ...fresh].slice(0, MAX_FILES);
+    });
   }
 
   const isEmpty = !editor || editor.getText().trim() === "";
@@ -319,12 +362,12 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
       onDrop={(e) => {
         e.preventDefault();
         setDragOver(false);
-        addFiles(e.dataTransfer.files);
+        addFiles(Array.from(e.dataTransfer.files));
       }}
     >
       {dragOver && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-accent-400 bg-accent-50/85 text-sm font-medium text-accent-700 dark:bg-accent-500/15 dark:text-accent-200">
-          Drop files to attach
+          Drop an image or file to attach
         </div>
       )}
       {/* Copilot row */}
@@ -423,7 +466,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
           <Link2 className="h-4 w-4" strokeWidth={1.75} />
         </ToolbarButton>
         <span className="mx-1 h-5 w-px bg-line" />
-        <ToolbarButton label="Attach image" onClick={() => imageInput.current?.click()}>
+        <ToolbarButton label="Attach image — or just paste / drag one into the reply" onClick={() => imageInput.current?.click()}>
           <ImageIcon className="h-4 w-4" strokeWidth={1.75} />
         </ToolbarButton>
         <ToolbarButton label="Attach file" onClick={() => fileInput.current?.click()}>
@@ -431,8 +474,8 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
         </ToolbarButton>
       </div>
 
-      <input ref={imageInput} type="file" accept={IMAGE_ACCEPT} multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-      <input ref={fileInput} type="file" accept={FILE_ACCEPT} multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+      <input ref={imageInput} type="file" accept={IMAGE_ACCEPT} multiple hidden onChange={(e) => { addFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
+      <input ref={fileInput} type="file" accept={FILE_ACCEPT} multiple hidden onChange={(e) => { addFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
 
       <EditorContent editor={editor} />
 
