@@ -30,6 +30,9 @@ const STAFF_BASES = [
 ];
 
 const nextConfig: NextConfig = {
+  // Replies carry attachments and now inline (pasted) images in the action body,
+  // so lift the default 1 MB server-action cap to the desk's attachment ceiling.
+  experimental: { serverActions: { bodySizeLimit: "30mb" } },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

@@ -75,8 +75,17 @@ export async function storeAttachments(
   return out;
 }
 
-/** An agent-uploaded file destined for an outbound reply or internal note. */
-export type OutboundFile = { filename: string; mimeType: string; size: number; content: Buffer };
+/** An agent-uploaded file destined for an outbound reply or internal note.
+ *  `contentId` + `inline` mark an image embedded in the body (pasted/dropped),
+ *  so the stored record carries its cid and the UI keeps it out of the strip. */
+export type OutboundFile = {
+  filename: string;
+  mimeType: string;
+  size: number;
+  content: Buffer;
+  contentId?: string;
+  inline?: boolean;
+};
 
 /**
  * Validate and store agent-uploaded files (bytes already in hand). Same
@@ -90,7 +99,16 @@ export async function storeOutboundAttachments(
   const out: StoredAttachment[] = [];
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
-    const base: StoredAttachment = { filename: f.filename, mimeType: f.mimeType, size: f.size, stored: false };
+    const base: StoredAttachment = {
+      filename: f.filename,
+      mimeType: f.mimeType,
+      size: f.size,
+      stored: false,
+      // Inline (cid) markers so the body render resolves the image and the strip
+      // hides it — mirrors how inbound cid images are stored.
+      ...(f.contentId ? { contentId: f.contentId } : {}),
+      ...(f.inline ? { inline: true } : {}),
+    };
 
     const check = checkAttachment({ mimeType: f.mimeType, size: f.size });
     if (!check.ok) {
