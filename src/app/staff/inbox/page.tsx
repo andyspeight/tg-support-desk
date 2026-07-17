@@ -2,10 +2,11 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { awaitingResponse, getTrendSnapshot, inboxCounts, listTickets, type InboxView } from "@/lib/db/queries";
 import { env } from "@/lib/env";
+import { listClientCompaniesCached } from "@/lib/integrations/airtable-clients";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { InboxTable } from "@/components/inbox-table";
 import { TrendsBanner } from "@/components/trends-banner";
-import { bulkUpdateTicketsAction } from "./actions";
+import { bulkUpdateTicketsAction, setTicketCompanyAction } from "./actions";
 
 const VIEWS: { key: InboxView; label: string }[] = [
   { key: "open", label: "Open" },
@@ -25,14 +26,20 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const { view: rawView } = await searchParams;
   const view: InboxView = VIEWS.some((v) => v.key === rawView) ? (rawView as InboxView) : "open";
 
-  const [tickets, counts, awaiting, trends] = await Promise.all([
+  const [tickets, counts, awaiting, trends, companies] = await Promise.all([
     listTickets(view, session.email),
     inboxCounts(session.email),
     awaitingResponse().catch(() => []),
     getTrendSnapshot().catch(() => null),
+    listClientCompaniesCached().catch(() => []),
   ]);
   const awaitingMap: Record<string, string> = {};
   for (const a of awaiting) awaitingMap[a.ticketId] = a.waitingSince;
+
+  // Company name per ticket, resolved from its linked client record (one cached
+  // Airtable read for the whole list rather than a lookup per row).
+  const companyById: Record<string, string> = {};
+  for (const c of companies) companyById[c.id] = c.name;
 
   const clusters = trends?.payload.clusters ?? [];
 
@@ -67,7 +74,15 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
         ))}
       </div>
 
-      <InboxTable tickets={tickets} bulkUpdate={bulkUpdateTicketsAction} awaiting={awaitingMap} agents={env.agentEmails} />
+      <InboxTable
+        tickets={tickets}
+        bulkUpdate={bulkUpdateTicketsAction}
+        setCompany={setTicketCompanyAction}
+        companyById={companyById}
+        companies={companies}
+        awaiting={awaitingMap}
+        agents={env.agentEmails}
+      />
     </div>
   );
 }

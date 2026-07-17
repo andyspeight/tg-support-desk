@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import type { Ticket } from "@/lib/db/types";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
+import { CompanyCell } from "@/components/company-cell";
+
+const COMPANY_LIST_ID = "tg-inbox-company-list";
 
 function timeAgo(iso: string): string {
   const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -19,6 +22,9 @@ function timeAgo(iso: string): string {
 type Props = {
   tickets: Ticket[];
   bulkUpdate: (formData: FormData) => Promise<void>;
+  setCompany?: (formData: FormData) => Promise<void>;
+  companyById?: Record<string, string>;
+  companies?: { id: string; name: string }[];
   awaiting?: Record<string, string>;
   agents?: string[];
 };
@@ -44,7 +50,7 @@ function WaitingBadge({ since }: { since: string }) {
   );
 }
 
-export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
+export function InboxTable({ tickets, bulkUpdate, setCompany, companyById, companies, awaiting, agents }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focus, setFocus] = useState(0);
@@ -148,6 +154,13 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
 
   return (
     <div className="mt-2">
+      {setCompany && companies && companies.length > 0 && (
+        <datalist id={COMPANY_LIST_ID}>
+          {companies.map((c) => (
+            <option key={c.id} value={c.name} />
+          ))}
+        </datalist>
+      )}
       <div className="flex flex-wrap items-center gap-2 border-b border-line-soft py-2 text-xs text-ink-2">
         {count > 0 ? (
           <>
@@ -218,6 +231,9 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
                 <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
                   <span className="tabular-nums">#{ticket.reference}</span>
                   <span className="min-w-0 truncate">{ticket.requester_name ?? ticket.requester_email}</span>
+                  {ticket.client_id && companyById?.[ticket.client_id] && (
+                    <span className="min-w-0 truncate">· {companyById[ticket.client_id]}</span>
+                  )}
                   {awaiting?.[ticket.id] && <WaitingBadge since={awaiting[ticket.id]} />}
                 </span>
               </span>
@@ -237,6 +253,7 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
             <th className="hidden w-14 py-2 font-medium sm:table-cell">#</th>
             <th className="py-2 font-medium">Subject</th>
             <th className="hidden w-44 py-2 font-medium md:table-cell">Requester</th>
+            {setCompany && <th className="hidden w-40 py-2 font-medium lg:table-cell">Company</th>}
             <th className="w-32 py-2 font-medium sm:w-36">Status</th>
             <th className="hidden w-12 py-2 font-medium sm:table-cell">Pri</th>
             <th className="hidden w-32 py-2 font-medium md:table-cell">Assignee</th>
@@ -274,6 +291,23 @@ export function InboxTable({ tickets, bulkUpdate, awaiting, agents }: Props) {
                 {awaiting?.[ticket.id] && <WaitingBadge since={awaiting[ticket.id]} />}
               </td>
               <td className="hidden truncate py-2.5 text-ink-2 md:table-cell">{ticket.requester_name ?? ticket.requester_email}</td>
+              {setCompany && (
+                <td className="hidden py-2.5 lg:table-cell" onClick={(e) => e.stopPropagation()}>
+                  {companies && companies.length > 0 ? (
+                    <CompanyCell
+                      ticketId={ticket.id}
+                      currentName={(ticket.client_id && companyById?.[ticket.client_id]) || null}
+                      companies={companies}
+                      listId={COMPANY_LIST_ID}
+                      setCompany={setCompany}
+                    />
+                  ) : (
+                    <span className="text-xs text-ink-3">
+                      {(ticket.client_id && companyById?.[ticket.client_id]) || "—"}
+                    </span>
+                  )}
+                </td>
+              )}
               <td className="py-2.5">
                 <StatusBadge status={ticket.status} />
               </td>
