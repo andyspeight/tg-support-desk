@@ -18,9 +18,10 @@ import type { Json } from "@/lib/db/database.types";
 import { env } from "@/lib/env";
 import { firstNameFrom } from "@/lib/names";
 import { matchesBlocklist, parseGmailMessage, type GmailMessage } from "./email-parse";
-import { buildReplyMime, getAttachmentBytes, sendMessage } from "./gmail";
+import { buildReplyMime, getAttachmentBytes, sendMessage, type OutboundAttachment } from "./gmail";
 import { renderCustomerEmail, textToEmailHtml } from "./email-template";
 import { storeAttachments, storeOutboundAttachments, type OutboundFile } from "./attachments";
+import type { InlineImage } from "./inline-images";
 import { replyOutbound, type ReplyDelivery } from "./reply-plan";
 
 // Email channel: Gmail message → ticket/message rows, and ticket reply → email.
@@ -323,9 +324,38 @@ export async function latestCustomerThreadMeta(ticketId: string): Promise<{ mess
 export async function sendTicketReply(
   ticket: Ticket,
   body: string,
-  opts: { role: "ai" | "human"; author: string; html?: string; fromName?: string; attachments?: OutboundFile[]; subject?: string },
+  opts: {
+    role: "ai" | "human";
+    author: string;
+    html?: string;
+    fromName?: string;
+    attachments?: OutboundFile[];
+    /** Images embedded in the body (pasted/dropped) — sent inline (cid) in the
+     *  email and stored so the ticket renders them in place. */
+    inlineImages?: InlineImage[];
+    subject?: string;
+  },
 ): Promise<{ message: Message; delivery: ReplyDelivery }> {
   const plan = replyOutbound(ticket.channel, env.gmailConfigured);
+
+  // Inline images are stored like attachments (so the body's cid refs resolve on
+  // the ticket) AND, on the email path, sent as cid parts so they render inline.
+  const inlineImages = opts.inlineImages ?? [];
+  const toStore: OutboundFile[] = [
+    ...inlineImages.map((im) => ({
+      filename: im.filename,
+      mimeType: im.mimeType,
+      size: im.content.length,
+      content: im.content,
+      contentId: im.cid,
+      inline: true,
+    })),
+    ...(opts.attachments ?? []),
+  ];
+  const mimeAttachments: OutboundAttachment[] = [
+    ...(opts.attachments ?? []).map((a) => ({ filename: a.filename, mimeType: a.mimeType, content: a.content })),
+    ...inlineImages.map((im) => ({ filename: im.filename, mimeType: im.mimeType, content: im.content, cid: im.cid })),
+  ];
 
   // In-app channels (portal/widget) deliver in-app; an email ticket on an
   // un-wired mailbox is stored but not sent. Both paths persist the reply
@@ -341,8 +371,8 @@ export async function sendTicketReply(
       channel_meta: plan === "store" ? { outbound: true, delivery: "not_configured" } : { delivered: ticket.channel },
     });
 
-    if (opts.attachments && opts.attachments.length > 0) {
-      const stored = await storeOutboundAttachments(ticket.id, message.id, opts.attachments);
+    if (toStore.length > 0) {
+      const stored = await storeOutboundAttachments(ticket.id, message.id, toStore);
       await setMessageAttachments(message.id, stored as unknown as Json);
       message.attachments = stored as unknown as Json;
     }
@@ -388,7 +418,7 @@ export async function sendTicketReply(
       text: body,
       html: brandedHtml,
       fromName: opts.fromName,
-      attachments: opts.attachments,
+      attachments: mimeAttachments,
       inReplyTo: messageId,
       references: refs,
     }),
@@ -404,8 +434,8 @@ export async function sendTicketReply(
     channel_meta: { gmail_message_id: sent.id, gmail_thread_id: sent.threadId, outbound: true },
   });
 
-  if (opts.attachments && opts.attachments.length > 0) {
-    const stored = await storeOutboundAttachments(ticket.id, message.id, opts.attachments);
+  if (toStore.length > 0) {
+    const stored = await storeOutboundAttachments(ticket.id, message.id, toStore);
     await setMessageAttachments(message.id, stored as unknown as Json);
     message.attachments = stored as unknown as Json;
   }

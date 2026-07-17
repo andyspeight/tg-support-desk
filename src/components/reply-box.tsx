@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
+import { Node as TiptapNode, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -52,7 +53,28 @@ type Props = {
   };
 };
 
+// A minimal block image node so a pasted/dropped screenshot renders inline in
+// the reply and serialises to <img src="data:…"> — the server turns that into a
+// cid inline image on send. Avoids pulling in the full image extension.
+const InlineImage = TiptapNode.create({
+  name: "image",
+  group: "block",
+  atom: true,
+  draggable: true,
+  addAttributes() {
+    return { src: { default: null } };
+  },
+  parseHTML() {
+    return [{ tag: "img[src]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["img", mergeAttributes(HTMLAttributes, { class: "max-w-full rounded-md" })];
+  },
+});
+
 const IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp";
+// Raster types that go inline in the body (mirrors the server allowlist — no SVG).
+const INLINE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const FILE_ACCEPT =
   ".pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,application/pdf,text/plain,text/csv";
 const MAX_FILES = 10;
@@ -105,6 +127,13 @@ function loadDraft(ticketId: string): string | null {
   }
 }
 function saveDraft(ticketId: string, html: string): void {
+  // A draft with big inline (base64) images can blow localStorage's ~5 MB quota;
+  // skip persisting those rather than thrash. The in-page draft still stands —
+  // only cross-reload restore is skipped for very large drafts.
+  if (html.length > 512_000) {
+    clearDraft(ticketId);
+    return;
+  }
   try {
     localStorage.setItem(draftKey(ticketId), html);
   } catch {
@@ -189,6 +218,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
       StarterKit.configure({ heading: { levels: [2, 3] } }),
       Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" } }),
       Placeholder.configure({ placeholder: "Write a reply… (sent by email) or an internal note" }),
+      InlineImage,
     ],
     content: "",
     editorProps: {
@@ -203,13 +233,14 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
       handlePaste: (_view, event) => {
         const images = imageFilesFrom(event.clipboardData);
         if (images.length === 0) return false;
-        addFiles(images);
+        insertInlineImages(images);
         return true;
       },
       handleDrop: (_view, event) => {
         const dropped = Array.from(event.dataTransfer?.files ?? []);
         if (dropped.length === 0) return false;
-        addFiles(dropped);
+        handleIncoming(dropped);
+        event.stopPropagation(); // handled here — don't let the container's onDrop repeat it
         return true;
       },
     },
@@ -263,7 +294,39 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
     });
   }
 
-  const isEmpty = !editor || editor.getText().trim() === "";
+  // Insert images inline in the body (as data URLs) — the server converts them to
+  // cid inline images on send, so they render in place in the customer's email
+  // and are stored/attached on the ticket.
+  function insertInlineImages(images: File[]) {
+    for (const f of images) {
+      if (!INLINE_IMAGE_TYPES.has(f.type)) continue; // non-raster (e.g. SVG) never goes inline
+      if (f.size > MAX_FILE_BYTES) {
+        setError(`"${f.name || "image"}" is over the 25 MB limit.`);
+        continue;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const src = reader.result;
+        if (typeof src === "string") editor?.chain().focus().insertContent({ type: "image", attrs: { src } }).run();
+      };
+      reader.readAsDataURL(f);
+    }
+  }
+
+  // Route a mixed batch (paste/drop): images go inline in the body, other files
+  // become attachments.
+  function handleIncoming(all: File[]) {
+    const images = all.filter((f) => INLINE_IMAGE_TYPES.has(f.type));
+    const others = all.filter((f) => !INLINE_IMAGE_TYPES.has(f.type));
+    if (images.length > 0) insertInlineImages(images);
+    if (others.length > 0) addFiles(others); // non-raster images + real files → attachments
+  }
+
+  // An image-only reply is valid, so "empty" means no text AND no inline image.
+  // `hasText` gates the text-only copilot tools (rephrase/proofread/translate).
+  const hasText = !!editor && editor.getText().trim() !== "";
+  const hasImage = !!editor && /<img/i.test(editor.getHTML());
+  const isEmpty = !hasText && !hasImage;
 
   async function buildAndSend(action: (formData: FormData) => Promise<ComposerResult>) {
     if (!editor) return;
@@ -362,7 +425,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
       onDrop={(e) => {
         e.preventDefault();
         setDragOver(false);
-        addFiles(Array.from(e.dataTransfer.files));
+        handleIncoming(Array.from(e.dataTransfer.files));
       }}
     >
       {dragOver && (
@@ -403,15 +466,15 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
                 {busy === "summary" ? "Summarising…" : "Summarise"}
               </button>
               <button
-                onClick={() => editor && !isEmpty && runCopilot("rephrase", () => copilot.rephrase(editor.getText()), (t) => editor.commands.setContent(textToHtml(t)))}
-                disabled={!!busy || isPending || isEmpty}
+                onClick={() => editor && hasText && runCopilot("rephrase", () => copilot.rephrase(editor.getText()), (t) => editor.commands.setContent(textToHtml(t)))}
+                disabled={!!busy || isPending || !hasText}
                 className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
               >
                 {busy === "rephrase" ? "Rephrasing…" : "Rephrase"}
               </button>
               <button
-                onClick={() => editor && !isEmpty && runCopilot("proofread", () => copilot.proofread(editor.getText()), (t) => editor.commands.setContent(textToHtml(t)))}
-                disabled={!!busy || isPending || isEmpty}
+                onClick={() => editor && hasText && runCopilot("proofread", () => copilot.proofread(editor.getText()), (t) => editor.commands.setContent(textToHtml(t)))}
+                disabled={!!busy || isPending || !hasText}
                 title="Fix spelling & grammar (UK English)"
                 className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
               >
@@ -419,11 +482,11 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
               </button>
               <button
                 onClick={() => {
-                  if (!editor || isEmpty) return;
+                  if (!editor || !hasText) return;
                   const lang = window.prompt("Translate the draft into which language?", "French");
                   if (lang) runCopilot("translate", () => copilot.translate(editor.getText(), lang), (t) => editor.commands.setContent(textToHtml(t)));
                 }}
-                disabled={!!busy || isPending || isEmpty}
+                disabled={!!busy || isPending || !hasText}
                 className="rounded border border-line px-2 py-1 text-ink-2 hover:bg-surface-2 disabled:opacity-40"
               >
                 Translate
@@ -474,7 +537,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
         </ToolbarButton>
       </div>
 
-      <input ref={imageInput} type="file" accept={IMAGE_ACCEPT} multiple hidden onChange={(e) => { addFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
+      <input ref={imageInput} type="file" accept={IMAGE_ACCEPT} multiple hidden onChange={(e) => { insertInlineImages(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
       <input ref={fileInput} type="file" accept={FILE_ACCEPT} multiple hidden onChange={(e) => { addFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
 
       <EditorContent editor={editor} />

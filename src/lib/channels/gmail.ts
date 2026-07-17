@@ -73,7 +73,10 @@ export async function getAttachmentBytes(messageId: string, attachmentId: string
   return Buffer.from(data.data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
 
-export type OutboundAttachment = { filename: string; mimeType: string; content: Buffer };
+// `cid` set → the part is an inline image the HTML body references via
+// `src="cid:<cid>"`; nodemailer emits it inline (and clients also list it as an
+// attachment). Omitted → an ordinary attachment.
+export type OutboundAttachment = { filename: string; mimeType: string; content: Buffer; cid?: string };
 
 /** Build a full reply MIME: text + optional HTML alternative + attachments. */
 export async function buildReplyMime(input: {
@@ -102,6 +105,7 @@ export async function buildReplyMime(input: {
       filename: a.filename,
       content: a.content,
       contentType: a.mimeType,
+      ...(a.cid ? { cid: a.cid } : {}),
     })),
   });
   return mail.compile().build();

@@ -15,6 +15,7 @@ import { env } from "@/lib/env";
 import { sendAutoAck, sendTicketReply } from "@/lib/channels/email";
 import { allowPatternFor, sanitizeEmailHtml, htmlToText } from "@/lib/channels/email-parse";
 import { storeOutboundAttachments, type OutboundFile } from "@/lib/channels/attachments";
+import { extractInlineImages, type InlineImage } from "@/lib/channels/inline-images";
 import type { Json } from "@/lib/db/database.types";
 import { resolveTicket } from "@/lib/ai/resolve";
 
@@ -66,9 +67,13 @@ async function captureDraftReview(ticket: Ticket, sentText: string, actor: strin
 /** Parse the rich composer: sanitised HTML, derived plain text, uploaded files. */
 async function composerInput(
   formData: FormData,
-): Promise<{ ticketId: string; html: string; text: string; files: OutboundFile[] }> {
+): Promise<{ ticketId: string; html: string; text: string; files: OutboundFile[]; inlineImages: InlineImage[] }> {
   const ticketId = z.string().uuid().parse(formData.get("ticketId"));
-  const html = sanitizeEmailHtml(String(formData.get("html") ?? "")).slice(0, 100000);
+  // Pull inline (pasted/dropped) images OUT of the raw HTML first, as cid refs —
+  // the sanitiser only permits cid image sources, so it would otherwise strip
+  // the data: URLs the editor produced.
+  const { html: cidHtml, images: inlineImages } = extractInlineImages(String(formData.get("html") ?? ""));
+  const html = sanitizeEmailHtml(cidHtml).slice(0, 100000);
   const text = htmlToText(html);
   const raw = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
   const files: OutboundFile[] = [];
@@ -76,7 +81,7 @@ async function composerInput(
     const content = Buffer.from(await f.arrayBuffer());
     files.push({ filename: f.name, mimeType: f.type || "application/octet-stream", size: content.length, content });
   }
-  return { ticketId, html, text, files };
+  return { ticketId, html, text, files, inlineImages };
 }
 
 const updateSchema = z.object({
@@ -98,8 +103,8 @@ export type ComposerResult = { ok: true; note?: string } | { ok: false; error: s
 
 export async function sendReplyAction(formData: FormData): Promise<ComposerResult> {
   const session = await requireAgent();
-  const { ticketId, html, text, files } = await composerInput(formData);
-  if (!text.trim() && files.length === 0) return { ok: false, error: "Nothing to send." };
+  const { ticketId, html, text, files, inlineImages } = await composerInput(formData);
+  if (!text.trim() && files.length === 0 && inlineImages.length === 0) return { ok: false, error: "Nothing to send." };
 
   try {
     const ticket = await getTicket(ticketId);
@@ -120,6 +125,7 @@ export async function sendReplyAction(formData: FormData): Promise<ComposerResul
       html: signedHtml || undefined,
       fromName: agentName ?? undefined,
       attachments: files,
+      inlineImages,
     });
     // Zendesk-style "submit as": the composer says what state to leave the
     // ticket in. Default keeps the old behaviour (waiting on the customer).
@@ -162,8 +168,8 @@ export async function sendReplyAction(formData: FormData): Promise<ComposerResul
 
 export async function addNoteAction(formData: FormData): Promise<ComposerResult> {
   const session = await requireAgent();
-  const { ticketId, html, text, files } = await composerInput(formData);
-  if (!text.trim() && files.length === 0) return { ok: false, error: "Nothing to add." };
+  const { ticketId, html, text, files, inlineImages } = await composerInput(formData);
+  if (!text.trim() && files.length === 0 && inlineImages.length === 0) return { ok: false, error: "Nothing to add." };
 
   try {
     const message = await addMessage({
@@ -173,8 +179,21 @@ export async function addNoteAction(formData: FormData): Promise<ComposerResult>
       body_text: text,
       body_html: html || null,
     });
-    if (files.length > 0) {
-      const stored = await storeOutboundAttachments(ticketId, message.id, files);
+    // Store inline (pasted/dropped) images alongside any file attachments so the
+    // note's cid image refs resolve in the thread — notes aren't emailed.
+    const toStore: OutboundFile[] = [
+      ...inlineImages.map((im) => ({
+        filename: im.filename,
+        mimeType: im.mimeType,
+        size: im.content.length,
+        content: im.content,
+        contentId: im.cid,
+        inline: true,
+      })),
+      ...files,
+    ];
+    if (toStore.length > 0) {
+      const stored = await storeOutboundAttachments(ticketId, message.id, toStore);
       await setMessageAttachments(message.id, stored as unknown as Json);
     }
     await audit("human", session.email, "note.added", { type: "ticket", id: ticketId });
