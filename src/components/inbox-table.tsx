@@ -126,21 +126,30 @@ export function InboxTable({ tickets, bulkUpdate, setCompany, companyById, compa
           break;
         case "a":
           e.preventDefault();
+          if (e.repeat) break;
           runBulk("assign_me");
           break;
-        case "r":
+        case "r": {
+          // Resolve is destructive and has no undo, so a single stray or held
+          // key must never fire it: ignore auto-repeat and always confirm.
           e.preventDefault();
-          runBulk("status", "resolved");
+          if (e.repeat) break;
+          const n = selected.size || 1;
+          if (window.confirm(`Resolve ${n} ticket${n === 1 ? "" : "s"}?`)) runBulk("status", "resolved");
           break;
-        case "e":
+        }
+        case "e": {
           e.preventDefault();
-          runBulk("status", "escalated");
+          if (e.repeat) break;
+          const n = selected.size || 1;
+          if (window.confirm(`Escalate ${n} ticket${n === 1 ? "" : "s"}?`)) runBulk("status", "escalated");
           break;
+        }
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [tickets, focus, toggle, runBulk, router]);
+  }, [tickets, focus, toggle, runBulk, router, selected]);
 
   useEffect(() => {
     rowRefs.current[focus]?.scrollIntoView({ block: "nearest" });

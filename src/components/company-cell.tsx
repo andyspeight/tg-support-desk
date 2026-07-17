@@ -86,11 +86,12 @@ export function CompanyCell({
       autoFocus
       disabled={isPending}
       onClick={(e) => e.stopPropagation()}
-      onChange={(e) => {
-        // Fires when a datalist option is picked — commit on an exact match.
-        if (nameToId.has(e.target.value.trim().toLowerCase())) commit(e.target.value);
-      }}
+      // Commit only on an explicit finish (Enter / click away). We deliberately
+      // do NOT commit on every change: auto-closing the box mid-type could drop
+      // focus back to the list and let the next keystrokes hit the resolve/
+      // escalate shortcuts. Keystrokes stay contained while the box is open.
       onKeyDown={(e) => {
+        e.stopPropagation();
         if (e.key === "Enter") {
           e.preventDefault();
           commit((e.target as HTMLInputElement).value);
