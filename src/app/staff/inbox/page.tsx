@@ -5,6 +5,7 @@ import { env } from "@/lib/env";
 import { listClientCompaniesCached } from "@/lib/integrations/airtable-clients";
 import { RefreshPoller } from "@/components/refresh-poller";
 import { InboxTable } from "@/components/inbox-table";
+import { TopSearch } from "@/components/top-search";
 import { TrendsBanner } from "@/components/trends-banner";
 import { bulkUpdateTicketsAction, setTicketCompanyAction } from "./actions";
 
@@ -46,6 +47,9 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   return (
     <div className="p-4 sm:p-6">
       <RefreshPoller />
+      <div className="mb-4">
+        <TopSearch />
+      </div>
       {trends?.payload.computed && clusters.length > 0 && (
         <TrendsBanner
           computedAt={trends.payload.computedAt}

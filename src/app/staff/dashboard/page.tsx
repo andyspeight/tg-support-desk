@@ -6,6 +6,7 @@ import { env } from "@/lib/env";
 import { getDashboardStats } from "@/lib/db/stats";
 import { RESOLUTION_MILESTONES, ROADMAP, stageStatus, type RoadmapItemStatus } from "@/lib/roadmap";
 import { RefreshPoller } from "@/components/refresh-poller";
+import { TopSearch } from "@/components/top-search";
 
 const ITEM_DOT: Record<RoadmapItemStatus, string> = {
   done: "bg-emerald-500",
@@ -42,6 +43,10 @@ export default async function DashboardPage() {
   return (
     <div className="mx-auto max-w-5xl p-4 sm:p-6">
       <RefreshPoller intervalMs={30000} />
+
+      <div className="mb-4">
+        <TopSearch />
+      </div>
 
       <div className="flex items-baseline justify-between">
         <h1 className="text-lg font-semibold">Dashboard</h1>
