@@ -1,14 +1,18 @@
 import { env } from "@/lib/env";
 import { requireCron } from "@/lib/cron-auth";
 import { listUnemailedNotifications, markEmailed } from "@/lib/db/notifications";
+import { getTicket } from "@/lib/db/queries";
+import { listClientCompaniesCached } from "@/lib/integrations/airtable-clients";
 import { sendEmail } from "@/lib/channels/gmail";
-import type { Notification } from "@/lib/db/types";
+import { renderNotificationDigest, type NotifyEmailItem, type NotifyTicket } from "@/lib/notify-email";
+import type { Notification, Ticket } from "@/lib/db/types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 // Email mirror of in-app notifications: one digest email per recipient covering
-// their new, still-unread alerts. Dormant (no-op) until Gmail is configured.
+// their new, still-unread alerts — each with a direct link to its ticket and the
+// ticket's key details. Dormant (no-op) until Gmail is configured.
 const TYPE_LABEL: Record<string, string> = {
   assigned: "Assigned to you",
   customer_reply: "Customer reply",
@@ -29,6 +33,31 @@ export async function GET(request: Request) {
     const items = await listUnemailedNotifications(12);
     if (items.length === 0) return Response.json({ emailed: 0, recipients: 0 });
 
+    const base = env.appBaseUrl.replace(/\/$/, "");
+    const notificationsUrl = base ? `${base}/staff/notifications` : "";
+
+    // Resolve each notification's ticket once (deduped), plus a client_id→company
+    // map from one cached Airtable read — so the digest can show the details.
+    const ticketIds = [...new Set(items.map((n) => n.ticket_id).filter((id): id is string => Boolean(id)))];
+    const [ticketList, companies] = await Promise.all([
+      Promise.all(ticketIds.map((id) => getTicket(id).catch(() => null))),
+      listClientCompaniesCached().catch(() => []),
+    ]);
+    const ticketById = new Map<string, Ticket>();
+    for (const t of ticketList) if (t) ticketById.set(t.id, t);
+    const companyByClientId = new Map(companies.map((c) => [c.id, c.name] as const));
+
+    const toNotifyTicket = (t: Ticket): NotifyTicket => ({
+      reference: t.reference,
+      subject: t.subject,
+      requesterName: t.requester_name,
+      requesterEmail: t.requester_email,
+      company: (t.client_id && companyByClientId.get(t.client_id)) || null,
+      status: t.status,
+      priority: t.priority,
+      url: base ? `${base}/staff/ticket/${t.id}` : "",
+    });
+
     const byRecipient = new Map<string, Notification[]>();
     for (const n of items) {
       const list = byRecipient.get(n.recipient) ?? [];
@@ -36,22 +65,24 @@ export async function GET(request: Request) {
       byRecipient.set(n.recipient, list);
     }
 
-    const base = env.appBaseUrl.replace(/\/$/, "");
     let emailed = 0;
     for (const [recipient, list] of byRecipient) {
-      const lines = list.map((n) => `• ${TYPE_LABEL[n.type] ?? n.type}: ${n.title}${n.body ? `\n  ${n.body}` : ""}`);
-      const text = [
-        `You have ${list.length} new support desk notification${list.length === 1 ? "" : "s"}:`,
-        "",
-        ...lines,
-        "",
-        base ? `Open the desk: ${base}/staff/notifications` : "Open the desk to action these.",
-      ].join("\n");
+      const emailItems: NotifyEmailItem[] = list.map((n) => {
+        const ticket = n.ticket_id ? ticketById.get(n.ticket_id) : undefined;
+        return {
+          label: TYPE_LABEL[n.type] ?? n.type,
+          title: n.title,
+          body: n.body,
+          ticket: ticket ? toNotifyTicket(ticket) : null,
+        };
+      });
+      const { text, html } = renderNotificationDigest(emailItems, { notificationsUrl });
       try {
         await sendEmail({
           to: recipient,
           subject: list.length === 1 ? `[TG Support] ${list[0].title}` : `[TG Support] ${list.length} new notifications`,
           text,
+          html,
         });
         await markEmailed(list.map((n) => n.id));
         emailed += list.length;
