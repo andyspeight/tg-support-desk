@@ -5,6 +5,7 @@ import {
   listAllowedSenders,
   listBlockedSenders,
   listCannedResponses,
+  listCompanyDomains,
   listCompanyMembers,
   listSlaPolicies,
   listTags,
@@ -25,6 +26,7 @@ import {
   linkCompanyMemberAction,
   removeAllowedAction,
   removeBlockedAction,
+  unlinkCompanyDomainAction,
   unlinkCompanyMemberAction,
   updateCannedAction,
 } from "./actions";
@@ -34,13 +36,14 @@ function show(value: string | undefined): string {
 }
 
 export default async function SettingsPage() {
-  const [slaPolicies, canned, tags, blocked, allowed, companyLinks, companies] = await Promise.all([
+  const [slaPolicies, canned, tags, blocked, allowed, companyLinks, companyDomains, companies] = await Promise.all([
     listSlaPolicies().catch(() => []),
     listCannedResponses().catch(() => []),
     listTags().catch(() => []),
     listBlockedSenders().catch(() => []),
     listAllowedSenders().catch(() => []),
     listCompanyMembers().catch(() => []),
+    listCompanyDomains().catch(() => []),
     listAllClientCompanies().catch(() => []), // Airtable — empty on a wobble, the panel says so
   ]);
   const agents = (process.env.AGENT_EMAILS ?? "")
@@ -284,6 +287,36 @@ export default async function SettingsPage() {
             enabled. Until then, add the company in Airtable, then link the user above.
           </p>
         )}
+      </section>
+
+      <section className="mt-4 rounded-lg border border-line bg-surface p-4">
+        <h2 className="text-sm font-semibold">
+          Company domains {companyDomains.length > 0 && <span className="font-normal text-ink-3">({companyDomains.length})</span>}
+        </h2>
+        <p className="mt-1 text-xs text-ink-3">
+          Whole corporate domains tied to a company, so <span className="font-medium">everyone at that domain is associated
+          automatically</span> — no need to add each person. A domain appears here when you link someone at a corporate
+          address (from a ticket or above). Free-mail domains (gmail, outlook…) are never grouped, and an individual link
+          above always overrides the domain. Remove one to send that domain back to normal matching (existing tickets keep
+          their company).
+        </p>
+        <div className="mt-2 space-y-1.5">
+          {companyDomains.length === 0 && (
+            <p className="text-sm text-ink-3">None yet — link someone at a corporate address and their domain appears here.</p>
+          )}
+          {companyDomains.map((d) => (
+            <div key={d.id} className="flex items-center gap-2 rounded-md border border-line-soft px-2.5 py-1.5 text-sm">
+              <span className="min-w-0 flex-1 truncate font-mono text-ink">@{d.domain}</span>
+              <span className="shrink-0 truncate text-xs text-ink-2">{d.client_name ?? d.client_id}</span>
+              <form action={unlinkCompanyDomainAction} className="inline">
+                <input type="hidden" name="id" value={d.id} />
+                <button className="text-ink-3 hover:text-red-600 dark:hover:text-red-400" aria-label={`Remove domain link for ${d.domain}`}>
+                  <X className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </form>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="mt-4 rounded-lg border border-line bg-surface p-4">

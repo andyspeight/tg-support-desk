@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   allowPatternFor,
   detectAutoReply,
+  emailDomain,
   FREE_MAIL_DOMAINS,
+  isCorporateDomain,
   matchesBlocklist,
   normaliseCid,
   normaliseSubject,
@@ -13,6 +15,40 @@ import {
   stripQuotedReply,
   type GmailMessage,
 } from "./email-parse";
+
+describe("emailDomain", () => {
+  it("returns the lowercased domain after the @", () => {
+    expect(emailDomain("Jane@Acme-Travel.CO.UK")).toBe("acme-travel.co.uk");
+    expect(emailDomain("  bob@skisolutions.com ")).toBe("skisolutions.com");
+  });
+  it("returns empty string for a malformed address", () => {
+    expect(emailDomain("not-an-email")).toBe("");
+    expect(emailDomain("")).toBe("");
+  });
+});
+
+describe("isCorporateDomain", () => {
+  it("is true for a real corporate domain", () => {
+    expect(isCorporateDomain("skisolutions.com")).toBe(true);
+    expect(isCorporateDomain("acme-travel.co.uk")).toBe(true);
+  });
+  it("is false for free-mail and shared-ISP domains (never grouped by domain)", () => {
+    expect(isCorporateDomain("gmail.com")).toBe(false);
+    expect(isCorporateDomain("outlook.com")).toBe(false);
+    expect(isCorporateDomain("btconnect.com")).toBe(false); // shared corporate ISP in FREE_MAIL_DOMAINS
+    expect(isCorporateDomain("ntlworld.com")).toBe(false);
+  });
+  it("is false for an empty domain", () => {
+    expect(isCorporateDomain("")).toBe(false);
+  });
+  it("agrees with allowPatternFor's corporate/free-mail split", () => {
+    for (const email of ["jane@skisolutions.com", "bob@gmail.com", "x@btconnect.com", "y@ponteland-travel.com"]) {
+      const domain = emailDomain(email);
+      // Corporate ⇒ @domain allow-pattern; free-mail ⇒ exact address.
+      expect(allowPatternFor(email) === `@${domain}`).toBe(isCorporateDomain(domain));
+    }
+  });
+});
 
 describe("stripQuotedReply", () => {
   it("cuts Gmail-style quoted history", () => {

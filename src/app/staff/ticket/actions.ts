@@ -7,6 +7,7 @@ import { requireAgent } from "@/lib/auth";
 import { addAllowedSender, addBlockedSender, addMessage, audit, getLatestAiDraft, getTicket, getTicketByReference, heartbeatPresence, mergeTickets, setMessageAttachments, stampTicketsForEmail, unmergeTickets, updateTicket, upsertCompanyMember, type Viewer } from "@/lib/db/queries";
 import { companyNameFrom, createClientCompany, getClientById, matchClientByEmail } from "@/lib/integrations/airtable-clients";
 import { invalidateCompanyFor } from "@/lib/portal-company";
+import { linkCorporateDomain } from "@/lib/company-linking";
 import { classifyEdit, isMaterialEdit } from "@/lib/ai/draft-diff";
 import type { Ticket } from "@/lib/db/types";
 import { notify } from "@/lib/db/notifications";
@@ -461,6 +462,14 @@ export async function linkRequesterAction(formData: FormData): Promise<void> {
     client_id: clientId,
     tickets_stamped: stamped,
   });
+  // Corporate domains link the whole company so colleagues auto-associate.
+  await linkCorporateDomain({
+    actor: session.email,
+    email: ticket.requester_email,
+    clientId,
+    clientName: companyNameFrom(record),
+    target: { type: "ticket", id: ticketId },
+  });
   revalidatePath(`/staff/ticket/${ticketId}`);
 }
 
@@ -509,6 +518,13 @@ export async function createCompanyForTicketAction(
       email: email.toLowerCase(),
       name: parsed.data.companyName,
       tickets_stamped: stamped,
+    });
+    await linkCorporateDomain({
+      actor: session.email,
+      email,
+      clientId: record.id,
+      clientName: companyNameFrom(record),
+      target: { type: "ticket", id: ticket.id },
     });
     revalidatePath(`/staff/ticket/${ticket.id}`);
     return { ok: true, message: `Created ${companyNameFrom(record)} and linked ${email}.` };

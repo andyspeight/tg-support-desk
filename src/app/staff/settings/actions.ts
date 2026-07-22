@@ -13,6 +13,7 @@ import {
   createCannedResponse,
   createTag,
   deleteCannedResponse,
+  deleteCompanyDomain,
   deleteCompanyMember,
   deleteTag,
   removeAllowedSender,
@@ -22,7 +23,8 @@ import {
   upsertCompanyMember,
 } from "@/lib/db/queries";
 import { companyNameFrom, createClientCompany, getClientById, matchClientByEmail } from "@/lib/integrations/airtable-clients";
-import { invalidateCompanyFor } from "@/lib/portal-company";
+import { invalidateCompanyFor, invalidateCompanyForDomain } from "@/lib/portal-company";
+import { linkCorporateDomain } from "@/lib/company-linking";
 
 export type EraseResult = { ok: boolean; message: string };
 
@@ -205,6 +207,10 @@ export async function linkCompanyMemberAction(formData: FormData): Promise<void>
     client_id: none ? null : clientId,
     tickets_stamped: stamped,
   });
+  // Corporate domains link the whole company so colleagues auto-associate.
+  if (!none && clientName) {
+    await linkCorporateDomain({ actor: session.email, email, clientId, clientName });
+  }
   revalidatePath("/staff/settings");
 }
 
@@ -250,6 +256,22 @@ export async function createCompanyAction(
     console.error("createCompanyAction failed:", error);
     return { ok: false, message: "Airtable wouldn't save the new company (the desk's write token may be missing create access). Nothing was saved." };
   }
+}
+
+/** Remove a domain-level link — that domain goes back to normal Airtable
+ *  matching. Historic tickets keep their company (like unlinking a person). */
+export async function unlinkCompanyDomainAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const id = z.string().uuid().parse(formData.get("id"));
+  const removed = await deleteCompanyDomain(id);
+  if (removed) {
+    invalidateCompanyForDomain(removed.domain);
+    await audit("human", session.email, "company_domain.unlinked", undefined, {
+      domain: removed.domain,
+      client_id: removed.client_id,
+    });
+  }
+  revalidatePath("/staff/settings");
 }
 
 /** Remove an explicit link — the email goes back to normal Airtable matching. */

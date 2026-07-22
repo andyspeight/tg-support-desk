@@ -1,15 +1,22 @@
 import "server-only";
 import { matchClientByEmail, companyNameFrom, type ClientRecord } from "@/lib/integrations/airtable-clients";
-import { getCompanyMember } from "@/lib/db/queries";
+import {
+  getCompanyMember,
+  getCompanyDomain,
+  upsertCompanyDomainIfAbsent,
+  stampTicketsForDomain,
+} from "@/lib/db/queries";
+import { emailDomain, isCorporateDomain } from "@/lib/channels/email-parse";
 
-// Which company does a viewer/requester belong to? Resolution order:
-//   1. An explicit link set by Travelgenix in Settings (company_members) — a
-//      linked company wins outright, and a "no company" row blocks matching
-//      entirely (e.g. an ex-employee whose @company.com address would
-//      otherwise domain-match).
-//   2. Airtable, the source of truth for client identity (brief §4): exact
-//      contact-email match, then company domain — with the freemail guard, so
-//      a gmail/hotmail address never inherits a whole company by domain.
+// Which company does a viewer/requester belong to? Resolution order (first hit
+// wins; a later step never overrides an earlier one):
+//   1. Exact-email link set by Travelgenix (company_members). A linked company
+//      wins outright; a "no company" row blocks matching entirely (e.g. an
+//      ex-employee whose @company.com address would otherwise domain-match).
+//   2. Corporate-domain link (company_domains) — set when staff link anyone at a
+//      corporate domain, so colleagues auto-associate. Never a free-mail domain.
+//   3. Airtable, the source of truth for client identity (brief §4): exact
+//      contact-email match, then company domain — with the freemail guard.
 // Resolved on every portal view, so it's cached briefly per instance to stay
 // inside Airtable's rate limits; fails open to null (own-tickets-only) so an
 // Airtable wobble never locks a client out.
@@ -26,6 +33,50 @@ export function invalidateCompanyFor(email: string): void {
   cache.delete(email.trim().toLowerCase());
 }
 
+/** Drop cached resolutions for every address at a domain — called when a
+ *  domain-level link changes so colleagues pick it up on their next view. */
+export function invalidateCompanyForDomain(domain: string): void {
+  const suffix = `@${domain.trim().toLowerCase()}`;
+  for (const key of cache.keys()) if (key.endsWith(suffix)) cache.delete(key);
+}
+
+/**
+ * Explicit (Travelgenix-managed) company for an email, WITHOUT the Airtable
+ * fallback: an exact company_members row first (a null client_id is an explicit
+ * "no company" block that stops here), then a corporate-domain company_domains
+ * link. `resolved` is true when an explicit rule applied — so the caller knows
+ * not to fall through to Airtable; `value` is the company, or null for a
+ * block / no rule.
+ */
+async function explicitCompany(key: string): Promise<{ resolved: boolean; value: PortalCompany | null }> {
+  const member = await getCompanyMember(key);
+  if (member) {
+    return {
+      resolved: true,
+      value: member.client_id ? { id: member.client_id, name: member.client_name ?? "your company" } : null,
+    };
+  }
+  const domain = emailDomain(key);
+  if (isCorporateDomain(domain)) {
+    const dom = await getCompanyDomain(domain);
+    if (dom?.client_id) return { resolved: true, value: { id: dom.client_id, name: dom.client_name ?? "your company" } };
+  }
+  return { resolved: false, value: null };
+}
+
+/** Explicit-only resolution (no Airtable) — used on the ticket-ingest hot path
+ *  to stamp a linked person/domain's company immediately and cheaply, so a
+ *  manual link always carries to future tickets without waiting on the AI loop. */
+export async function explicitCompanyForEmail(email: string): Promise<PortalCompany | null> {
+  const key = email.trim().toLowerCase();
+  if (!key) return null;
+  try {
+    return (await explicitCompany(key)).value;
+  } catch {
+    return null; // fail open
+  }
+}
+
 export async function companyForEmail(email: string): Promise<PortalCompany | null> {
   const key = email.trim().toLowerCase();
   if (!key) return null;
@@ -34,12 +85,11 @@ export async function companyForEmail(email: string): Promise<PortalCompany | nu
 
   let value: PortalCompany | null = null;
   try {
-    const explicit = await getCompanyMember(key);
-    if (explicit) {
-      value = explicit.client_id ? { id: explicit.client_id, name: explicit.client_name ?? "your company" } : null;
+    const explicit = await explicitCompany(key);
+    if (explicit.resolved) {
+      value = explicit.value; // explicit link/block wins — never fall through to Airtable
     } else {
-      let record: ClientRecord | null = null;
-      record = await matchClientByEmail(key);
+      const record: ClientRecord | null = await matchClientByEmail(key);
       if (record) value = { id: record.id, name: companyNameFrom(record) };
     }
   } catch {
@@ -51,4 +101,43 @@ export async function companyForEmail(email: string): Promise<PortalCompany | nu
     for (const [k, v] of cache) if (v.at < cutoff) cache.delete(k);
   }
   return value;
+}
+
+/**
+ * When Travelgenix links a person at a CORPORATE domain to a company, also link
+ * the whole domain so colleagues auto-associate — create-if-absent: the first
+ * company to claim a domain keeps it; a different later link is reported as a
+ * conflict, not a silent takeover. Free-mail domains (and a null clientId) are a
+ * no-op — the exact-email link alone stands, exactly as before. On a fresh link
+ * it back-stamps the domain's un-stamped tickets and refreshes the cache.
+ * Best-effort at the domain layer: never throws (the exact-email link already
+ * succeeded before this is called).
+ */
+export async function linkDomainForCompany(input: {
+  email: string;
+  clientId: string;
+  clientName: string | null;
+  createdBy: string;
+}): Promise<{ created: boolean; conflictClientId: string | null; stamped: number }> {
+  const domain = emailDomain(input.email);
+  if (!isCorporateDomain(domain)) return { created: false, conflictClientId: null, stamped: 0 };
+  try {
+    const { created, existing } = await upsertCompanyDomainIfAbsent({
+      domain,
+      clientId: input.clientId,
+      clientName: input.clientName,
+      createdBy: input.createdBy,
+    });
+    if (!created) {
+      const conflictClientId =
+        existing && existing.client_id && existing.client_id !== input.clientId ? existing.client_id : null;
+      return { created: false, conflictClientId, stamped: 0 };
+    }
+    const stamped = await stampTicketsForDomain(domain, input.clientId);
+    invalidateCompanyForDomain(domain);
+    return { created: true, conflictClientId: null, stamped };
+  } catch (error) {
+    console.error("linkDomainForCompany failed:", error);
+    return { created: false, conflictClientId: null, stamped: 0 };
+  }
 }

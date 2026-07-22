@@ -223,6 +223,93 @@ export async function deleteCompanyMember(id: string): Promise<CompanyMember | n
   return data;
 }
 
+// ── Company domains — the domain-level companion to company_members. Linking a
+// corporate-email person to a company also links their whole domain, so
+// colleagues auto-associate. Free-mail domains are never written here (guarded
+// by the caller). An individual company_members row always overrides a domain.
+export type CompanyDomain = Tables<"company_domains">;
+
+export async function listCompanyDomains(): Promise<CompanyDomain[]> {
+  const { data, error } = await db()
+    .from("company_domains")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`listCompanyDomains: ${error.message}`);
+  return data ?? [];
+}
+
+/** The company linked to a whole domain, if Travelgenix has set one. */
+export async function getCompanyDomain(domain: string): Promise<CompanyDomain | null> {
+  const { data, error } = await db()
+    .from("company_domains")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .eq("domain", domain.trim().toLowerCase())
+    .maybeSingle();
+  if (error) throw new Error(`getCompanyDomain: ${error.message}`);
+  return data;
+}
+
+/**
+ * Create a domain→company link only if the domain isn't already claimed
+ * (ON CONFLICT DO NOTHING). The first company to claim a domain keeps it — a
+ * later, different link is reported as a conflict rather than silently
+ * hijacking the whole domain. Returns whether a row was created and the current
+ * row (the new one, or the pre-existing one on conflict).
+ */
+export async function upsertCompanyDomainIfAbsent(input: {
+  domain: string;
+  clientId: string;
+  clientName: string | null;
+  createdBy: string;
+  source?: string;
+}): Promise<{ created: boolean; existing: CompanyDomain | null }> {
+  const domain = input.domain.trim().toLowerCase();
+  const { data: inserted, error } = await db()
+    .from("company_domains")
+    .upsert(
+      {
+        tenant_id: env.tenantId,
+        domain,
+        client_id: input.clientId,
+        client_name: input.clientName,
+        source: input.source ?? "manual",
+        created_by: input.createdBy,
+      },
+      { onConflict: "tenant_id,domain", ignoreDuplicates: true },
+    )
+    .select()
+    .maybeSingle();
+  if (error) throw new Error(`upsertCompanyDomainIfAbsent: ${error.message}`);
+  if (inserted) return { created: true, existing: inserted };
+  return { created: false, existing: await getCompanyDomain(domain) };
+}
+
+/** Backfill un-stamped tickets from a domain onto its company (RPC, exact-domain,
+ *  excludes any address with its own company_members row, never overwrites). */
+export async function stampTicketsForDomain(domain: string, clientId: string): Promise<number> {
+  const { data, error } = await db().rpc("stamp_tickets_for_domain", {
+    p_tenant_id: env.tenantId,
+    p_domain: domain.trim().toLowerCase(),
+    p_client_id: clientId,
+  });
+  if (error) throw new Error(`stampTicketsForDomain: ${error.message}`);
+  return (data as number | null) ?? 0;
+}
+
+export async function deleteCompanyDomain(id: string): Promise<CompanyDomain | null> {
+  const { data, error } = await db()
+    .from("company_domains")
+    .delete()
+    .eq("id", id)
+    .eq("tenant_id", env.tenantId)
+    .select()
+    .maybeSingle();
+  if (error) throw new Error(`deleteCompanyDomain: ${error.message}`);
+  return data;
+}
+
 /** Everything the viewer sees on the portal home: their own tickets plus their
  *  company's (deduped, newest activity first). */
 export async function listPortalTickets(email: string, clientId: string | null): Promise<Ticket[]> {

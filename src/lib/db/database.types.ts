@@ -113,6 +113,47 @@ export type Database = {
         }
         Relationships: []
       }
+      company_domains: {
+        Row: {
+          client_id: string | null
+          client_name: string | null
+          created_at: string
+          created_by: string | null
+          domain: string
+          id: string
+          source: string
+          tenant_id: string
+        }
+        Insert: {
+          client_id?: string | null
+          client_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          domain: string
+          id?: string
+          source?: string
+          tenant_id?: string
+        }
+        Update: {
+          client_id?: string | null
+          client_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          domain?: string
+          id?: string
+          source?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_domains_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_members: {
         Row: {
           client_id: string | null
@@ -1042,6 +1083,10 @@ export type Database = {
           rank: number
           snippet: string
         }[]
+      }
+      stamp_tickets_for_domain: {
+        Args: { p_client_id: string; p_domain: string; p_tenant_id: string }
+        Returns: number
       }
       tickets_awaiting_response: {
         Args: { p_tenant_id?: string }

@@ -354,6 +354,18 @@ export const FREE_MAIL_DOMAINS = new Set([
   "earthlink.net",
 ]);
 
+/** The lowercased domain part of an email (after the @), or "" if malformed. */
+export function emailDomain(email: string): string {
+  return email.toLowerCase().trim().split("@")[1] ?? "";
+}
+
+/** A real corporate domain — present and NOT a free/ISP/consumer-mail domain.
+ *  The single test used to decide whether a whole domain may be grouped as one
+ *  company (allow-listing, and domain-level company links). */
+export function isCorporateDomain(domain: string): boolean {
+  return !!domain && !FREE_MAIL_DOMAINS.has(domain);
+}
+
 /**
  * The allow-list pattern to store when a human approves a sender. Corporate
  * addresses are allow-listed by domain ("@acme.com") so the rest of that client
@@ -362,9 +374,9 @@ export const FREE_MAIL_DOMAINS = new Set([
  */
 export function allowPatternFor(email: string): string {
   const lower = email.toLowerCase().trim();
-  const domain = lower.split("@")[1] ?? "";
+  const domain = emailDomain(lower);
   if (!domain) return lower; // malformed — store as-is rather than "@"
-  return FREE_MAIL_DOMAINS.has(domain) ? lower : `@${domain}`;
+  return isCorporateDomain(domain) ? `@${domain}` : lower;
 }
 
 export function normaliseSubject(subject: string): string {

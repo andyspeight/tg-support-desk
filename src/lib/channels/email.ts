@@ -12,6 +12,7 @@ import {
   updateTicket,
 } from "@/lib/db/queries";
 import { matchClientByEmail } from "@/lib/integrations/airtable-clients";
+import { explicitCompanyForEmail } from "@/lib/portal-company";
 import { notify, ticketRecipients } from "@/lib/db/notifications";
 import type { Message, Ticket } from "@/lib/db/types";
 import type { Json } from "@/lib/db/database.types";
@@ -124,6 +125,25 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
       auto_reply: parsed.isAutoReply,
       held_for_approval: held,
     });
+
+    // Stamp the company from an explicit link (this exact address, or its
+    // corporate domain) at creation, so a manually-linked person or domain shows
+    // its company immediately and on EVERY future ticket — not only if/when the
+    // AI resolve loop later runs. Cheap Supabase lookups (no Airtable on the
+    // ingest hot path); the Airtable fallback still runs later in the loop.
+    // Best-effort — a lookup failure never blocks ingest.
+    try {
+      const company = await explicitCompanyForEmail(parsed.fromEmail);
+      if (company) {
+        ticket = await updateTicket(ticket.id, { client_id: company.id });
+        await audit("system", "email-channel", "ticket.client_matched", { type: "ticket", id: ticket.id }, {
+          client_id: company.id,
+          via: "explicit_link",
+        });
+      }
+    } catch (error) {
+      console.error("client match at ingest failed:", error);
+    }
   } else if (ticket.status === "awaiting_approval") {
     // A held sender wrote again before approval — keep it parked, don't reopen.
     held = true;

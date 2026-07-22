@@ -6,6 +6,7 @@ import { requireAgent } from "@/lib/auth";
 import { audit, bulkUpdateTickets, getTicket, stampTicketsForEmail, upsertCompanyMember } from "@/lib/db/queries";
 import { companyNameFrom, getClientById } from "@/lib/integrations/airtable-clients";
 import { invalidateCompanyFor } from "@/lib/portal-company";
+import { linkCorporateDomain } from "@/lib/company-linking";
 import { notify } from "@/lib/db/notifications";
 import { env } from "@/lib/env";
 
@@ -56,7 +57,7 @@ export async function bulkUpdateTicketsAction(formData: FormData): Promise<void>
 
 const setCompanySchema = z.object({
   ticketId: z.string().uuid(),
-  clientId: z.string().trim().min(1),
+  clientId: z.string().trim().regex(/^rec[A-Za-z0-9]{14}$/, "Invalid company id"),
 });
 
 /**
@@ -85,6 +86,14 @@ export async function setTicketCompanyAction(formData: FormData): Promise<void> 
     email: ticket.requester_email,
     client_id: clientId,
     via: "inbox",
+  });
+  // Corporate domains link the whole company so colleagues auto-associate.
+  await linkCorporateDomain({
+    actor: session.email,
+    email: ticket.requester_email,
+    clientId,
+    clientName: companyNameFrom(record),
+    target: { type: "ticket", id: ticketId },
   });
   revalidatePath("/staff/inbox");
 }
