@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { env } from "@/lib/env";
 import { getTicketWithMessages } from "@/lib/db/queries";
 import { searchKb } from "./kb-search";
+import { reversesStance } from "./rewrite-guard";
 
 // Agent copilot: drafting and rewriting help for the human side. Grounded in
 // the same KB as the resolution agent, in Travelgenix brand voice. These
@@ -88,10 +89,20 @@ export async function copilotSummarise(ticketId: string): Promise<string> {
   return complete(env.utilityModel, system, threadText(loaded.messages), 500);
 }
 
-/** Rewrite agent-supplied text into brand voice. */
+/** Rewrite agent-supplied text into brand voice — WORDING ONLY, never the
+ *  substance. It polishes how the reply reads; it must not change what it says. */
 export async function copilotRephrase(text: string): Promise<string> {
-  const system = `Rewrite the agent's draft into ${BRAND_VOICE} Keep the meaning and any specifics exactly; only improve tone and clarity. Return only the rewritten text.`;
-  return complete(env.utilityModel, system, text);
+  const system = `You polish a support agent's draft reply. Rewrite ONLY the wording — warmth, clarity, professionalism — into ${BRAND_VOICE}
+Preserve the agent's message exactly: the same answer, the same decision, the same stance. These are hard rules you must never break:
+- Never reverse the meaning. A "no" stays a no; "we can't" / "we won't" / "that's not possible" stay refusals. Never turn a refusal into an acceptance or a maybe.
+- Never add anything the agent didn't write — no new offers, promises, next steps, apologies, or requests for information.
+- You are NOT answering the customer. You are only re-wording what the agent wrote.
+- If the draft is short (e.g. "No, we can't do that"), keep it short — make it polite, not longer or different in substance.
+Return only the rewritten text, nothing else.`;
+  const out = await complete(env.utilityModel, system, text);
+  // Safety net: if the rewrite dropped the refusal (a likely "no" → "yes"
+  // flip), keep the agent's own words rather than hand back a reversal.
+  return reversesStance(text, out) ? text.trim() : out;
 }
 
 /** Fix spelling, grammar and punctuation only — UK English — without touching
@@ -143,11 +154,21 @@ export async function copilotReview(ticketId: string, text: string): Promise<Rep
     // Thread unavailable — fall back to a tone-only review.
   }
 
-  const system = `You quality-check a support reply a Travelgenix agent is about to send. Busy agents are often too curt, blunt or brief. Judge the draft on: tone (warm and human, never abrupt or dismissive), whether it actually addresses the customer's message, and ${BRAND_VOICE}
-Respond with ONLY minified JSON: {"verdict":"ok"|"revise","issues":["short issue"],"rewrite":"full improved reply"}.
-Use "ok" when the draft is already warm, clear and complete (issues [], rewrite ""). Use "revise" when it is curt, cold, incomplete or off-voice: give 1-3 short specific issues and a full rewrite that keeps EVERY fact, link and specific the agent wrote — improve only tone, clarity and completeness. Never add facts, promises, refunds, credits or commitments the agent did not make.`;
-  const prompt = `Customer's latest message:\n${question || "(unavailable — judge tone and clarity only)"}\n\nAgent's draft reply:\n${text}`;
-  return parseReview(await complete(env.utilityModel, system, prompt, 1200));
+  const system = `You quality-check a support reply a Travelgenix agent is about to send, for TONE ONLY. Busy agents can be blunt or curt; your job is to catch a reply that would read as rude, cold, dismissive or abrupt and offer a warmer wording of THE SAME MESSAGE. ${BRAND_VOICE}
+These are hard rules you must never break:
+- Preserve the agent's answer, decision and stance exactly. A "no" stays a firm no; "we can't do that" stays a refusal. Never reverse the meaning, never soften a decision into a maybe or a yes.
+- Never add offers, promises, next steps, requests for information, or any fact the agent did not write. Warmer wording only — not more content.
+- A polite refusal, or a short answer, is NOT a problem. Only flag genuine rudeness, coldness or abruptness. If the draft is civil, return "ok".
+Respond with ONLY minified JSON: {"verdict":"ok"|"revise","issues":["short issue"],"rewrite":"the same reply, reworded warmer"}.
+Use "ok" when the draft is already civil and on-voice (issues [], rewrite ""). Use "revise" ONLY for rudeness, coldness or abruptness: give 1-3 short issues and a rewrite that keeps the agent's exact answer and every fact, link and specific — changing wording only.`;
+  const prompt = `Customer's latest message:\n${question || "(unavailable — judge tone only)"}\n\nAgent's draft reply:\n${text}`;
+  const review = parseReview(await complete(env.utilityModel, system, prompt, 1200));
+  // Safety net: never surface a rewrite that flipped the agent's refusal into
+  // an acceptance — drop it and let the agent send their own words.
+  if (review.rewrite && reversesStance(text, review.rewrite)) {
+    return { verdict: "ok", issues: [], rewrite: "" };
+  }
+  return review;
 }
 
 /** Self-improvement loop: turn a resolved ticket into a reusable KB article
