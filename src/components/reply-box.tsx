@@ -646,6 +646,7 @@ export function ReplyBox({ ticketId, canned, sendReply, addNote, vars, copilot, 
         >
           <option value="waiting_on_customer">then → Waiting on customer</option>
           <option value="pending">then → Pending</option>
+          <option value="awaiting_supplier">then → Awaiting supplier</option>
           <option value="resolved">then → Resolve</option>
           <option value="closed">then → Close</option>
         </select>

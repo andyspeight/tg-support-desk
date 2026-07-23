@@ -222,7 +222,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const clientPortalHref = `/?as=${encodeURIComponent(ticket.requester_email)}&from=${ticket.id}`;
 
   // Lifecycle quick-actions (Zendesk-style): resolve/close/reopen by current state.
-  const lifecycleOpen = ["new", "ai_working", "waiting_on_customer", "escalated", "needs_review", "pending"].includes(ticket.status);
+  const lifecycleOpen = ["new", "ai_working", "waiting_on_customer", "escalated", "needs_review", "pending", "awaiting_supplier"].includes(ticket.status);
   const lifecycleResolved = ticket.status === "resolved";
   const lifecycleClosed = ticket.status === "closed";
 
@@ -562,6 +562,68 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           )}
         </div>
 
+        {/* Ticket options — pinned directly under the customer card so the triage
+            controls (status, supplier ref, priority, assignee, tags) are the first
+            thing to hand, above the reference panels below. */}
+        <form action={updateTicketAction} className="space-y-3 rounded-lg border border-line bg-surface p-3 text-sm">
+          <input type="hidden" name="ticketId" value={ticket.id} />
+          <div>
+            <label className="text-xs font-medium text-ink-2">Status</label>
+            <select name="status" defaultValue={ticket.status} className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5">
+              <option value="new">New</option>
+              <option value="ai_working">AI working</option>
+              <option value="waiting_on_customer">Waiting on customer</option>
+              <option value="pending">Pending</option>
+              <option value="awaiting_supplier">Awaiting supplier</option>
+              <option value="escalated">Escalated</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-ink-2">Supplier ticket ref</label>
+            <input
+              name="supplierRef"
+              defaultValue={ticket.supplier_ticket_ref ?? ""}
+              placeholder="e.g. Amadeus #48213"
+              className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5"
+            />
+            <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
+              The third party&apos;s own ticket/case number, for when this is with a supplier.
+            </p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-ink-2">Priority</label>
+            <select name="priority" defaultValue={ticket.priority} className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5">
+              <option value="p1">P1 — Urgent</option>
+              <option value="p2">P2 — Standard</option>
+              <option value="p3">P3 — Low</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-ink-2">Assignee</label>
+            <select name="assignee" defaultValue={ticket.assignee ?? ""} className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5">
+              <option value="">Unassigned</option>
+              {env.agentEmails.map((email) => (
+                <option key={email} value={email}>
+                  {email}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-ink-2">Tags (comma-separated)</label>
+            <input
+              name="tags"
+              defaultValue={ticket.tags.join(", ")}
+              className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5"
+            />
+          </div>
+          <button className="w-full rounded-md border border-line bg-surface-2 px-3 py-1.5 font-medium text-ink hover:bg-line">
+            Update ticket
+          </button>
+        </form>
+
         {careSignal ? (
           <div>
             <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Care (CRM)</h2>
@@ -605,52 +667,6 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         )}
 
         <RelevantKbPanel articles={relevantKb} />
-
-        <form action={updateTicketAction} className="space-y-3 text-sm">
-          <input type="hidden" name="ticketId" value={ticket.id} />
-          <div>
-            <label className="text-xs font-medium text-ink-2">Status</label>
-            <select name="status" defaultValue={ticket.status} className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5">
-              <option value="new">New</option>
-              <option value="ai_working">AI working</option>
-              <option value="waiting_on_customer">Waiting on customer</option>
-              <option value="pending">Pending</option>
-              <option value="escalated">Escalated</option>
-              <option value="resolved">Resolved</option>
-              <option value="closed">Closed</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-ink-2">Priority</label>
-            <select name="priority" defaultValue={ticket.priority} className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5">
-              <option value="p1">P1 — Urgent</option>
-              <option value="p2">P2 — Standard</option>
-              <option value="p3">P3 — Low</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-ink-2">Assignee</label>
-            <select name="assignee" defaultValue={ticket.assignee ?? ""} className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5">
-              <option value="">Unassigned</option>
-              {env.agentEmails.map((email) => (
-                <option key={email} value={email}>
-                  {email}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-ink-2">Tags (comma-separated)</label>
-            <input
-              name="tags"
-              defaultValue={ticket.tags.join(", ")}
-              className="mt-1 w-full rounded-md border border-line bg-surface px-2 py-1.5"
-            />
-          </div>
-          <button className="w-full rounded-md border border-line bg-surface px-3 py-1.5 font-medium text-ink hover:bg-surface-2">
-            Update ticket
-          </button>
-        </form>
 
         {/* Watch + snooze */}
         <div className="space-y-2 border-t border-line-soft pt-3 text-sm">

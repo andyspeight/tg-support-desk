@@ -5,6 +5,7 @@ const STATUS_STYLES: Record<TicketStatus, { label: string; className: string }> 
   ai_working: { label: "AI working", className: "bg-accent-50 text-accent-700 ring-accent-200 dark:bg-accent-500/10 dark:text-accent-300 dark:ring-accent-500/25" },
   waiting_on_customer: { label: "Waiting on customer", className: "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/25" },
   pending: { label: "Pending", className: "bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/25" },
+  awaiting_supplier: { label: "Awaiting supplier", className: "bg-teal-50 text-teal-700 ring-teal-200 dark:bg-teal-500/10 dark:text-teal-300 dark:ring-teal-500/25" },
   awaiting_approval: { label: "Pending approval", className: "bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-500/25" },
   needs_review: { label: "Needs review", className: "bg-orange-50 text-orange-700 ring-orange-200 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-500/25" },
   escalated: { label: "Escalated", className: "bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/25" },

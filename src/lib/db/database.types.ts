@@ -920,6 +920,7 @@ export type Database = {
           snoozed_until: string | null
           status: Database["public"]["Enums"]["ticket_status"]
           subject: string
+          supplier_ticket_ref: string | null
           tags: string[]
           tenant_id: string
           updated_at: string
@@ -950,6 +951,7 @@ export type Database = {
           snoozed_until?: string | null
           status?: Database["public"]["Enums"]["ticket_status"]
           subject?: string
+          supplier_ticket_ref?: string | null
           tags?: string[]
           tenant_id?: string
           updated_at?: string
@@ -980,6 +982,7 @@ export type Database = {
           snoozed_until?: string | null
           status?: Database["public"]["Enums"]["ticket_status"]
           subject?: string
+          supplier_ticket_ref?: string | null
           tags?: string[]
           tenant_id?: string
           updated_at?: string
@@ -1127,6 +1130,7 @@ export type Database = {
         | "pending"
         | "awaiting_approval"
         | "needs_review"
+        | "awaiting_supplier"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1278,6 +1282,7 @@ export const Constants = {
         "pending",
         "awaiting_approval",
         "needs_review",
+        "awaiting_supplier",
       ],
     },
   },

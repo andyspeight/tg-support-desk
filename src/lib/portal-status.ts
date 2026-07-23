@@ -16,6 +16,10 @@ export function clientStatus(status: string): { label: string; tone: string } {
       return { label: "Closed", tone: "bg-surface-2 text-ink-3" };
     case "pending":
       return { label: "In progress", tone: "bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300" };
+    case "awaiting_supplier":
+      // Blocked on a third party — the customer just needs to know it's in hand,
+      // not the internal supplier detail.
+      return { label: "In progress", tone: "bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300" };
     case "awaiting_approval":
       return { label: "Received", tone: "bg-surface-2 text-ink-2" };
     case "needs_review":
