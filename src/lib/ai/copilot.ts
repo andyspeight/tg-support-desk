@@ -27,6 +27,19 @@ async function complete(model: string, system: string, prompt: string, maxTokens
     .trim();
 }
 
+/** Run the copilot model, falling back to the utility model if the upgraded
+ *  model errors (e.g. it isn't enabled on the account yet). Keeps the tool
+ *  working — on the previous model — instead of failing outright. */
+async function completeCopilot(system: string, prompt: string, maxTokens = 1500): Promise<string> {
+  try {
+    return await complete(env.copilotModel, system, prompt, maxTokens);
+  } catch (error) {
+    if (env.copilotModel === env.utilityModel) throw error;
+    console.error(`copilot model ${env.copilotModel} failed; falling back to ${env.utilityModel}:`, error);
+    return complete(env.utilityModel, system, prompt, maxTokens);
+  }
+}
+
 function threadText(messages: { role: string; body_text: string }[]): string {
   const label: Record<string, string> = {
     customer: "Customer",
@@ -99,7 +112,7 @@ Preserve the agent's message exactly: the same answer, the same decision, the sa
 - You are NOT answering the customer. You are only re-wording what the agent wrote.
 - If the draft is short (e.g. "No, we can't do that"), keep it short — make it polite, not longer or different in substance.
 Return only the rewritten text, nothing else.`;
-  const out = await complete(env.utilityModel, system, text);
+  const out = await completeCopilot(system, text);
   // Safety net: if the rewrite dropped the refusal (a likely "no" → "yes"
   // flip), keep the agent's own words rather than hand back a reversal.
   return reversesStance(text, out) ? text.trim() : out;
@@ -118,7 +131,7 @@ export async function copilotProofread(text: string): Promise<string> {
 /** Translate text into the target language, preserving meaning and tone. */
 export async function copilotTranslate(text: string, targetLanguage: string): Promise<string> {
   const system = `Translate the text into ${targetLanguage}. Preserve meaning, tone and formatting. Return only the translation.`;
-  return complete(env.utilityModel, system, text);
+  return completeCopilot(system, text);
 }
 
 export type ReplyReview = { verdict: "ok" | "revise"; issues: string[]; rewrite: string };
@@ -162,7 +175,7 @@ These are hard rules you must never break:
 Respond with ONLY minified JSON: {"verdict":"ok"|"revise","issues":["short issue"],"rewrite":"the same reply, reworded warmer"}.
 Use "ok" when the draft is already civil and on-voice (issues [], rewrite ""). Use "revise" ONLY for rudeness, coldness or abruptness: give 1-3 short issues and a rewrite that keeps the agent's exact answer and every fact, link and specific — changing wording only.`;
   const prompt = `Customer's latest message:\n${question || "(unavailable — judge tone only)"}\n\nAgent's draft reply:\n${text}`;
-  const review = parseReview(await complete(env.utilityModel, system, prompt, 1200));
+  const review = parseReview(await completeCopilot(system, prompt, 1200));
   // Safety net: never surface a rewrite that flipped the agent's refusal into
   // an acceptance — drop it and let the agent send their own words.
   if (review.rewrite && reversesStance(text, review.rewrite)) {

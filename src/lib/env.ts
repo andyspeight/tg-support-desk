@@ -41,6 +41,13 @@ export const env = {
   get utilityModel() {
     return optional("UTILITY_MODEL", "claude-haiku-4-5");
   },
+  // The agent copilot's answer-touching tools (rephrase, the pre-send tone
+  // check, translate) rewrite text a customer will read, so they run a step
+  // above the utility model to preserve meaning reliably. Override via
+  // COPILOT_MODEL; falls back to the utility model if this model errors.
+  get copilotModel() {
+    return optional("COPILOT_MODEL", "claude-sonnet-5");
+  },
   get voyageApiKey() {
     return required("VOYAGE_API_KEY");
   },
