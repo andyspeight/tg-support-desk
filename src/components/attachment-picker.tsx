@@ -15,9 +15,12 @@ function formatBytes(bytes: number): string {
 }
 
 /**
- * Drag-and-drop attachment picker with chips. Keeps a hidden <input name>
- * in sync (via DataTransfer) so it works inside a plain <form action>, and also
- * reports files through onFilesChange for forms that build FormData by hand.
+ * Drag-and-drop attachment picker with chips. Reports files through
+ * onFilesChange so the surrounding form can build FormData by hand and submit
+ * the real File objects — the reliable path on every device. It also mirrors
+ * them into a hidden <input name> as progressive enhancement, but nothing
+ * depends on that: assigning input.files fails on some browsers (iOS Safari),
+ * which is exactly why portal screenshots were going missing.
  */
 export function AttachmentPicker({
   name = "files",
@@ -35,10 +38,17 @@ export function AttachmentPicker({
     const capped = next.slice(0, MAX_FILES);
     setFiles(capped);
     onFilesChange?.(capped);
-    if (inputRef.current) {
-      const dt = new DataTransfer();
-      capped.forEach((f) => dt.items.add(f));
-      inputRef.current.files = dt.files;
+    // Best-effort mirror into the hidden input. Wrapped because assigning
+    // .files (or constructing DataTransfer) throws on some browsers — it must
+    // never break selection, since the form submits via onFilesChange anyway.
+    try {
+      if (inputRef.current) {
+        const dt = new DataTransfer();
+        capped.forEach((f) => dt.items.add(f));
+        inputRef.current.files = dt.files;
+      }
+    } catch {
+      /* hidden-input mirror unsupported here; onFilesChange is the real path */
     }
   }
 

@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ArrowUpRight, BookOpen, Lightbulb, Loader2 } from "lucide-react";
+import { ArrowUpRight, BookOpen, Lightbulb, Loader2, Paperclip } from "lucide-react";
 import type { DraftAssist } from "@/lib/ai/copilot";
 import { safeHttpUrl } from "@/lib/kb-links";
 import { AttachmentPicker } from "@/components/attachment-picker";
+import { mentionsAttachment } from "@/lib/attachment-hint";
 
 const FIELD =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] text-ink placeholder:text-ink-3 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20";
@@ -28,23 +29,33 @@ export function NewTicketForm({
 }) {
   const [subject, setSubject] = useState(defaultSubject ?? "");
   const [message, setMessage] = useState(defaultBody ?? "");
+  const [files, setFiles] = useState<File[]>([]);
   const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [assistResult, setAssistResult] = useState<DraftAssist | null>(null);
   const [reviewed, setReviewed] = useState(false);
+  const [attachNudged, setAttachNudged] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
-  const confirmedRef = useRef(false);
+
+  // Build the payload by hand and append the tracked File objects directly, so
+  // the upload never depends on a file input's .files being programmatically
+  // writable (unreliable on iOS Safari and some mobile browsers — the reason
+  // portal screenshots were silently not arriving).
+  async function doSubmit() {
+    const form = formRef.current;
+    if (!form) return;
+    setSubmitting(true);
+    const fd = new FormData(form);
+    fd.delete("files");
+    for (const f of files) fd.append("files", f);
+    await raise(fd); // server action redirects on success
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    // Second pass (confirmed): let the native server-action submit through so
-    // its redirect works.
-    if (confirmedRef.current) {
-      setSubmitting(true);
-      return;
-    }
     e.preventDefault();
     if (checking || submitting) return;
 
+    // First: a quick KB look — may pause to suggest an article before sending.
     if (!reviewed) {
       let result: DraftAssist | null = null;
       if (message.trim().length >= 15) {
@@ -61,11 +72,18 @@ export function NewTicketForm({
       if (hasHelp(result)) return; // pause for confirmation
     }
 
-    confirmedRef.current = true;
-    formRef.current?.requestSubmit();
+    // Catch the "I've attached screenshots" case where nothing was actually
+    // added — a common way images go missing. Warn once, then let them send.
+    if (files.length === 0 && !attachNudged && mentionsAttachment(message)) {
+      setAttachNudged(true);
+      return;
+    }
+
+    await doSubmit();
   }
 
   const paused = reviewed && hasHelp(assistResult);
+  const attachWarning = attachNudged && files.length === 0;
 
   return (
     <form ref={formRef} action={raise} onSubmit={onSubmit} className="space-y-3">
@@ -151,8 +169,18 @@ export function NewTicketForm({
 
       <div>
         <label className="mb-1.5 block text-xs font-medium text-ink-2">Attach screenshots or files (optional)</label>
-        <AttachmentPicker />
+        <AttachmentPicker onFilesChange={setFiles} />
       </div>
+
+      {attachWarning && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
+          <Paperclip className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.75} />
+          <span>
+            You mentioned attachments, but nothing’s attached yet. Add your screenshots above, or press submit again to
+            send without them.
+          </span>
+        </div>
+      )}
 
       {paused && (
         <p className="text-sm text-ink-2">Had a read? If you’d still like the team to take it on, submit your ticket.</p>
@@ -164,7 +192,15 @@ export function NewTicketForm({
         className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-700 active:translate-y-px disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40"
       >
         {(checking || submitting) && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" strokeWidth={2} />}
-        {checking ? "Taking a look…" : submitting ? "Submitting…" : paused ? "Submit my ticket anyway" : "Submit ticket"}
+        {checking
+          ? "Taking a look…"
+          : submitting
+            ? "Submitting…"
+            : attachWarning
+              ? "Submit without attachments"
+              : paused
+                ? "Submit my ticket anyway"
+                : "Submit ticket"}
       </button>
     </form>
   );

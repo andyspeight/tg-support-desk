@@ -137,7 +137,10 @@ export async function raiseTicketAction(formData: FormData): Promise<void> {
   });
   const message = await addMessage({ ticket_id: ticket.id, role: "customer", author: who.email, body_text: body });
   await attachTo(ticket.id, message.id, files);
-  await audit("human", actor, "ticket.created", { type: "ticket", id: ticket.id }, { channel: "portal", email: who.email });
+  // Record how many files actually arrived — makes attachment-transport problems
+  // visible in the audit log instead of silent (a client saying "screenshots
+  // attached" while files:0 lands is the signature of a broken upload path).
+  await audit("human", actor, "ticket.created", { type: "ticket", id: ticket.id }, { channel: "portal", email: who.email, files: files.length });
 
   // Email the client an acknowledgement (best-effort) so they get a receipt by
   // email, not just on screen — and so the Gmail thread is captured up front,
@@ -188,7 +191,7 @@ export async function replyAction(formData: FormData): Promise<void> {
   if (owned.ticket.status === "resolved" || owned.ticket.status === "closed") {
     await updateTicket(ticketId, { status: "new", ai_resolved: false, resolved_at: null });
   }
-  await audit("human", session.email, "ticket.customer_reply", { type: "ticket", id: ticketId });
+  await audit("human", session.email, "ticket.customer_reply", { type: "ticket", id: ticketId }, { files: files.length });
 
   try {
     await resolveTicket(ticketId, { trigger: "manual", actor: session.email });

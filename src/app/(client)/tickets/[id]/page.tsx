@@ -7,8 +7,7 @@ import { bestDisplayName, isEmailish } from "@/lib/names";
 import { getPortalTicket } from "@/lib/db/queries";
 import { companyForEmail } from "@/lib/portal-company";
 import { replyAction, rateAction } from "@/app/(client)/actions";
-import { SubmitButton } from "@/components/portal/submit-button";
-import { AttachmentPicker } from "@/components/attachment-picker";
+import { PortalReplyForm } from "@/components/portal/portal-reply-form";
 import { AutoRefresh } from "@/components/portal/auto-refresh";
 import { clientStatus } from "@/lib/portal-status";
 import { LightboxImage } from "@/components/image-lightbox";
@@ -246,21 +245,7 @@ export default async function PortalTicketPage({
       ) : null}
 
       {readOnly ? null : !isClosed ? (
-        <form action={replyAction} className="mt-6 space-y-3 rounded-2xl border border-line bg-surface p-4 shadow-sm">
-          <input type="hidden" name="ticketId" value={ticket.id} />
-          <textarea
-            name="body"
-            required
-            rows={4}
-            maxLength={8000}
-            placeholder="Add a reply…"
-            className="w-full resize-y rounded-xl border border-line bg-canvas p-3 text-sm leading-relaxed placeholder:text-ink-3 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20"
-          />
-          <AttachmentPicker />
-          <div className="flex justify-end">
-            <SubmitButton pendingLabel="Sending…">Send reply</SubmitButton>
-          </div>
-        </form>
+        <PortalReplyForm ticketId={ticket.id} reply={replyAction} />
       ) : (
         <p className="mt-6 rounded-2xl border border-dashed border-line bg-surface px-4 py-5 text-center text-xs text-ink-3">
           This ticket is closed.{" "}
