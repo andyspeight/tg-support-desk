@@ -88,7 +88,7 @@ async function composerInput(
 const updateSchema = z.object({
   ticketId: z.string().uuid(),
   status: z
-    .enum(["new", "ai_working", "waiting_on_customer", "escalated", "pending", "awaiting_supplier", "resolved", "closed"])
+    .enum(["new", "ai_working", "waiting_on_customer", "escalated", "pending", "awaiting_supplier", "awaiting_custom_dev", "resolved", "closed"])
     .optional(),
   priority: z.enum(["p1", "p2", "p3"]).optional(),
   assignee: z.string().optional(),
@@ -134,8 +134,12 @@ export async function sendReplyAction(formData: FormData): Promise<ComposerResul
     // Zendesk-style "submit as": the composer says what state to leave the
     // ticket in. Default keeps the old behaviour (waiting on the customer).
     const afterRaw = String(formData.get("afterStatus") ?? "");
-    const after: "waiting_on_customer" | "resolved" | "closed" | "pending" | "awaiting_supplier" =
-      afterRaw === "resolved" || afterRaw === "closed" || afterRaw === "pending" || afterRaw === "awaiting_supplier"
+    const after: "waiting_on_customer" | "resolved" | "closed" | "pending" | "awaiting_supplier" | "awaiting_custom_dev" =
+      afterRaw === "resolved" ||
+      afterRaw === "closed" ||
+      afterRaw === "pending" ||
+      afterRaw === "awaiting_supplier" ||
+      afterRaw === "awaiting_custom_dev"
         ? afterRaw
         : "waiting_on_customer";
     const statusPatch: Parameters<typeof updateTicket>[1] = { status: after };

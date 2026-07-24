@@ -222,7 +222,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const clientPortalHref = `/?as=${encodeURIComponent(ticket.requester_email)}&from=${ticket.id}`;
 
   // Lifecycle quick-actions (Zendesk-style): resolve/close/reopen by current state.
-  const lifecycleOpen = ["new", "ai_working", "waiting_on_customer", "escalated", "needs_review", "pending", "awaiting_supplier"].includes(ticket.status);
+  const lifecycleOpen = ["new", "ai_working", "waiting_on_customer", "escalated", "needs_review", "pending", "awaiting_supplier", "awaiting_custom_dev"].includes(ticket.status);
   const lifecycleResolved = ticket.status === "resolved";
   const lifecycleClosed = ticket.status === "closed";
 
@@ -575,6 +575,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               <option value="waiting_on_customer">Waiting on customer</option>
               <option value="pending">Pending</option>
               <option value="awaiting_supplier">Awaiting supplier</option>
+              <option value="awaiting_custom_dev">Awaiting custom development</option>
               <option value="escalated">Escalated</option>
               <option value="resolved">Resolved</option>
               <option value="closed">Closed</option>

@@ -19,7 +19,7 @@ const bulkSchema = z.object({
   value: z.string().optional(),
 });
 
-const STATUSES = ["new", "ai_working", "waiting_on_customer", "escalated", "pending", "awaiting_supplier", "resolved", "closed"] as const;
+const STATUSES = ["new", "ai_working", "waiting_on_customer", "escalated", "pending", "awaiting_supplier", "awaiting_custom_dev", "resolved", "closed"] as const;
 
 export async function bulkUpdateTicketsAction(formData: FormData): Promise<void> {
   const session = await requireAgent();

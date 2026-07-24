@@ -15,6 +15,7 @@ const STATUS_OPTIONS: { value: TicketStatus; label: string }[] = [
   { value: "escalated", label: "Escalated" },
   { value: "pending", label: "Pending" },
   { value: "awaiting_supplier", label: "Awaiting supplier" },
+  { value: "awaiting_custom_dev", label: "Awaiting custom development" },
   { value: "resolved", label: "Resolved" },
   { value: "closed", label: "Closed" },
 ];
