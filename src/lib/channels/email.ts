@@ -18,7 +18,7 @@ import type { Message, Ticket } from "@/lib/db/types";
 import type { Json } from "@/lib/db/database.types";
 import { env } from "@/lib/env";
 import { firstNameFrom } from "@/lib/names";
-import { matchesBlocklist, parseGmailMessage, type GmailMessage } from "./email-parse";
+import { matchesBlocklist, otherParticipants, parseGmailMessage, type GmailMessage } from "./email-parse";
 import { buildReplyMime, getAttachmentBytes, sendMessage, type OutboundAttachment } from "./gmail";
 import { renderCustomerEmail, textToEmailHtml } from "./email-template";
 import { storeAttachments, storeOutboundAttachments, type OutboundFile } from "./attachments";
@@ -110,7 +110,9 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
       channel: "email",
       subject: parsed.subject,
       email_thread_key: gmailMessage.threadId,
-      cc_emails: parsed.cc.filter((e) => e !== env.supportEmail),
+      // Everyone the customer copied (To + Cc, minus us and themselves) is a
+      // participant from the off, so they're all on every reply.
+      cc_emails: otherParticipants(parsed, { support: env.supportEmail, requester: parsed.fromEmail ?? "" }),
       tags,
       ...(unverified
         ? { status: "escalated" as const, escalation_reason: "sender_verification_failed" }
@@ -158,9 +160,12 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
     await audit("system", "email-channel", "ticket.reopened", { type: "ticket", id: ticket.id });
   }
 
-  // Union any newly-seen CC recipients onto an existing ticket.
-  if (!createdTicket && parsed.cc.length) {
-    const merged = [...new Set([...ticket.cc_emails, ...parsed.cc])].filter((e) => e !== env.supportEmail);
+  // Keep the participant list current: anyone new on this message — the sender
+  // (e.g. a colleague joining the thread), or a To/Cc recipient — is unioned in
+  // so they receive every future reply, not just whoever was on the first Cc.
+  if (!createdTicket) {
+    const others = otherParticipants(parsed, { support: env.supportEmail, requester: ticket.requester_email });
+    const merged = [...new Set([...ticket.cc_emails, ...others])];
     if (merged.length !== ticket.cc_emails.length) {
       ticket = await updateTicket(ticket.id, { cc_emails: merged });
     }
@@ -302,6 +307,9 @@ export async function sendAutoAck(ticket: Ticket, opts: { verifiedRecipient?: bo
     const sent = await sendMessage(
       await buildReplyMime({
         to: ticket.requester_email,
+        // Loop the rest of the thread in on the acknowledgement too, so nobody
+        // the customer copied is left wondering whether it landed.
+        cc: ticket.cc_emails.filter((e) => e !== ticket.requester_email && e !== env.supportEmail),
         subject,
         text,
         html,

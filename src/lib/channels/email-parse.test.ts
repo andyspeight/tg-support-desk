@@ -8,6 +8,7 @@ import {
   matchesBlocklist,
   normaliseCid,
   normaliseSubject,
+  otherParticipants,
   parseAddress,
   parseAddressList,
   parseGmailMessage,
@@ -15,6 +16,41 @@ import {
   stripQuotedReply,
   type GmailMessage,
 } from "./email-parse";
+
+describe("otherParticipants", () => {
+  const support = "support@travelgenix.io";
+
+  it("collects sender + to + cc, minus us and the requester", () => {
+    const result = otherParticipants(
+      { fromEmail: "colleague@acme.com", to: ["support@travelgenix.io", "boss@acme.com"], cc: ["ops@acme.com"] },
+      { support, requester: "jane@acme.com" },
+    );
+    // A colleague replying in, plus the To/Cc people — all kept; support dropped.
+    expect(result.sort()).toEqual(["boss@acme.com", "colleague@acme.com", "ops@acme.com"]);
+  });
+
+  it("excludes the requester (they are always the To of a reply)", () => {
+    const result = otherParticipants(
+      { fromEmail: "jane@acme.com", to: ["support@travelgenix.io"], cc: ["jane@acme.com"] },
+      { support, requester: "jane@acme.com" },
+    );
+    expect(result).toEqual([]);
+  });
+
+  it("de-dupes and lower-cases", () => {
+    const result = otherParticipants(
+      { fromEmail: "Boss@Acme.com", to: ["BOSS@acme.com"], cc: ["ops@acme.com", "OPS@acme.com"] },
+      { support, requester: "jane@acme.com" },
+    );
+    expect(result.sort()).toEqual(["boss@acme.com", "ops@acme.com"]);
+  });
+
+  it("is empty when only us and the requester are on the thread", () => {
+    expect(
+      otherParticipants({ fromEmail: "jane@acme.com", to: ["support@travelgenix.io"], cc: [] }, { support, requester: "jane@acme.com" }),
+    ).toEqual([]);
+  });
+});
 
 describe("emailDomain", () => {
   it("returns the lowercased domain after the @", () => {

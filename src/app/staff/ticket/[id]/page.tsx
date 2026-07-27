@@ -226,6 +226,22 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const lifecycleResolved = ticket.status === "resolved";
   const lifecycleClosed = ticket.status === "closed";
 
+  // People on the ticket: the requester, anyone else who's written in (e.g. a
+  // colleague on the thread), and addresses that are only copied (Cc). The
+  // participants + Cc all receive every reply — see cc_emails in email.ts.
+  const requesterEmailLc = ticket.requester_email.toLowerCase();
+  const writtenIn = new Set(
+    messages
+      .filter((m) => m.role === "customer" && m.author)
+      .map((m) => m.author!.toLowerCase())
+      .filter((e) => e !== requesterEmailLc),
+  );
+  const otherWriters = [...writtenIn];
+  const ccOnly = ticket.cc_emails
+    .map((e) => e.toLowerCase())
+    .filter((e) => e !== requesterEmailLc && !writtenIn.has(e));
+  const hasOtherPeople = otherWriters.length > 0 || ccOnly.length > 0;
+
   return (
     <div className="flex flex-col lg:h-full">
       <TicketPresence ticketId={ticket.id} heartbeat={presenceHeartbeatAction} />
@@ -625,6 +641,46 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </button>
         </form>
 
+        {/* People on this ticket — requester, anyone who's written in, and Cc'd
+            addresses. Everyone here is copied on every reply. */}
+        <div>
+          <h2 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-3">
+            <Users className="h-3.5 w-3.5" strokeWidth={1.75} /> People on this ticket
+          </h2>
+          <div className="space-y-2 rounded-lg border border-line bg-surface p-3 text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <span className="min-w-0">
+                <span className="block truncate font-medium text-ink">
+                  {ticket.requester_name || ticket.requester_email}
+                </span>
+                {ticket.requester_name && (
+                  <span className="block truncate text-xs text-ink-3">{ticket.requester_email}</span>
+                )}
+              </span>
+              <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ink-3">
+                Requester
+              </span>
+            </div>
+            {otherWriters.map((email) => (
+              <div key={email} className="flex items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-ink-2">{email}</span>
+                <span className="shrink-0 text-[10px] uppercase tracking-wide text-ink-3">Participant</span>
+              </div>
+            ))}
+            {ccOnly.length > 0 && (
+              <div className="border-t border-line-soft pt-2">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-ink-3">Cc</p>
+                <p className="mt-1 break-words text-xs text-ink-2">{ccOnly.join(", ")}</p>
+              </div>
+            )}
+            {hasOtherPeople && (
+              <p className="border-t border-line-soft pt-2 text-[11px] leading-relaxed text-ink-3">
+                Everyone here is copied on every reply.
+              </p>
+            )}
+          </div>
+        </div>
+
         {careSignal ? (
           <div>
             <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Care (CRM)</h2>
@@ -757,7 +813,6 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <p>Language: {ticket.language ?? "—"}</p>
           <p>AI resolved: {ticket.ai_resolved ? "yes" : "no"}</p>
           <p>First response: {ticket.first_response_at ? formatDateTime(ticket.first_response_at) : "—"}</p>
-          {ticket.cc_emails.length > 0 && <p>CC: {ticket.cc_emails.join(", ")}</p>}
         </div>
       </aside>
       </div>
