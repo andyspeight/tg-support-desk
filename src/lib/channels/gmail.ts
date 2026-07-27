@@ -89,6 +89,8 @@ export async function buildReplyMime(input: {
   attachments?: OutboundAttachment[];
   inReplyTo?: string | null;
   references?: string[];
+  /** Extra MIME headers (e.g. Auto-Submitted on internal machine mail). */
+  headers?: Record<string, string>;
 }): Promise<Buffer> {
   const mail = new MailComposer({
     // Display name shows the responding agent when we have one, so the customer
@@ -101,6 +103,7 @@ export async function buildReplyMime(input: {
     html: input.html || undefined,
     inReplyTo: input.inReplyTo || undefined,
     references: input.references && input.references.length ? input.references : undefined,
+    headers: input.headers,
     attachments: input.attachments?.map((a) => ({
       filename: a.filename,
       content: a.content,
@@ -124,6 +127,15 @@ export async function sendMessage(rawMime: Buffer | string, threadId?: string | 
 /** Send a fresh (non-threaded) email from support@ — used for internal agent
  *  alerts (notification mirror + morning digest), not customer-facing. */
 export async function sendEmail(input: { to: string; subject: string; text: string; html?: string }): Promise<void> {
-  const mime = await buildReplyMime({ to: input.to, subject: input.subject, text: input.text, html: input.html });
+  const mime = await buildReplyMime({
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+    html: input.html,
+    // Mark internal alerts as machine mail. If one ever reaches the support
+    // inbox (e.g. an agent address that routes back to it), the inbound parser
+    // recognises it as auto-generated and drops it instead of opening a ticket.
+    headers: { "Auto-Submitted": "auto-generated", "X-Auto-Response-Suppress": "All" },
+  });
   await sendMessage(mime);
 }

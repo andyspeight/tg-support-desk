@@ -40,9 +40,13 @@ export function ticketRecipients(ticket: Pick<Ticket, "assignee" | "watchers">):
 export async function notify(input: NotifyInput): Promise<void> {
   try {
     const skip = input.skip?.trim().toLowerCase();
+    // Never alert our own support mailbox, even if it's listed as an agent. Its
+    // inbox is polled into tickets, so emailing it would open a ticket — which
+    // raises another notification, and loops.
+    const self = new Set(env.selfEmailAddresses);
     const recipients = [
       ...new Set(input.recipients.map((r) => r.trim().toLowerCase()).filter(Boolean)),
-    ].filter((r) => r !== skip);
+    ].filter((r) => r !== skip && !self.has(r));
     if (recipients.length === 0) return;
 
     const rows = recipients.map((recipient) => ({

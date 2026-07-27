@@ -30,8 +30,15 @@ export async function GET(request: Request) {
   if (!env.gmailConfigured) return Response.json({ skipped: "gmail not configured" });
 
   try {
-    const items = await listUnemailedNotifications(12);
-    if (items.length === 0) return Response.json({ emailed: 0, recipients: 0 });
+    const all = await listUnemailedNotifications(12);
+    // Never email our own support mailbox — its inbox is polled into tickets, so
+    // a digest sent there opens a ticket, which raises another notification, and
+    // loops. Retire any such rows so they can't sit in the queue retrying.
+    const self = new Set(env.selfEmailAddresses);
+    const selfAddressed = all.filter((n) => self.has(n.recipient.trim().toLowerCase()));
+    if (selfAddressed.length > 0) await markEmailed(selfAddressed.map((n) => n.id));
+    const items = all.filter((n) => !self.has(n.recipient.trim().toLowerCase()));
+    if (items.length === 0) return Response.json({ emailed: 0, recipients: 0, skippedSelf: selfAddressed.length });
 
     const base = env.appBaseUrl.replace(/\/$/, "");
     const notificationsUrl = base ? `${base}/staff/notifications` : "";

@@ -153,6 +153,16 @@ export const env = {
   get supportEmailAliases() {
     return csv("SUPPORT_EMAIL_ALIASES").map((e) => e.toLowerCase());
   },
+  // Every address that is "us" — the support address plus its aliases. Read via
+  // optional() so it never throws before Gmail is configured, and so callers
+  // (notifications) can always ask "is this our own mailbox?" safely. The desk
+  // must never email itself: our own inbox is polled into tickets, so alerting
+  // it would create a ticket, which alerts again — a loop.
+  get selfEmailAddresses(): string[] {
+    return [optional("SUPPORT_EMAIL"), ...csv("SUPPORT_EMAIL_ALIASES")]
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+  },
   // True when the Gmail send path is fully configured. Lets notification email
   // + the morning digest stay dormant (a no-op) until the mailbox is wired —
   // checked with optional() so it never throws when Gmail isn't set up yet.
