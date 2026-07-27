@@ -8,6 +8,7 @@ import {
   getAllowedPatterns,
   getBlockedPatterns,
   isReturningRequester,
+  messageExistsByGmailId,
   setMessageAttachments,
   updateTicket,
 } from "@/lib/db/queries";
@@ -35,6 +36,21 @@ export type IngestResult = {
   suppressAi: boolean;
 };
 
+/** Every address that is "us" — the support address and all send-as/mailbox
+ *  aliases — lower-cased, for filtering out of participant/Cc lists. */
+function selfAddressSet(): Set<string> {
+  return new Set([env.supportEmail, ...env.supportEmailAliases].map((e) => e.toLowerCase()));
+}
+
+/** The Cc list for a reply or acknowledgement: the ticket's participants, minus
+ *  the requester (who is the To) and every one of our own addresses — so we can
+ *  never Cc ourselves and re-ingest our own mail. */
+function replyCc(ticket: Ticket): string[] {
+  const exclude = selfAddressSet();
+  exclude.add(ticket.requester_email.toLowerCase());
+  return ticket.cc_emails.filter((e) => !exclude.has(e.toLowerCase()));
+}
+
 export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<IngestResult | null> {
   const parsed = parseGmailMessage(gmailMessage);
 
@@ -42,6 +58,13 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
   // SUPPORT_EMAIL plus any configured aliases (e.g. the underlying mailbox).
   const selfAddresses = new Set([env.supportEmail, ...env.supportEmailAliases]);
   if (!parsed.fromEmail || selfAddresses.has(parsed.fromEmail)) return null;
+
+  // Idempotency: never process the same Gmail message twice. Our outbound
+  // replies are stored with their gmail_message_id on send, so if one is polled
+  // back — e.g. because we ended up on the Cc — this skips it instead of
+  // re-adding it as a phantom "customer" message that reopens the ticket. This
+  // is the hard guard, independent of whether every self-address is configured.
+  if (await messageExistsByGmailId(gmailMessage.id)) return null;
 
   // Spam control: drop blocklisted senders before a ticket is ever created.
   const blocked = await getBlockedPatterns();
@@ -110,9 +133,12 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
       channel: "email",
       subject: parsed.subject,
       email_thread_key: gmailMessage.threadId,
-      // Everyone the customer copied (To + Cc, minus us and themselves) is a
-      // participant from the off, so they're all on every reply.
-      cc_emails: otherParticipants(parsed, { support: env.supportEmail, requester: parsed.fromEmail ?? "" }),
+      // Everyone the customer copied (To + Cc, minus all of our addresses and
+      // themselves) is a participant from the off, so they're all on every reply.
+      cc_emails: otherParticipants(parsed, {
+        self: [env.supportEmail, ...env.supportEmailAliases],
+        requester: parsed.fromEmail ?? "",
+      }),
       tags,
       ...(unverified
         ? { status: "escalated" as const, escalation_reason: "sender_verification_failed" }
@@ -164,7 +190,10 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
   // (e.g. a colleague joining the thread), or a To/Cc recipient — is unioned in
   // so they receive every future reply, not just whoever was on the first Cc.
   if (!createdTicket) {
-    const others = otherParticipants(parsed, { support: env.supportEmail, requester: ticket.requester_email });
+    const others = otherParticipants(parsed, {
+      self: [env.supportEmail, ...env.supportEmailAliases],
+      requester: ticket.requester_email,
+    });
     const merged = [...new Set([...ticket.cc_emails, ...others])];
     if (merged.length !== ticket.cc_emails.length) {
       ticket = await updateTicket(ticket.id, { cc_emails: merged });
@@ -309,7 +338,7 @@ export async function sendAutoAck(ticket: Ticket, opts: { verifiedRecipient?: bo
         to: ticket.requester_email,
         // Loop the rest of the thread in on the acknowledgement too, so nobody
         // the customer copied is left wondering whether it landed.
-        cc: ticket.cc_emails.filter((e) => e !== ticket.requester_email && e !== env.supportEmail),
+        cc: replyCc(ticket),
         subject,
         text,
         html,
@@ -441,7 +470,7 @@ export async function sendTicketReply(
   const sent = await sendMessage(
     await buildReplyMime({
       to: ticket.requester_email,
-      cc: ticket.cc_emails.filter((e) => e !== ticket.requester_email && e !== env.supportEmail),
+      cc: replyCc(ticket),
       subject,
       text: body,
       html: brandedHtml,

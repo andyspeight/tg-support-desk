@@ -855,6 +855,29 @@ export async function getMessageById(id: string): Promise<Message | null> {
   return data;
 }
 
+/**
+ * Idempotency guard for the Gmail poller: has this exact Gmail message already
+ * been stored? Our own outbound replies are saved with their gmail_message_id on
+ * send, so this returns true when a reply we sent is polled back (e.g. because we
+ * were on the Cc) — letting the ingest skip it instead of re-adding it as a
+ * phantom "customer" message that reopens the ticket. Fails open (returns false)
+ * on a query error so a hiccup never silently drops genuinely new mail.
+ */
+export async function messageExistsByGmailId(gmailMessageId: string): Promise<boolean> {
+  if (!gmailMessageId) return false;
+  const { data, error } = await db()
+    .from("messages")
+    .select("id")
+    .eq("channel_meta->>gmail_message_id", gmailMessageId)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error("messageExistsByGmailId:", error.message);
+    return false;
+  }
+  return !!data;
+}
+
 export async function setMessageAttachments(id: string, attachments: Json): Promise<void> {
   const { error } = await db().from("messages").update({ attachments }).eq("id", id);
   if (error) throw new Error(`setMessageAttachments: ${error.message}`);

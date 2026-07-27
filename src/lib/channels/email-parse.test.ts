@@ -18,21 +18,31 @@ import {
 } from "./email-parse";
 
 describe("otherParticipants", () => {
-  const support = "support@travelgenix.io";
+  // All of our own addresses: the support address plus send-as/mailbox aliases.
+  const self = ["support@travelgenix.io", "help@travelgenix.io", "help@agendas.group"];
 
   it("collects sender + to + cc, minus us and the requester", () => {
     const result = otherParticipants(
       { fromEmail: "colleague@acme.com", to: ["support@travelgenix.io", "boss@acme.com"], cc: ["ops@acme.com"] },
-      { support, requester: "jane@acme.com" },
+      { self, requester: "jane@acme.com" },
     );
     // A colleague replying in, plus the To/Cc people — all kept; support dropped.
     expect(result.sort()).toEqual(["boss@acme.com", "colleague@acme.com", "ops@acme.com"]);
   });
 
+  it("excludes every one of our own addresses (never Cc ourselves)", () => {
+    // The exact bug: our mailbox alias on the To line must not become a participant.
+    const result = otherParticipants(
+      { fromEmail: "jane@acme.com", to: ["help@agendas.group", "support@travelgenix.io"], cc: ["help@travelgenix.io"] },
+      { self, requester: "jane@acme.com" },
+    );
+    expect(result).toEqual([]);
+  });
+
   it("excludes the requester (they are always the To of a reply)", () => {
     const result = otherParticipants(
       { fromEmail: "jane@acme.com", to: ["support@travelgenix.io"], cc: ["jane@acme.com"] },
-      { support, requester: "jane@acme.com" },
+      { self, requester: "jane@acme.com" },
     );
     expect(result).toEqual([]);
   });
@@ -40,14 +50,14 @@ describe("otherParticipants", () => {
   it("de-dupes and lower-cases", () => {
     const result = otherParticipants(
       { fromEmail: "Boss@Acme.com", to: ["BOSS@acme.com"], cc: ["ops@acme.com", "OPS@acme.com"] },
-      { support, requester: "jane@acme.com" },
+      { self, requester: "jane@acme.com" },
     );
     expect(result.sort()).toEqual(["boss@acme.com", "ops@acme.com"]);
   });
 
   it("is empty when only us and the requester are on the thread", () => {
     expect(
-      otherParticipants({ fromEmail: "jane@acme.com", to: ["support@travelgenix.io"], cc: [] }, { support, requester: "jane@acme.com" }),
+      otherParticipants({ fromEmail: "jane@acme.com", to: ["support@travelgenix.io"], cc: [] }, { self, requester: "jane@acme.com" }),
     ).toEqual([]);
   });
 });

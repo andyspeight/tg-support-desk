@@ -69,21 +69,22 @@ export function parseAddressList(raw: string | null): string[] {
 
 /**
  * Everyone else on a thread who should be copied on replies: the sender, plus
- * the To and Cc recipients — minus our own support address and the requester
- * (who is always the To of a reply). Lower-cased and de-duped. This is what
- * keeps a colleague who joins the thread, or anyone the customer copied, on
- * every future reply instead of silently dropping off after one message.
+ * the To and Cc recipients — minus ALL of our own addresses (the support
+ * address and every send-as/mailbox alias) and the requester (who is always the
+ * To of a reply). Lower-cased and de-duped. This keeps a colleague who joins the
+ * thread, or anyone the customer copied, on every future reply — while never
+ * letting our own mailbox address leak in, which would make us Cc ourselves and
+ * re-ingest our own replies.
  */
 export function otherParticipants(
   msg: { fromEmail?: string | null; to?: string[]; cc?: string[] },
-  opts: { support: string; requester: string },
+  opts: { self: string[]; requester: string },
 ): string[] {
-  const support = opts.support.trim().toLowerCase();
-  const requester = opts.requester.trim().toLowerCase();
+  const exclude = new Set([...opts.self, opts.requester].map((e) => e.trim().toLowerCase()).filter(Boolean));
   const all = [...(msg.fromEmail ? [msg.fromEmail] : []), ...(msg.to ?? []), ...(msg.cc ?? [])].map((e) =>
     e.trim().toLowerCase(),
   );
-  return [...new Set(all)].filter((e) => e && e !== support && e !== requester);
+  return [...new Set(all)].filter((e) => e && !exclude.has(e));
 }
 
 export function parseAddress(raw: string): { name: string | null; email: string | null } {
