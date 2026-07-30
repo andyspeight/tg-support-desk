@@ -69,7 +69,8 @@ export async function copilotDraft(ticketId: string): Promise<string> {
     // embeddings/KB unavailable — draft from the thread alone, still useful.
   }
 
-  const system = `You are drafting a support reply for a Travelgenix agent to review and edit before sending. ${BRAND_VOICE} Ground factual claims in the knowledge base provided; if the KB doesn't cover it, write what you safely can and leave a [bracketed note] where the agent must confirm details. Never promise refunds, credits, discounts or contract changes. Open with the customer's first name and end with your closing sentence — do NOT add a sign-off line, as the sending agent's name is appended automatically.`;
+  const system = `You are drafting a support reply for a Travelgenix agent to review and edit before sending. ${BRAND_VOICE} Ground factual claims in the knowledge base provided; if the KB doesn't cover it, write what you safely can and leave a [bracketed note] where the agent must confirm details. Never promise refunds, credits, discounts or contract changes.
+Acknowledge, never commit: don't promise an outcome ("we'll fix it", "we'll get that added"), a timeframe ("shortly", "as soon as possible", "within 24 hours"), what a colleague will do ("the team will get back to you"), or any guarantee. State what's true — what was checked, what was found, where the ticket sits. The agent can add a commitment themselves if they choose to make one. Open with the customer's first name and end with your closing sentence — do NOT add a sign-off line, as the sending agent's name is appended automatically.`;
   const prompt = `Knowledge base:\n${kb || "(no relevant articles found)"}\n\nConversation so far:\n${threadText(loaded.messages)}\n\nDraft the next reply to the customer.`;
   return complete(env.resolutionModel, system, prompt);
 }

@@ -321,11 +321,15 @@ export async function sendAutoAck(ticket: Ticket, opts: { verifiedRecipient?: bo
   const opener = returning
     ? `Good to hear from you again — we've received your message and opened ticket #${ticket.reference}. `
     : `Thanks for getting in touch — we've received your message and opened ticket #${ticket.reference}. `;
+  // Acknowledge receipt without committing anyone to an outcome or a timeframe:
+  // this goes out automatically, including overnight and at weekends, so "a
+  // member of the team will get back to you as soon as we can" was a promise we
+  // couldn't reliably keep.
   const text =
     `${greeting}\n\n` +
     opener +
-    `A member of the team will get back to you by email as soon as we can.\n\n` +
-    `There's nothing you need to do in the meantime. If you'd like to add anything, just reply to this email.\n\n` +
+    `It's with the support team now, and you'll see any updates on this email thread.\n\n` +
+    `If you'd like to add anything — a screenshot, the page URL, anything else that helps — just reply to this email.\n\n` +
     `— Travelgenix Support`;
   const html = renderCustomerEmail({
     bodyHtml: textToEmailHtml(text),

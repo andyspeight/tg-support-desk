@@ -15,7 +15,14 @@ const escalated: AgentOutcome = {
 };
 
 // Live-trial defaults: shadow off, 0.70 bar, how_to on the allowlist, grounded.
-const cfg = { shadowMode: false, confidenceBar: 0.7, allowedIntents: ["how_to", "deeplinks"], intent: "how_to", grounded: true };
+const cfg = {
+  shadowMode: false,
+  confidenceBar: 0.7,
+  allowedIntents: ["how_to", "deeplinks"],
+  intent: "how_to",
+  grounded: true,
+  commits: false,
+};
 
 describe("canAutoSend", () => {
   it("sends a confident, grounded, allow-listed answer", () => {
@@ -53,5 +60,13 @@ describe("canAutoSend", () => {
 
   it("never auto-sends an escalation", () => {
     expect(canAutoSend(escalated, cfg)).toBe(false);
+  });
+
+  it("HOLDS a reply that commits us — even a perfect, grounded answer", () => {
+    // "we'll get that added", "back to you shortly" etc. A human decides what we
+    // promise, so this outranks confidence, grounding and intent.
+    expect(canAutoSend(answered(1), { ...cfg, commits: true })).toBe(false);
+    // Clarifications normally bypass the grounding/intent bars — not this one.
+    expect(canAutoSend(clarified(1), { ...cfg, commits: true })).toBe(false);
   });
 });

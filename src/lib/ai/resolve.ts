@@ -1,6 +1,7 @@
 import "server-only";
 import { runResolutionAgent } from "./agent";
 import { canAutoSend } from "./autosend";
+import { findCommitments } from "./commitment-guard";
 import { mandatoryEscalation } from "./guardrails";
 import { classifyTicket } from "./triage";
 import { searchKb } from "./kb-search";
@@ -250,6 +251,10 @@ async function applyOutcome(
     const langPatch = outcome.language ? { language: outcome.language } : {};
     // Grounded = the run surfaced at least one KB article to base the answer on.
     const grounded = retrieved.length > 0;
+    // Does the draft promise an outcome, a timeframe, a colleague's action or a
+    // guarantee? The prompt forbids it; this catches anything that slips through,
+    // so a human decides what we commit to.
+    const commitments = findCommitments(body);
 
     if (
       canAutoSend(outcome, {
@@ -258,6 +263,7 @@ async function applyOutcome(
         allowedIntents: env.aiAutosendIntents,
         intent: ticket.intent,
         grounded,
+        commits: commitments.length > 0,
       })
     ) {
       // Confident + cleared intent (+ grounded, for answers) → the AI answers the
@@ -290,20 +296,29 @@ async function applyOutcome(
         !env.aiShadowMode &&
         outcome.confidence >= env.aiAutosendConfidence &&
         !grounded;
-      const draftNote = ungrounded
-        ? `AI DRAFT — verify before sending.\n\n⚠ No knowledge-base article backed this answer, so it's the assistant's own (unverified) knowledge. Check it's correct — and consider adding a KB article — before sending.\n\n${body}`
-        : `AI DRAFT — ready to review and send.\n\n${body}`;
+      const draftNote = commitments.length
+        ? `AI DRAFT — check what it promises before sending.\n\n⚠ This draft commits us to something (${commitments.join(", ")}) — a fix, a timeframe, a colleague's action or a guarantee. Only send it if we can genuinely stand behind that; otherwise trim the promise out.\n\n${body}`
+        : ungrounded
+          ? `AI DRAFT — verify before sending.\n\n⚠ No knowledge-base article backed this answer, so it's the assistant's own (unverified) knowledge. Check it's correct — and consider adding a KB article — before sending.\n\n${body}`
+          : `AI DRAFT — ready to review and send.\n\n${body}`;
       await addMessage({
         ticket_id: ticket.id,
         role: "internal_note",
         author: AI_ACTOR,
         body_text: draftNote,
-        channel_meta: { kind: "shadow_draft", would_be: outcome.kind, draft_text: body, ungrounded },
+        channel_meta: { kind: "shadow_draft", would_be: outcome.kind, draft_text: body, ungrounded, commitments },
       });
       await updateTicket(ticket.id, { ...langPatch, status: "needs_review", ai_resolved: false });
       await audit("ai", AI_ACTOR, "ai.drafted", { type: "ticket", id: ticket.id }, {
         confidence: outcome.confidence,
-        held: env.aiShadowMode ? "shadow_mode" : ungrounded ? "ungrounded" : "below_gate",
+        held: env.aiShadowMode
+          ? "shadow_mode"
+          : commitments.length
+            ? "commitment"
+            : ungrounded
+              ? "ungrounded"
+              : "below_gate",
+        commitments,
         intent: ticket.intent,
       });
       await notifyDraftReview(ticket);
@@ -407,9 +422,12 @@ function formatHandoverNote(outcome: Extract<AgentOutcome, { kind: "escalated" }
 
 function holdingReplyTemplate(ticket: Ticket): string {
   const firstName = ticket.requester_name?.split(/\s+/)[0] ?? "there";
+  // Acknowledge only — no timeframe, and no promise about what a colleague will
+  // do. "I've passed it over" is a statement of fact; "they'll come back to you
+  // as soon as possible" was a commitment we couldn't stand behind out of hours.
   return `Hi ${firstName},
 
-Thanks for getting in touch. This one needs a colleague rather than me, so I've passed it straight to the team with all the details — they'll come back to you as soon as possible.
+Thanks for getting in touch. This one needs a colleague rather than me, so I've passed it straight to the team with all the details, and it's on the support queue now.
 
 Travelgenix Support`;
 }

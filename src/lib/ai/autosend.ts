@@ -17,10 +17,23 @@ import type { AgentOutcome } from "./types";
 // without pulling in the server-only env module.
 export function canAutoSend(
   outcome: AgentOutcome,
-  cfg: { shadowMode: boolean; confidenceBar: number; allowedIntents: string[]; intent: string | null; grounded: boolean },
+  cfg: {
+    shadowMode: boolean;
+    confidenceBar: number;
+    allowedIntents: string[];
+    intent: string | null;
+    grounded: boolean;
+    /** The reply promises an outcome, a timeframe, a colleague's action or a
+     *  guarantee (see commitment-guard). A human decides what we promise. */
+    commits: boolean;
+  },
 ): boolean {
   if (cfg.shadowMode) return false;
   if (outcome.kind !== "answered" && outcome.kind !== "clarified") return false;
+  // Never auto-send a reply that commits us to something. The system prompt says
+  // don't; this makes it so — including for clarifications, which otherwise skip
+  // the bars below.
+  if (cfg.commits) return false;
   if (outcome.confidence < cfg.confidenceBar) return false;
   if (outcome.kind === "clarified") return true;
   if (!cfg.grounded) return false;
