@@ -17,6 +17,7 @@ import {
   updateTicket,
 } from "@/lib/db/queries";
 import { companyForEmail } from "@/lib/portal-company";
+import { customerReplyPatch } from "@/lib/ticket-reactivation";
 import { resolveTicket } from "@/lib/ai/resolve";
 import { sendAutoAck } from "@/lib/channels/email";
 import { isValidScore } from "@/lib/csat";
@@ -188,9 +189,10 @@ export async function replyAction(formData: FormData): Promise<void> {
 
   const message = await addMessage({ ticket_id: ticketId, role: "customer", author: session.email, body_text: body });
   await attachTo(ticketId, message.id, files);
-  if (owned.ticket.status === "resolved" || owned.ticket.status === "closed") {
-    await updateTicket(ticketId, { status: "new", ai_resolved: false, resolved_at: null });
-  }
+  // Same rule as the email channel: a reply reopens a finished ticket and clears
+  // "waiting on customer" (and any snooze), so the ball visibly comes back to us.
+  const patch = customerReplyPatch(owned.ticket);
+  if (patch) await updateTicket(ticketId, patch);
   await audit("human", session.email, "ticket.customer_reply", { type: "ticket", id: ticketId }, { files: files.length });
 
   try {

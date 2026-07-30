@@ -20,6 +20,7 @@ import type { Json } from "@/lib/db/database.types";
 import { env } from "@/lib/env";
 import { firstNameFrom } from "@/lib/names";
 import { matchesBlocklist, otherParticipants, parseGmailMessage, type GmailMessage } from "./email-parse";
+import { customerReplyPatch } from "@/lib/ticket-reactivation";
 import { buildReplyMime, getAttachmentBytes, sendMessage, type OutboundAttachment } from "./gmail";
 import { renderCustomerEmail, textToEmailHtml } from "./email-template";
 import { storeAttachments, storeOutboundAttachments, type OutboundFile } from "./attachments";
@@ -175,15 +176,26 @@ export async function ingestGmailMessage(gmailMessage: GmailMessage): Promise<In
   } else if (ticket.status === "awaiting_approval") {
     // A held sender wrote again before approval — keep it parked, don't reopen.
     held = true;
-  } else if (!parsed.isAutoReply && (ticket.status === "resolved" || ticket.status === "closed")) {
-    // Customer replied after resolution — reopen. (An OOO bouncing back off
-    // our own resolution reply must NOT reopen the ticket.)
-    ticket = await updateTicket(ticket.id, {
-      status: "new",
-      ai_resolved: false,
-      resolved_at: null,
-    });
-    await audit("system", "email-channel", "ticket.reopened", { type: "ticket", id: ticket.id });
+  } else if (!parsed.isAutoReply) {
+    // The customer has come back to us, so any state saying otherwise is now
+    // wrong: reopen a resolved/closed ticket, and clear "waiting on customer"
+    // — they've replied. Done here rather than left to the AI loop, which sits
+    // out on unverified/held senders, auto-replies and loop-guard trips (that's
+    // why the status only sometimes appeared to update — #8144). An OOO bouncing
+    // off our own reply is excluded above and must never reactivate a ticket.
+    const patch = customerReplyPatch(ticket);
+    if (patch) {
+      const wasFinished = ticket.status === "resolved" || ticket.status === "closed";
+      const from = ticket.status;
+      ticket = await updateTicket(ticket.id, patch);
+      await audit(
+        "system",
+        "email-channel",
+        wasFinished ? "ticket.reopened" : "ticket.customer_replied",
+        { type: "ticket", id: ticket.id },
+        { from_status: from, to_status: ticket.status },
+      );
+    }
   }
 
   // Keep the participant list current: anyone new on this message — the sender
