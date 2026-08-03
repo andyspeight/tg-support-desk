@@ -22,11 +22,48 @@ import {
   updateCannedResponse,
   upsertCompanyMember,
 } from "@/lib/db/queries";
+import { backfillRejectedAttachments } from "@/lib/channels/attachment-backfill";
 import { companyNameFrom, createClientCompany, getClientById, matchClientByEmail } from "@/lib/integrations/airtable-clients";
 import { invalidateCompanyFor, invalidateCompanyForDomain } from "@/lib/portal-company";
 import { linkCorporateDomain } from "@/lib/company-linking";
 
 export type EraseResult = { ok: boolean; message: string };
+
+/**
+ * Recover client attachments that were refused only because the sending mail
+ * client declared a generic type (Outlook's "application/octet-stream"
+ * screenshots). They were never fetched, so the originals still sit in the
+ * mailbox — this pulls them back onto their tickets. Owner-only, and safe to
+ * run more than once.
+ */
+export async function recoverBlockedAttachmentsAction(): Promise<EraseResult> {
+  const session = await requireAgent();
+  if (!env.ownerEmails.includes(session.email)) {
+    return { ok: false, message: "Only an owner can run the attachment recovery." };
+  }
+  if (!env.gmailConfigured) {
+    return { ok: false, message: "The support mailbox isn't connected, so there's nothing to fetch from." };
+  }
+  try {
+    const res = await backfillRejectedAttachments();
+    await audit("human", session.email, "attachments.backfilled", undefined, {
+      recovered: res.recovered,
+      still_blocked: res.stillBlocked,
+      failed: res.failed,
+    });
+    revalidatePath("/staff/settings");
+    if (res.recovered === 0 && res.failed === 0) {
+      return { ok: true, message: "Nothing to recover — every attachment is either already stored or genuinely not an allowed type." };
+    }
+    const bits = [`Recovered ${res.recovered} attachment(s)`];
+    if (res.stillBlocked) bits.push(`${res.stillBlocked} left blocked (not an allowed type)`);
+    if (res.failed) bits.push(`${res.failed} failed${res.errors.length ? `: ${res.errors[0]}` : ""}`);
+    return { ok: res.failed === 0, message: `${bits.join(" · ")}.` };
+  } catch (error) {
+    console.error("recoverBlockedAttachmentsAction failed:", error);
+    return { ok: false, message: "The recovery run failed — nothing was changed. Check the logs and try again." };
+  }
+}
 
 // GDPR right-to-erasure. Owner-only (destructive); requires the email typed
 // twice as a confirmation guard.

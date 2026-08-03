@@ -11,6 +11,7 @@ import {
   listTags,
 } from "@/lib/db/queries";
 import { listAllClientCompanies } from "@/lib/integrations/airtable-clients";
+import { AttachmentRecoveryPanel } from "@/components/attachment-recovery-panel";
 import { GdprPanel } from "@/components/gdpr-panel";
 import { AddCompanyForm } from "@/components/add-company-form";
 import {
@@ -22,6 +23,7 @@ import {
   deleteCannedAction,
   deleteTagAction,
   eraseCustomerDataAction,
+  recoverBlockedAttachmentsAction,
   importAllowedAction,
   linkCompanyMemberAction,
   removeAllowedAction,
@@ -425,6 +427,7 @@ export default async function SettingsPage() {
         </p>
       </section>
 
+      {isOwner && <AttachmentRecoveryPanel recover={recoverBlockedAttachmentsAction} />}
       {isOwner && <GdprPanel erase={eraseCustomerDataAction} />}
     </div>
   );
