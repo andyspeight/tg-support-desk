@@ -6,8 +6,11 @@ import {
   ATTACHMENTS_BUCKET,
   MAX_ATTACHMENT_BYTES,
   checkAttachment,
+  contentMatches,
+  effectiveMimeType,
   safeFilename,
   storageKeyFor,
+  wasInferred,
   type StoredAttachment,
 } from "./attachment-rules";
 
@@ -31,9 +34,14 @@ export async function storeAttachments(
   const out: StoredAttachment[] = [];
   for (let i = 0; i < metas.length; i++) {
     const meta = metas[i];
+    // Outlook labels ordinary screenshots "application/octet-stream"; resolve the
+    // real type from the filename so they aren't blocked, and store THAT so the
+    // ticket renders them as images rather than anonymous downloads.
+    const mimeType = effectiveMimeType(meta.filename, meta.mimeType);
+    const inferred = wasInferred(meta.filename, meta.mimeType);
     const base: StoredAttachment = {
       filename: meta.filename,
-      mimeType: meta.mimeType,
+      mimeType,
       size: meta.size,
       attachmentId: meta.attachmentId,
       stored: false,
@@ -43,7 +51,7 @@ export async function storeAttachments(
       ...(meta.inline ? { inline: true } : {}),
     };
 
-    const check = checkAttachment(meta);
+    const check = checkAttachment({ ...meta, filename: meta.filename });
     if (!check.ok) {
       out.push({ ...base, rejected: check.reason });
       continue;
@@ -59,10 +67,16 @@ export async function storeAttachments(
         out.push({ ...base, rejected: "too large" });
         continue;
       }
+      // Only when we trusted the filename: make sure the bytes really are that
+      // format, so nothing rides in as a renamed "screenshot.png".
+      if (inferred && !contentMatches(mimeType, bytes)) {
+        out.push({ ...base, rejected: `content does not match ${meta.filename}` });
+        continue;
+      }
       const key = storageKeyFor(env.tenantId, ticketId, messageId, i, meta.filename);
       const { error } = await db()
         .storage.from(ATTACHMENTS_BUCKET)
-        .upload(key, bytes, { contentType: meta.mimeType, upsert: true });
+        .upload(key, bytes, { contentType: mimeType, upsert: true });
       if (error) {
         out.push({ ...base, rejected: `storage error: ${error.message}` });
         continue;
@@ -99,9 +113,13 @@ export async function storeOutboundAttachments(
   const out: StoredAttachment[] = [];
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
+    // Same resolution as inbound: a browser/mail client that gives us a generic
+    // type shouldn't cost the customer their screenshot.
+    const mimeType = effectiveMimeType(f.filename, f.mimeType);
+    const inferred = wasInferred(f.filename, f.mimeType);
     const base: StoredAttachment = {
       filename: f.filename,
-      mimeType: f.mimeType,
+      mimeType,
       size: f.size,
       stored: false,
       // Inline (cid) markers so the body render resolves the image and the strip
@@ -110,7 +128,7 @@ export async function storeOutboundAttachments(
       ...(f.inline ? { inline: true } : {}),
     };
 
-    const check = checkAttachment({ mimeType: f.mimeType, size: f.size });
+    const check = checkAttachment({ mimeType: f.mimeType, size: f.size, filename: f.filename });
     if (!check.ok) {
       out.push({ ...base, rejected: check.reason });
       continue;
@@ -119,11 +137,15 @@ export async function storeOutboundAttachments(
       out.push({ ...base, rejected: "too large" });
       continue;
     }
+    if (inferred && !contentMatches(mimeType, f.content)) {
+      out.push({ ...base, rejected: `content does not match ${f.filename}` });
+      continue;
+    }
     try {
       const key = storageKeyFor(env.tenantId, ticketId, messageId, i, f.filename);
       const { error } = await db()
         .storage.from(ATTACHMENTS_BUCKET)
-        .upload(key, f.content, { contentType: f.mimeType, upsert: true });
+        .upload(key, f.content, { contentType: mimeType, upsert: true });
       if (error) {
         out.push({ ...base, rejected: `storage error: ${error.message}` });
         continue;
