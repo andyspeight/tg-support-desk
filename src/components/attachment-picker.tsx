@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { Paperclip, Upload, X } from "lucide-react";
 
 const ACCEPT =
-  "image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,text/csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
+  "image/png,image/jpeg,image/gif,image/webp,video/mp4,video/quicktime,video/webm,application/pdf,text/plain,text/csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
 const MAX_FILES = 5;
 const MAX_BYTES = 25 * 1024 * 1024;
 

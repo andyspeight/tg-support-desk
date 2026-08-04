@@ -11,7 +11,7 @@ import { allowPatternFor, sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
 import { AlertTriangle, ArrowLeft, Download, Eye, EyeOff, GitMerge, LayoutDashboard, Lightbulb, Loader2, Mail, Paperclip, Users } from "lucide-react";
 import { handoverDiagnosis, truncate } from "@/lib/handover";
-import { isImageMime } from "@/lib/channels/attachment-rules";
+import { isImageMime, isVideoMime } from "@/lib/channels/attachment-rules";
 import { LightboxImage } from "@/components/image-lightbox";
 import { EmailBody } from "@/components/email-body";
 import { NewCompanyForTicket } from "@/components/new-company-for-ticket";
@@ -94,6 +94,22 @@ function MessageAttachments({ messageId, attachments }: { messageId: string; att
           );
         }
         const src = `/api/attachments/${messageId}/${i}`;
+        if (a.mimeType && isVideoMime(a.mimeType)) {
+          // Screen recordings play in the ticket — watching the bug happen beats
+          // downloading a file to find out what's in it.
+          return (
+            <div key={i} className="overflow-hidden rounded-md border border-line bg-black/5 dark:bg-white/5">
+              <video src={src} controls preload="metadata" className="max-h-64 max-w-[320px]" />
+              <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-ink-3">
+                <span className="max-w-[220px] truncate">{a.filename}</span>
+                <span>{formatBytes(a.size)}</span>
+                <a href={`${src}?download=1`} title="Download" className="ml-auto hover:text-ink">
+                  <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+                </a>
+              </div>
+            </div>
+          );
+        }
         if (a.mimeType && isImageMime(a.mimeType)) {
           // Screenshots render inline; click opens a full-size preview in place.
           return (

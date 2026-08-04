@@ -11,7 +11,7 @@ import { PortalReplyForm } from "@/components/portal/portal-reply-form";
 import { AutoRefresh } from "@/components/portal/auto-refresh";
 import { clientStatus } from "@/lib/portal-status";
 import { LightboxImage } from "@/components/image-lightbox";
-import { isImageMime, type StoredAttachment } from "@/lib/channels/attachment-rules";
+import { isImageMime, isVideoMime, type StoredAttachment } from "@/lib/channels/attachment-rules";
 
 function initialsOf(value: string): string {
   return (value.match(/\b\w/g) ?? []).slice(0, 2).join("").toUpperCase() || "Y";
@@ -180,6 +180,13 @@ export default async function PortalTicketPage({
                     <div className="mt-2 flex flex-wrap items-start gap-1.5">
                       {atts.map(({ a, i }) => {
                         const src = `/api/attachments/${m.id}/${i}`;
+                        if (a.mimeType && isVideoMime(a.mimeType)) {
+                          return (
+                            <span key={i} className="block overflow-hidden rounded-lg border border-white/20">
+                              <video src={src} controls preload="metadata" className="max-h-56 max-w-[220px]" />
+                            </span>
+                          );
+                        }
                         if (a.mimeType && isImageMime(a.mimeType)) {
                           // Screenshots render inline; tap opens a full-size preview in place.
                           return (

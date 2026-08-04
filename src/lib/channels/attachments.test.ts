@@ -49,6 +49,54 @@ describe("effectiveMimeType (Outlook sends screenshots as octet-stream)", () => 
   });
 });
 
+describe("video attachments (screen recordings — #8186)", () => {
+  // "ask luna.mp4", 6 MB, was refused as "type not allowed (video/mp4)".
+  const mp4 = new Uint8Array([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]); // ....ftypisom
+  const mov = new Uint8Array([0, 0, 0, 0x14, 0x66, 0x74, 0x79, 0x70, 0x71, 0x74, 0x20, 0x20]); // ....ftypqt␣␣
+  const webm = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0]);
+
+  it("accepts the video types a client would actually send", () => {
+    expect(checkAttachment({ mimeType: "video/mp4", size: 6301214, filename: "ask luna.mp4" })).toEqual({ ok: true });
+    expect(checkAttachment({ mimeType: "video/quicktime", size: 1000, filename: "screen.mov" })).toEqual({ ok: true });
+    expect(checkAttachment({ mimeType: "video/webm", size: 1000, filename: "capture.webm" })).toEqual({ ok: true });
+  });
+
+  it("resolves video from the filename when the type is generic", () => {
+    expect(effectiveMimeType("recording.mp4", "application/octet-stream")).toBe("video/mp4");
+    expect(effectiveMimeType("recording.mov", "application/octet-stream")).toBe("video/quicktime");
+  });
+
+  it("detects real video containers", () => {
+    expect(sniffMime(mp4)).toBe("video/mp4");
+    expect(sniffMime(mov)).toBe("video/quicktime");
+    expect(sniffMime(webm)).toBe("video/webm");
+  });
+
+  it("treats mp4 and mov as one container family, not a mismatch", () => {
+    // A .mov whose brand isn't "qt", or a .mp4 written by QuickTime, must not be
+    // refused over a naming technicality.
+    expect(contentMatches("video/quicktime", mp4)).toBe(true);
+    expect(contentMatches("video/mp4", mov)).toBe(true);
+    expect(contentMatches("video/webm", webm)).toBe(true);
+  });
+
+  it("still rejects a non-video pretending to be one", () => {
+    expect(contentMatches("video/mp4", exe)).toBe(false);
+    expect(contentMatches("video/mp4", png)).toBe(false);
+  });
+
+  it("keeps the size cap (a long recording is still too big)", () => {
+    const r = checkAttachment({ mimeType: "video/mp4", size: MAX_ATTACHMENT_BYTES + 1, filename: "long.mp4" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/too large/);
+  });
+
+  it("does not open the door to other media types", () => {
+    expect(checkAttachment({ mimeType: "video/x-msvideo", size: 10, filename: "clip.avi" }).ok).toBe(false);
+    expect(checkAttachment({ mimeType: "application/octet-stream", size: 10, filename: "clip.avi" }).ok).toBe(false);
+  });
+});
+
 describe("content verification (only where we trusted the filename)", () => {
   it("detects real formats from their leading bytes", () => {
     expect(sniffMime(png)).toBe("image/png");

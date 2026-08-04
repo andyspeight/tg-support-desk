@@ -9,6 +9,13 @@ const ALLOWED_MIME = new Set([
   "image/jpeg",
   "image/gif",
   "image/webp",
+  // Screen recordings are often the clearest bug report a client can send
+  // ("here it is happening"), so video is allowed alongside screenshots. Video
+  // is passive data, served from the private bucket like everything else —
+  // nothing executes. mov covers iPhone/Mac recordings.
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
   "application/pdf",
   "text/plain",
   "text/csv",
@@ -42,6 +49,10 @@ const EXT_MIME: Record<string, string> = {
   jpe: "image/jpeg",
   gif: "image/gif",
   webp: "image/webp",
+  mp4: "video/mp4",
+  m4v: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
   pdf: "application/pdf",
   txt: "text/plain",
   csv: "text/csv",
@@ -90,7 +101,21 @@ export function sniffMime(bytes: Uint8Array): string | null {
     return "image/webp";
   }
   if (at(0) === 0x25 && at(1) === 0x50 && at(2) === 0x44 && at(3) === 0x46) return "application/pdf";
+  // WebM/Matroska: EBML header.
+  if (at(0) === 0x1a && at(1) === 0x45 && at(2) === 0xdf && at(3) === 0xa3) return "video/webm";
+  // ISO base media (MP4 and QuickTime .mov both carry an "ftyp" box at byte 4).
+  // The brand that follows tells them apart; "qt  " is QuickTime, everything
+  // else in practice is an MP4 variant.
+  if (at(4) === 0x66 && at(5) === 0x74 && at(6) === 0x79 && at(7) === 0x70) {
+    const brand = String.fromCharCode(at(8), at(9), at(10), at(11));
+    return brand.startsWith("qt") ? "video/quicktime" : "video/mp4";
+  }
   return null;
+}
+
+/** Video types we accept — rendered with a player rather than a download link. */
+export function isVideoMime(mime: string): boolean {
+  return /^video\/(mp4|quicktime|webm)$/i.test((mime || "").trim());
 }
 
 /**
@@ -100,9 +125,15 @@ export function sniffMime(bytes: Uint8Array): string | null {
  * Office) pass — they're inert downloads, exactly as before this change.
  */
 export function contentMatches(mimeType: string, bytes: Uint8Array): boolean {
+  const verifiable = isImageMime(mimeType) || isVideoMime(mimeType) || mimeType === "application/pdf";
   const sniffed = sniffMime(bytes);
-  if (!sniffed) return !isImageMime(mimeType) && mimeType !== "application/pdf";
-  return sniffed === mimeType;
+  if (!sniffed) return !verifiable;
+  if (sniffed === mimeType) return true;
+  // MP4 and QuickTime .mov share the ISO base-media container, and the brand
+  // isn't a reliable discriminator across encoders. Treat them as one family so
+  // a genuine screen recording isn't refused over a naming technicality.
+  const isoFamily = new Set(["video/mp4", "video/quicktime"]);
+  return isoFamily.has(sniffed) && isoFamily.has(mimeType);
 }
 
 export type StoredAttachment = {
