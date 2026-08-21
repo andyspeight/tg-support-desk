@@ -9,7 +9,8 @@ import { getCareSignal } from "@/lib/integrations/crm-seam";
 import { env } from "@/lib/env";
 import { allowPatternFor, sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
-import { AlertTriangle, ArrowLeft, Download, Eye, EyeOff, GitMerge, LayoutDashboard, Lightbulb, Loader2, Mail, Paperclip, Users } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, ChevronRight, Download, Eye, EyeOff, GitMerge, Info, LayoutDashboard, Lightbulb, Loader2, Mail, Paperclip, StickyNote, User, UserCheck, Users } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { handoverDiagnosis, truncate } from "@/lib/handover";
 import { isImageMime, isVideoMime } from "@/lib/channels/attachment-rules";
 import { LightboxImage } from "@/components/image-lightbox";
@@ -40,6 +41,20 @@ const ROLE_STYLES: Record<Message["role"], { label: string; className: string }>
   human: { label: "Agent", className: "border-emerald-200 bg-emerald-50 dark:border-emerald-500/25 dark:bg-emerald-500/10" },
   internal_note: { label: "Internal note", className: "border-amber-200 bg-amber-50 dark:border-amber-500/25 dark:bg-amber-500/10" },
   system: { label: "System", className: "border-line bg-surface-2" },
+};
+
+/**
+ * Collapsed-row styling per role. Long threads show every message as a bar, so
+ * who wrote it must be readable at a glance — and never by colour alone (an
+ * icon and a word carry the same meaning for anyone who can't separate the
+ * hues). Client mail is sky, our replies are emerald (agent) or accent (AI).
+ */
+const BAR_STYLES: Record<Message["role"], { edge: string; icon: string; Icon: LucideIcon }> = {
+  customer: { edge: "border-l-sky-500", icon: "text-sky-600 dark:text-sky-400", Icon: User },
+  ai: { edge: "border-l-accent-500", icon: "text-accent-600 dark:text-accent-300", Icon: Bot },
+  human: { edge: "border-l-emerald-500", icon: "text-emerald-600 dark:text-emerald-400", Icon: UserCheck },
+  internal_note: { edge: "border-l-amber-500", icon: "text-amber-600 dark:text-amber-400", Icon: StickyNote },
+  system: { edge: "border-l-zinc-400", icon: "text-ink-3", Icon: Info },
 };
 
 function formatDateTime(iso: string): string {
@@ -245,6 +260,17 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   // People on the ticket: the requester, anyone else who's written in (e.g. a
   // colleague on the thread), and addresses that are only copied (Cc). The
   // participants + Cc all receive every reply — see cc_emails in email.ts.
+  // Long threads: collapse the history so the ticket opens on the thing you
+  // actually need — the latest reply — with everything before it one click away.
+  // "Latest" means the newest real exchange (customer message or our reply), not
+  // an internal note or a system receipt, which are supporting detail. Short
+  // threads stay fully open; collapsing a two-message ticket only adds clicks.
+  const COLLAPSE_ABOVE = 4;
+  const collapseHistory = messages.length > COLLAPSE_ABOVE;
+  const latestExchangeId = [...messages]
+    .reverse()
+    .find((m) => m.role === "customer" || m.role === "ai" || m.role === "human")?.id;
+
   const requesterEmailLc = ticket.requester_email.toLowerCase();
   const writtenIn = new Set(
     messages
@@ -475,32 +501,65 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             }
 
             const style = ROLE_STYLES[message.role];
+            const bar = BAR_STYLES[message.role];
+            const BarIcon = bar.Icon;
+            // Everything is collapsible, so a long thread can be closed right
+            // down; only the initial state differs.
+            const openByDefault = !collapseHistory || message.id === latestExchangeId;
+            const preview = truncate(message.body_text.replace(/\s+/g, " ").trim(), 90);
+            const attachmentCount = (Array.isArray(message.attachments) ? message.attachments : []).length;
             return (
-              <div key={message.id} className={`rounded-lg border p-3 ${style.className}`}>
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-xs font-semibold text-ink">
-                    {style.label}
-                    {message.author && message.author !== "resolution-agent" ? ` · ${message.author}` : ""}
-                  </span>
-                  <span className="text-xs text-ink-3">{formatDateTime(message.created_at)}</span>
-                </div>
-                {message.body_html ? (
-                  <EmailBody
-                    className="tg-prose mt-1.5 text-sm text-ink"
-                    html={sanitizeEmailHtml(message.body_html, {
-                      messageId: message.id,
-                      attachments: (Array.isArray(message.attachments) ? message.attachments : []) as {
-                        contentId?: string;
-                        mimeType?: string;
-                        stored?: boolean;
-                      }[],
-                    })}
+              <details
+                key={message.id}
+                open={openByDefault}
+                className={`group overflow-hidden rounded-lg border ${style.className}`}
+              >
+                <summary
+                  className={`flex cursor-pointer list-none items-center gap-2 border-l-4 px-3 py-2.5 ${bar.edge} hover:bg-black/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-500/40 dark:hover:bg-white/[0.04]`}
+                >
+                  <ChevronRight
+                    className="h-3.5 w-3.5 shrink-0 text-ink-3 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+                    strokeWidth={2}
+                    aria-hidden
                   />
-                ) : (
-                  <pre className="mt-1.5 whitespace-pre-wrap font-sans text-sm text-ink">{message.body_text}</pre>
-                )}
-                <MessageAttachments messageId={message.id} attachments={message.attachments} />
-              </div>
+                  <BarIcon className={`h-3.5 w-3.5 shrink-0 ${bar.icon}`} strokeWidth={1.75} aria-hidden />
+                  <span className="shrink-0 text-xs font-semibold text-ink">{style.label}</span>
+                  {message.author && message.author !== "resolution-agent" && (
+                    <span className="hidden max-w-[14rem] shrink truncate text-xs text-ink-3 sm:inline">
+                      {message.author}
+                    </span>
+                  )}
+                  {/* Scannable gist while closed; the full body replaces it when open. */}
+                  <span className="min-w-0 flex-1 truncate text-xs text-ink-3 group-open:hidden">{preview}</span>
+                  <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-ink-3 group-open:ml-auto">
+                    {attachmentCount > 0 && (
+                      <span className="inline-flex items-center gap-0.5" title={`${attachmentCount} attachment(s)`}>
+                        <Paperclip className="h-3 w-3" strokeWidth={1.75} aria-hidden />
+                        {attachmentCount}
+                      </span>
+                    )}
+                    <span className="tabular-nums">{formatDateTime(message.created_at)}</span>
+                  </span>
+                </summary>
+                <div className="border-t border-black/5 px-3 pb-3 pt-2 dark:border-white/10">
+                  {message.body_html ? (
+                    <EmailBody
+                      className="tg-prose text-sm text-ink"
+                      html={sanitizeEmailHtml(message.body_html, {
+                        messageId: message.id,
+                        attachments: (Array.isArray(message.attachments) ? message.attachments : []) as {
+                          contentId?: string;
+                          mimeType?: string;
+                          stored?: boolean;
+                        }[],
+                      })}
+                    />
+                  ) : (
+                    <pre className="whitespace-pre-wrap font-sans text-sm text-ink">{message.body_text}</pre>
+                  )}
+                  <MessageAttachments messageId={message.id} attachments={message.attachments} />
+                </div>
+              </details>
             );
           })}
         </div>
