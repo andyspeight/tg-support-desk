@@ -1,7 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useImperativeHandle, useRef, useState, type Ref } from "react";
 import { Paperclip, Upload, X } from "lucide-react";
+import { nameClipboardImages } from "@/lib/clipboard-images";
+
+/** Lets a surrounding form push in images the user pasted or dropped onto it,
+ *  so they join the same list as anything picked with Browse. */
+export type AttachmentPickerHandle = { add: (files: File[]) => void };
 
 const ACCEPT =
   "image/png,image/jpeg,image/gif,image/webp,video/mp4,video/quicktime,video/webm,application/pdf,text/plain,text/csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
@@ -25,14 +30,17 @@ function formatBytes(bytes: number): string {
 export function AttachmentPicker({
   name = "files",
   onFilesChange,
+  ref,
 }: {
   name?: string;
   onFilesChange?: (files: File[]) => void;
+  ref?: Ref<AttachmentPickerHandle>;
 }) {
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pasteSeq = useRef(0);
 
   function apply(next: File[]) {
     const capped = next.slice(0, MAX_FILES);
@@ -54,8 +62,16 @@ export function AttachmentPicker({
 
   function add(list: FileList | null) {
     if (!list) return;
+    addFiles(Array.from(list));
+  }
+
+  /** Merge files from any source — Browse, drag-drop, or a paste pushed in by
+   *  the surrounding form. Clipboard images arrive unnamed, so they're named
+   *  here, keeping that in one place for every caller. */
+  function addFiles(raw: File[]) {
+    if (raw.length === 0) return;
     setError(null);
-    const incoming = Array.from(list);
+    const incoming = nameClipboardImages(raw, () => (pasteSeq.current += 1));
     const tooBig = incoming.find((f) => f.size > MAX_BYTES);
     if (tooBig) setError(`“${tooBig.name}” is over the 25 MB limit.`);
     const merged = [...files];
@@ -66,6 +82,9 @@ export function AttachmentPicker({
     if (merged.length > MAX_FILES) setError(`Up to ${MAX_FILES} files.`);
     apply(merged);
   }
+
+  // Declared after addFiles so the handle always calls the current one.
+  useImperativeHandle(ref, () => ({ add: addFiles }));
 
   return (
     <div>

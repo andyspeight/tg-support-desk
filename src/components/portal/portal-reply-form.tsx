@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Loader2, Paperclip } from "lucide-react";
-import { AttachmentPicker } from "@/components/attachment-picker";
+import { AttachmentPicker, type AttachmentPickerHandle } from "@/components/attachment-picker";
 import { mentionsAttachment } from "@/lib/attachment-hint";
+import { imageFilesFrom } from "@/lib/clipboard-images";
 
 /**
  * Portal reply composer. Submits the reply — and any attached files — by
@@ -23,6 +24,7 @@ export function PortalReplyForm({
   const [files, setFiles] = useState<File[]>([]);
   const [attachNudged, setAttachNudged] = useState(false);
   const [pending, startTransition] = useTransition();
+  const pickerRef = useRef<AttachmentPickerHandle>(null);
 
   const attachWarning = attachNudged && files.length === 0;
 
@@ -59,10 +61,25 @@ export function PortalReplyForm({
         maxLength={8000}
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        placeholder="Add a reply…"
+        // People screenshot and press Ctrl+V. A plain textarea swallows that
+        // silently, so clients thought they'd sent screenshots that never
+        // reached us (#8317) — catch the paste and attach it instead.
+        onPaste={(e) => {
+          const images = imageFilesFrom(e.clipboardData);
+          if (images.length === 0) return;
+          e.preventDefault();
+          pickerRef.current?.add(images);
+        }}
+        onDrop={(e) => {
+          const images = imageFilesFrom(e.dataTransfer);
+          if (images.length === 0) return;
+          e.preventDefault();
+          pickerRef.current?.add(images);
+        }}
+        placeholder="Add a reply… you can paste a screenshot straight in"
         className="w-full resize-y rounded-xl border border-line bg-canvas p-3 text-sm leading-relaxed placeholder:text-ink-3 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20"
       />
-      <AttachmentPicker onFilesChange={setFiles} />
+      <AttachmentPicker ref={pickerRef} onFilesChange={setFiles} />
 
       {attachWarning && (
         <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">

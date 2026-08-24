@@ -4,8 +4,9 @@ import { useRef, useState } from "react";
 import { ArrowUpRight, BookOpen, Lightbulb, Loader2, Paperclip } from "lucide-react";
 import type { DraftAssist } from "@/lib/ai/copilot";
 import { safeHttpUrl } from "@/lib/kb-links";
-import { AttachmentPicker } from "@/components/attachment-picker";
+import { AttachmentPicker, type AttachmentPickerHandle } from "@/components/attachment-picker";
 import { mentionsAttachment } from "@/lib/attachment-hint";
+import { imageFilesFrom } from "@/lib/clipboard-images";
 
 const FIELD =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] text-ink placeholder:text-ink-3 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20";
@@ -36,6 +37,7 @@ export function NewTicketForm({
   const [reviewed, setReviewed] = useState(false);
   const [attachNudged, setAttachNudged] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const pickerRef = useRef<AttachmentPickerHandle>(null);
 
   // Build the payload by hand and append the tracked File objects directly, so
   // the upload never depends on a file input's .files being programmatically
@@ -129,7 +131,20 @@ export function NewTicketForm({
         rows={8}
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        placeholder="Describe what’s happening — include any error messages, the page you’re on, and what you expected."
+        // Pasted screenshots attach instead of vanishing into the textarea.
+        onPaste={(e) => {
+          const images = imageFilesFrom(e.clipboardData);
+          if (images.length === 0) return;
+          e.preventDefault();
+          pickerRef.current?.add(images);
+        }}
+        onDrop={(e) => {
+          const images = imageFilesFrom(e.dataTransfer);
+          if (images.length === 0) return;
+          e.preventDefault();
+          pickerRef.current?.add(images);
+        }}
+        placeholder="Describe what’s happening — include any error messages, the page you’re on, and what you expected. You can paste a screenshot straight in."
         className={`${FIELD} resize-y leading-relaxed`}
       />
 
@@ -169,7 +184,7 @@ export function NewTicketForm({
 
       <div>
         <label className="mb-1.5 block text-xs font-medium text-ink-2">Attach screenshots or files (optional)</label>
-        <AttachmentPicker onFilesChange={setFiles} />
+        <AttachmentPicker ref={pickerRef} onFilesChange={setFiles} />
       </div>
 
       {attachWarning && (
