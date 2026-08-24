@@ -57,6 +57,27 @@ const BAR_STYLES: Record<Message["role"], { edge: string; icon: string; Icon: Lu
   system: { edge: "border-l-zinc-400", icon: "text-ink-3", Icon: Info },
 };
 
+/**
+ * What a message is carrying, for the collapsed row. A client sending
+ * screenshots is the whole point of the ticket, so this has to be impossible to
+ * miss — a muted paperclip next to the timestamp was not (#8317). Counts only
+ * what actually stored; anything refused is called out separately rather than
+ * advertised as present.
+ */
+function attachmentSummary(raw: unknown): { label: string; blocked: number } | null {
+  const list = (Array.isArray(raw) ? raw : []) as { stored?: boolean; mimeType?: string }[];
+  if (list.length === 0) return null;
+  const stored = list.filter((a) => a.stored);
+  const blocked = list.length - stored.length;
+  if (stored.length === 0) return blocked > 0 ? { label: "", blocked } : null;
+  const noun = stored.every((a) => a.mimeType && isImageMime(a.mimeType))
+    ? "image"
+    : stored.every((a) => a.mimeType && isVideoMime(a.mimeType))
+      ? "video"
+      : "file";
+  return { label: `${stored.length} ${noun}${stored.length === 1 ? "" : "s"}`, blocked };
+}
+
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
 }
@@ -270,6 +291,12 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const latestExchangeId = [...messages]
     .reverse()
     .find((m) => m.role === "customer" || m.role === "ai" || m.role === "human")?.id;
+  // The newest message actually carrying files opens too. A client's
+  // screenshots are usually the reason you're reading the ticket, and on #8317
+  // they sat five messages back — visible only if you knew to click.
+  const latestWithAttachmentsId = [...messages]
+    .reverse()
+    .find((m) => (Array.isArray(m.attachments) ? m.attachments : []).some((a) => (a as { stored?: boolean })?.stored))?.id;
 
   const requesterEmailLc = ticket.requester_email.toLowerCase();
   const writtenIn = new Set(
@@ -505,9 +532,10 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
             const BarIcon = bar.Icon;
             // Everything is collapsible, so a long thread can be closed right
             // down; only the initial state differs.
-            const openByDefault = !collapseHistory || message.id === latestExchangeId;
+            const openByDefault =
+              !collapseHistory || message.id === latestExchangeId || message.id === latestWithAttachmentsId;
             const preview = truncate(message.body_text.replace(/\s+/g, " ").trim(), 90);
-            const attachmentCount = (Array.isArray(message.attachments) ? message.attachments : []).length;
+            const atts = attachmentSummary(message.attachments);
             return (
               <details
                 key={message.id}
@@ -529,16 +557,25 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                       {message.author}
                     </span>
                   )}
+                  {/* Attachments sit right next to who sent them, as a filled
+                      chip — the reason you open a client's message is usually
+                      the screenshot on it, so it must read at a glance. */}
+                  {atts?.label && (
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-ink px-2 py-0.5 text-[11px] font-semibold text-canvas">
+                      <Paperclip className="h-3 w-3" strokeWidth={2.25} aria-hidden />
+                      {atts.label}
+                    </span>
+                  )}
+                  {atts && atts.blocked > 0 && (
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 ring-1 ring-inset ring-amber-300 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-500/40">
+                      <AlertTriangle className="h-3 w-3" strokeWidth={2.25} aria-hidden />
+                      {atts.blocked} blocked
+                    </span>
+                  )}
                   {/* Scannable gist while closed; the full body replaces it when open. */}
                   <span className="min-w-0 flex-1 truncate text-xs text-ink-3 group-open:hidden">{preview}</span>
-                  <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-ink-3 group-open:ml-auto">
-                    {attachmentCount > 0 && (
-                      <span className="inline-flex items-center gap-0.5" title={`${attachmentCount} attachment(s)`}>
-                        <Paperclip className="h-3 w-3" strokeWidth={1.75} aria-hidden />
-                        {attachmentCount}
-                      </span>
-                    )}
-                    <span className="tabular-nums">{formatDateTime(message.created_at)}</span>
+                  <span className="ml-auto shrink-0 text-xs tabular-nums text-ink-3">
+                    {formatDateTime(message.created_at)}
                   </span>
                 </summary>
                 <div className="border-t border-black/5 px-3 pb-3 pt-2 dark:border-white/10">
