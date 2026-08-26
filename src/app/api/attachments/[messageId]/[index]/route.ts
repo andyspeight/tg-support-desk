@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth";
 import { getMessageById, getTicket } from "@/lib/db/queries";
 import { companyForEmail } from "@/lib/portal-company";
 import { signedAttachmentUrl } from "@/lib/channels/attachments";
-import type { StoredAttachment } from "@/lib/channels/attachment-rules";
+import { canRenderInline, type StoredAttachment } from "@/lib/channels/attachment-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +43,11 @@ export async function GET(
     return new NextResponse("Not available", { status: 404 });
   }
 
-  const download = new URL(request.url).searchParams.get("download") === "1";
+  // Only images, video and PDFs are shown in the browser. Anything else — a
+  // forwarded .eml, a document, a spreadsheet — is always saved to disk rather
+  // than opened in a browsing context, whatever the caller asks for.
+  const download =
+    new URL(request.url).searchParams.get("download") === "1" || !canRenderInline(attachment.mimeType ?? "");
   const url = await signedAttachmentUrl(attachment.storageKey, attachment.filename, download);
   if (!url) return new NextResponse("Could not generate link", { status: 500 });
 

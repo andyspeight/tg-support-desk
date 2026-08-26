@@ -17,6 +17,12 @@ const ALLOWED_MIME = new Set([
   "video/quicktime",
   "video/webm",
   "application/pdf",
+  // Forwarded emails. Clients routinely attach a supplier's quote or booking
+  // confirmation as .eml/.msg — it's often the whole evidence for the ticket.
+  // Inert data: we never parse or render it, it downloads and opens in the
+  // agent's own mail client.
+  "message/rfc822",
+  "application/vnd.ms-outlook",
   "text/plain",
   "text/csv",
   "application/msword",
@@ -54,6 +60,8 @@ const EXT_MIME: Record<string, string> = {
   mov: "video/quicktime",
   webm: "video/webm",
   pdf: "application/pdf",
+  eml: "message/rfc822",
+  msg: "application/vnd.ms-outlook",
   txt: "text/plain",
   csv: "text/csv",
   doc: "application/msword",
@@ -116,6 +124,17 @@ export function sniffMime(bytes: Uint8Array): string | null {
 /** Video types we accept — rendered with a player rather than a download link. */
 export function isVideoMime(mime: string): boolean {
   return /^video\/(mp4|quicktime|webm)$/i.test((mime || "").trim());
+}
+
+/**
+ * Types we're willing to hand to the browser to display. Everything else —
+ * forwarded emails, documents, spreadsheets, text — is forced to download, so
+ * it can never be interpreted in a browsing context. Deny by default: a type
+ * has to be on this list to be shown rather than saved.
+ */
+export function canRenderInline(mime: string): boolean {
+  const m = (mime || "").trim().toLowerCase();
+  return isImageMime(m) || isVideoMime(m) || m === "application/pdf";
 }
 
 /**

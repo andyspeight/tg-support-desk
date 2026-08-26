@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canRenderInline,
   checkAttachment,
   contentMatches,
   effectiveMimeType,
@@ -94,6 +95,31 @@ describe("video attachments (screen recordings — #8186)", () => {
   it("does not open the door to other media types", () => {
     expect(checkAttachment({ mimeType: "video/x-msvideo", size: 10, filename: "clip.avi" }).ok).toBe(false);
     expect(checkAttachment({ mimeType: "application/octet-stream", size: 10, filename: "clip.avi" }).ok).toBe(false);
+  });
+});
+
+describe("forwarded emails (#8342 — a supplier quote and a reservation)", () => {
+  it("accepts .eml and .msg", () => {
+    expect(checkAttachment({ mimeType: "message/rfc822", size: 31000, filename: "Your Online Reservation.eml" })).toEqual({ ok: true });
+    expect(checkAttachment({ mimeType: "application/vnd.ms-outlook", size: 4000, filename: "quote.msg" })).toEqual({ ok: true });
+  });
+
+  it("resolves them from the filename when the type is generic", () => {
+    expect(effectiveMimeType("Your quote.eml", "application/octet-stream")).toBe("message/rfc822");
+    expect(effectiveMimeType("quote.msg", "application/octet-stream")).toBe("application/vnd.ms-outlook");
+  });
+
+  it("never lets them open in the browser — always a download", () => {
+    expect(canRenderInline("message/rfc822")).toBe(false);
+    expect(canRenderInline("application/vnd.ms-outlook")).toBe(false);
+    expect(canRenderInline("text/plain")).toBe(false);
+    expect(canRenderInline("text/html")).toBe(false);
+  });
+
+  it("still shows the things worth showing", () => {
+    expect(canRenderInline("image/png")).toBe(true);
+    expect(canRenderInline("video/mp4")).toBe(true);
+    expect(canRenderInline("application/pdf")).toBe(true);
   });
 });
 
