@@ -7,6 +7,7 @@ import {
   listCannedResponses,
   listCompanyDomains,
   listCompanyMembers,
+  listCompanyPeople,
   listRestrictedCompanies,
   listSlaPolicies,
   listTags,
@@ -28,7 +29,7 @@ import {
   importAllowedAction,
   linkCompanyMemberAction,
   setCompanyRestrictionAction,
-  setTicketVisibilityAction,
+  setPersonVisibilityAction,
   removeAllowedAction,
   removeBlockedAction,
   unlinkCompanyDomainAction,
@@ -40,7 +41,15 @@ function show(value: string | undefined): string {
   return value && value.length > 0 ? value : "not configured";
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ company?: string }>;
+}) {
+  const { company: companyParam } = await searchParams;
+  // Shape-check the id from the URL before it reaches a query.
+  const selectedCompanyId = companyParam && /^rec[A-Za-z0-9]{14}$/.test(companyParam) ? companyParam : null;
+
   const [slaPolicies, canned, tags, blocked, allowed, companyLinks, companyDomains, companies, restrictedCompanies] =
     await Promise.all([
     listSlaPolicies().catch(() => []),
@@ -57,6 +66,15 @@ export default async function SettingsPage() {
     .split(",")
     .map((e) => e.trim())
     .filter(Boolean);
+  const restrictedIds = new Set(restrictedCompanies.map((c) => c.client_id));
+  const selectedRestricted = selectedCompanyId ? restrictedIds.has(selectedCompanyId) : false;
+  const selectedCompanyName = selectedCompanyId
+    ? (companies.find((c) => c.id === selectedCompanyId)?.name ??
+       restrictedCompanies.find((c) => c.client_id === selectedCompanyId)?.client_name ??
+       null)
+    : null;
+  const companyPeople = selectedCompanyId ? await listCompanyPeople(selectedCompanyId).catch(() => []) : [];
+
   const session = await getSession();
   const isOwner = !!session && env.ownerEmails.includes(session.email);
 
@@ -236,59 +254,118 @@ export default async function SettingsPage() {
         </h2>
         <p className="mt-1 text-xs leading-relaxed text-ink-3">
           By default everyone at a client company sees <span className="font-medium text-ink-2">all</span> of that
-          company’s tickets in the portal — nothing changes unless you add the company here. Restrict a company and its
-          people see only their own tickets, except anyone you mark{" "}
-          <span className="font-medium text-ink-2">Sees all</span> in Company links below.
+          company’s tickets — nothing changes unless you restrict the company below. Once restricted, its people see
+          only their own tickets, except anyone you mark <span className="font-medium text-ink-2">Sees all</span>.
         </p>
-        <div className="mt-2 space-y-1.5">
-          {restrictedCompanies.length === 0 && (
-            <p className="text-sm text-ink-3">No companies restricted — everyone sees their company’s tickets.</p>
-          )}
-          {restrictedCompanies.map((c) => (
-            <div
-              key={c.client_id}
-              className="flex items-center gap-2 rounded-md border border-line-soft px-2.5 py-1.5 text-sm"
-            >
-              <span className="min-w-0 flex-1 truncate text-ink">{c.client_name ?? c.client_id}</span>
-              <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-inset ring-amber-300 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/40">
-                Own tickets only
-              </span>
-              <form action={setCompanyRestrictionAction} className="inline shrink-0">
-                <input type="hidden" name="clientId" value={c.client_id} />
-                <input type="hidden" name="restrict" value="off" />
-                <button
-                  className="text-ink-3 hover:text-red-600 dark:hover:text-red-400"
-                  aria-label={`Stop restricting ${c.client_name ?? c.client_id}`}
-                  title="Remove the restriction — everyone here goes back to seeing all the company's tickets"
-                >
-                  <X className="h-4 w-4" strokeWidth={1.75} />
-                </button>
-              </form>
-            </div>
-          ))}
-        </div>
-        <form action={setCompanyRestrictionAction} className="mt-3 flex flex-col gap-2 border-t border-line-soft pt-3 sm:flex-row">
-          <input type="hidden" name="restrict" value="on" />
+
+        {/* Step 1 — pick a company. Plain GET so the choice lives in the URL and
+            the page can load that company’s people server-side. */}
+        <form method="get" className="mt-3 flex flex-col gap-2 sm:flex-row">
           <select
-            name="clientId"
-            required
-            defaultValue=""
-            aria-label="Company to restrict"
+            name="company"
+            defaultValue={selectedCompanyId ?? ""}
+            aria-label="Company"
             className="min-w-0 flex-1 rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink-2 focus:border-ink-3 focus:outline-none"
           >
-            <option value="" disabled>
-              {companies.length === 0 ? "Company list unavailable" : "Choose a company to restrict…"}
+            <option value="">
+              {companies.length === 0 ? "Company list unavailable" : "Choose a company…"}
             </option>
             {companies.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
+                {restrictedIds.has(c.id) ? " — restricted" : ""}
               </option>
             ))}
           </select>
           <button className="shrink-0 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-surface-2 dark:text-ink dark:hover:bg-line">
-            Restrict
+            Show users
           </button>
         </form>
+
+        {selectedCompanyId && (
+          <div className="mt-3 rounded-md border border-line-soft p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+                {selectedCompanyName ?? selectedCompanyId}
+              </span>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${
+                  selectedRestricted
+                    ? "bg-amber-50 text-amber-800 ring-amber-300 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/40"
+                    : "bg-surface-2 text-ink-3 ring-line"
+                }`}
+              >
+                {selectedRestricted ? "Restricted — own tickets only" : "Open — everyone sees all"}
+              </span>
+              <form action={setCompanyRestrictionAction} className="shrink-0">
+                <input type="hidden" name="clientId" value={selectedCompanyId} />
+                <input type="hidden" name="restrict" value={selectedRestricted ? "off" : "on"} />
+                <button className="rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-2">
+                  {selectedRestricted ? "Remove restriction" : "Restrict this company"}
+                </button>
+              </form>
+            </div>
+
+            {/* Step 2 — set the people. Shown whatever the company’s state, so you
+                can prepare who gets the wider view before switching it on. */}
+            <div className="mt-3 border-t border-line-soft pt-3">
+              <p className="text-xs font-medium text-ink-2">
+                People at this company {companyPeople.length > 0 && <span className="text-ink-3">({companyPeople.length})</span>}
+              </p>
+              {!selectedRestricted && (
+                <p className="mt-1 text-xs text-ink-3">
+                  This company isn’t restricted, so everyone here already sees all its tickets. Settings below apply as
+                  soon as you restrict it.
+                </p>
+              )}
+              <div className="mt-2 space-y-1.5">
+                {companyPeople.length === 0 && (
+                  <p className="text-sm text-ink-3">Nobody has raised a ticket for this company yet.</p>
+                )}
+                {companyPeople.map((p) => (
+                  <div
+                    key={p.email}
+                    className="flex items-center gap-2 rounded-md border border-line-soft px-2.5 py-1.5 text-sm"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-ink" title={p.email}>
+                      {p.name ? `${p.name} · ` : ""}
+                      <span className={p.name ? "text-ink-3" : ""}>{p.email}</span>
+                    </span>
+                    <span className="hidden shrink-0 text-xs text-ink-3 sm:inline">
+                      {p.tickets} ticket{p.tickets === 1 ? "" : "s"}
+                    </span>
+                    <form action={setPersonVisibilityAction} className="shrink-0">
+                      <input type="hidden" name="email" value={p.email} />
+                      <input type="hidden" name="clientId" value={selectedCompanyId} />
+                      <input type="hidden" name="seeAll" value={p.canSeeAll ? "off" : "on"} />
+                      <button
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset transition ${
+                          p.canSeeAll
+                            ? "bg-emerald-50 text-emerald-700 ring-emerald-300 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/40"
+                            : "bg-surface-2 text-ink-3 ring-line hover:text-ink"
+                        }`}
+                        title={
+                          p.canSeeAll
+                            ? `${p.email} sees every ticket for this company — click to restrict to their own`
+                            : `${p.email} sees only their own tickets — click to let them see all the company’s`
+                        }
+                      >
+                        {p.canSeeAll ? "Sees all" : "Own only"}
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {restrictedCompanies.length > 0 && (
+          <p className="mt-3 border-t border-line-soft pt-3 text-xs text-ink-3">
+            <span className="font-medium text-ink-2">Restricted:</span>{" "}
+            {restrictedCompanies.map((c) => c.client_name ?? c.client_id).join(", ")}
+          </p>
+        )}
       </section>
 
       <section className="mt-4 rounded-lg border border-line bg-surface p-4">
@@ -303,10 +380,9 @@ export default async function SettingsPage() {
           (e.g. someone who’s left). Linking a person also joins their past tickets to the company’s history.
         </p>
         <p className="mt-1.5 text-xs text-ink-3">
-          <span className="font-medium text-ink-2">Ticket visibility.</span> Only applies to companies you’ve restricted
-          above — everywhere else people already see all their company’s tickets. For a restricted company, mark{" "}
-          <span className="font-medium">Sees all</span> to let someone (an owner or office manager, say) read every
-          ticket the company has raised; everyone else there sees only their own.
+          <span className="font-medium text-ink-2">Ticket visibility</span> is set per company above — pick the company
+          and you’ll see its people. A <span className="font-medium">Sees all</span> badge here just shows who already
+          has the company-wide view.
         </p>
         <div className="mt-2 space-y-1.5">
           {companyLinks.length === 0 && <p className="text-sm text-ink-3">None yet — everything is matching automatically.</p>}
@@ -316,26 +392,12 @@ export default async function SettingsPage() {
               <span className={`shrink-0 truncate text-xs ${m.client_id ? "text-ink-2" : "font-medium text-amber-700 dark:text-amber-400"}`}>
                 {m.client_id ? (m.client_name ?? m.client_id) : "No company"}
               </span>
-              {/* Only meaningful when they're actually linked to a company. */}
-              {m.client_id && (
-                <form action={setTicketVisibilityAction} className="shrink-0">
-                  <input type="hidden" name="id" value={m.id} />
-                  <input type="hidden" name="seeAll" value={m.can_see_all_tickets ? "off" : "on"} />
-                  <button
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset transition ${
-                      m.can_see_all_tickets
-                        ? "bg-emerald-50 text-emerald-700 ring-emerald-300 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/40"
-                        : "bg-surface-2 text-ink-3 ring-line hover:text-ink"
-                    }`}
-                    title={
-                      m.can_see_all_tickets
-                        ? `${m.email} sees every ticket for this company — click to restrict to their own`
-                        : `${m.email} sees only their own tickets — click to let them see all the company's`
-                    }
-                  >
-                    {m.can_see_all_tickets ? "Sees all" : "Own only"}
-                  </button>
-                </form>
+              {/* Read-only here — visibility is set per company above, so there's
+                  only ever one place to change it. */}
+              {m.client_id && m.can_see_all_tickets && (
+                <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/40">
+                  Sees all
+                </span>
               )}
               <form action={unlinkCompanyMemberAction} className="inline">
                 <input type="hidden" name="id" value={m.id} />

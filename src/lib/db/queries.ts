@@ -264,6 +264,88 @@ export async function setCompanyRestriction(input: {
   if (error) throw new Error(`setCompanyRestriction: ${error.message}`);
 }
 
+/** One person at a client company, for the visibility screen. */
+export type CompanyPerson = {
+  email: string;
+  name: string | null;
+  tickets: number;
+  canSeeAll: boolean;
+  /** True when an explicit company_members row exists for them. */
+  linked: boolean;
+};
+
+/**
+ * Everyone associated with a company: whoever has raised a ticket for it, plus
+ * anyone explicitly linked to it. Both matter — most people reach a company by
+ * a domain match and have no link row at all, and those are exactly the people
+ * you need to find when deciding who may see everything.
+ */
+export async function listCompanyPeople(clientId: string): Promise<CompanyPerson[]> {
+  const [ticketsRes, membersRes] = await Promise.all([
+    db()
+      .from("tickets")
+      .select("requester_email,requester_name")
+      .eq("tenant_id", env.tenantId)
+      .eq("client_id", clientId)
+      .limit(2000),
+    db().from("company_members").select().eq("tenant_id", env.tenantId).eq("client_id", clientId),
+  ]);
+  if (ticketsRes.error) throw new Error(`listCompanyPeople(tickets): ${ticketsRes.error.message}`);
+  if (membersRes.error) throw new Error(`listCompanyPeople(members): ${membersRes.error.message}`);
+
+  const people = new Map<string, CompanyPerson>();
+  for (const t of ticketsRes.data ?? []) {
+    const email = t.requester_email.trim().toLowerCase();
+    const found = people.get(email);
+    if (found) {
+      found.tickets += 1;
+      found.name = found.name ?? t.requester_name;
+    } else {
+      people.set(email, { email, name: t.requester_name, tickets: 1, canSeeAll: false, linked: false });
+    }
+  }
+  for (const m of membersRes.data ?? []) {
+    const email = m.email.trim().toLowerCase();
+    const found = people.get(email);
+    if (found) {
+      found.canSeeAll = m.can_see_all_tickets;
+      found.linked = true;
+    } else {
+      people.set(email, { email, name: null, tickets: 0, canSeeAll: m.can_see_all_tickets, linked: true });
+    }
+  }
+  // Most active first — the people you're most likely to be setting.
+  return [...people.values()].sort((a, b) => b.tickets - a.tickets || a.email.localeCompare(b.email));
+}
+
+/**
+ * Set one person's company-wide view. Creates the company link if they don't
+ * have one yet (most people match by domain and have no row), so granting works
+ * from the company screen without a separate linking step.
+ */
+export async function setPersonCompanyVisibility(input: {
+  email: string;
+  clientId: string;
+  clientName: string | null;
+  canSeeAll: boolean;
+  actor: string;
+}): Promise<void> {
+  const { error } = await db()
+    .from("company_members")
+    .upsert(
+      {
+        tenant_id: env.tenantId,
+        email: input.email.trim().toLowerCase(),
+        client_id: input.clientId,
+        client_name: input.clientName,
+        created_by: input.actor,
+        can_see_all_tickets: input.canSeeAll,
+      },
+      { onConflict: "tenant_id,email" },
+    );
+  if (error) throw new Error(`setPersonCompanyVisibility: ${error.message}`);
+}
+
 /** Grant or revoke the company-wide portal view for one person. Returns the
  *  updated row so the caller can audit who it applied to. */
 export async function setCompanyMemberVisibility(id: string, canSeeAll: boolean): Promise<CompanyMember | null> {

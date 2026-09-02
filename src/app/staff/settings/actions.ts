@@ -18,8 +18,8 @@ import {
   deleteTag,
   removeAllowedSender,
   removeBlockedSender,
-  setCompanyMemberVisibility,
   setCompanyRestriction,
+  setPersonCompanyVisibility,
   stampTicketsForEmail,
   updateCannedResponse,
   upsertCompanyMember,
@@ -341,30 +341,32 @@ export async function setCompanyRestrictionAction(formData: FormData): Promise<v
   revalidatePath("/staff/settings");
 }
 
-const visibilitySchema = z.object({
-  id: z.string().uuid(),
-  // The checkbox only appears in the form when ticked, so absence means "off".
+const personVisibilitySchema = z.object({
+  email: z.string().trim().email().max(200),
+  clientId: z.string().trim().regex(/^rec[A-Za-z0-9]{14}$/, "invalid company id"),
   seeAll: z.enum(["on", "off"]),
 });
 
-/**
- * Choose what this person sees in the portal: their own tickets (default) or
- * every ticket their company has raised. Company-wide sight is a deliberate
- * grant — it exposes colleagues' conversations — so it's set per person here
- * rather than inherited from an email domain matching a client record.
- */
-export async function setTicketVisibilityAction(formData: FormData): Promise<void> {
+/** Set one person's visibility from the company screen. Links them to the
+ *  company if they weren't linked (a domain match leaves no row), so this works
+ *  in one step from where you're actually looking. */
+export async function setPersonVisibilityAction(formData: FormData): Promise<void> {
   const session = await requireAgent();
-  const { id, seeAll } = visibilitySchema.parse(Object.fromEntries(formData));
-  const updated = await setCompanyMemberVisibility(id, seeAll === "on");
-  if (updated) {
-    invalidateCompanyFor(updated.email);
-    await audit("human", session.email, "company_member.visibility_set", undefined, {
-      email: updated.email,
-      client_id: updated.client_id,
-      can_see_all_tickets: seeAll === "on",
-    });
-  }
+  const { email, clientId, seeAll } = personVisibilitySchema.parse(Object.fromEntries(formData));
+  const record = await getClientById(clientId).catch(() => null);
+  await setPersonCompanyVisibility({
+    email,
+    clientId,
+    clientName: record ? companyNameFrom(record) : null,
+    canSeeAll: seeAll === "on",
+    actor: session.email,
+  });
+  invalidateCompanyFor(email);
+  await audit("human", session.email, "company_member.visibility_set", undefined, {
+    email: email.toLowerCase(),
+    client_id: clientId,
+    can_see_all_tickets: seeAll === "on",
+  });
   revalidatePath("/staff/settings");
 }
 
