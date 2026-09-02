@@ -154,6 +154,33 @@ export type Database = {
           },
         ]
       }
+      company_settings: {
+        Row: {
+          client_id: string
+          client_name: string | null
+          restrict_ticket_visibility: boolean
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_id: string
+          client_name?: string | null
+          restrict_ticket_visibility?: boolean
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_id?: string
+          client_name?: string | null
+          restrict_ticket_visibility?: boolean
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       company_members: {
         Row: {
           can_see_all_tickets: boolean

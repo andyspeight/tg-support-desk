@@ -211,6 +211,59 @@ export async function stampTicketsForEmail(email: string, clientId: string): Pro
   return data?.length ?? 0;
 }
 
+// ── Company settings — the per-company switch that decides whether the
+// per-person visibility grant applies at all. No row means "not restricted",
+// i.e. everyone at that company sees all its tickets.
+
+export type CompanySetting = Tables<"company_settings">;
+
+/** Is this company's portal restricted to own-tickets-by-default? Absence of a
+ *  row means no, which is the default for every company. */
+export async function isCompanyRestricted(clientId: string): Promise<boolean> {
+  const { data, error } = await db()
+    .from("company_settings")
+    .select("restrict_ticket_visibility")
+    .eq("tenant_id", env.tenantId)
+    .eq("client_id", clientId)
+    .maybeSingle();
+  if (error) throw new Error(`isCompanyRestricted: ${error.message}`);
+  return Boolean(data?.restrict_ticket_visibility);
+}
+
+export async function listRestrictedCompanies(): Promise<CompanySetting[]> {
+  const { data, error } = await db()
+    .from("company_settings")
+    .select()
+    .eq("tenant_id", env.tenantId)
+    .eq("restrict_ticket_visibility", true)
+    .order("client_name", { ascending: true });
+  if (error) throw new Error(`listRestrictedCompanies: ${error.message}`);
+  return data ?? [];
+}
+
+/** Turn the restriction on or off for a company. */
+export async function setCompanyRestriction(input: {
+  clientId: string;
+  clientName: string | null;
+  restrict: boolean;
+  updatedBy: string;
+}): Promise<void> {
+  const { error } = await db()
+    .from("company_settings")
+    .upsert(
+      {
+        tenant_id: env.tenantId,
+        client_id: input.clientId,
+        client_name: input.clientName,
+        restrict_ticket_visibility: input.restrict,
+        updated_by: input.updatedBy,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "tenant_id,client_id" },
+    );
+  if (error) throw new Error(`setCompanyRestriction: ${error.message}`);
+}
+
 /** Grant or revoke the company-wide portal view for one person. Returns the
  *  updated row so the caller can audit who it applied to. */
 export async function setCompanyMemberVisibility(id: string, canSeeAll: boolean): Promise<CompanyMember | null> {

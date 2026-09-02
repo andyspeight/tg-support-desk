@@ -1,27 +1,41 @@
 import { describe, expect, it } from "vitest";
 import { companyVisibleTo } from "./portal-visibility";
 
-// Which of a company's tickets a client may READ in the portal. Default deny:
-// belonging to a company (often inferred from an email domain) is not consent
-// to read everything that company has ever raised.
-describe("companyVisibleTo", () => {
-  it("returns the company only when the grant is set", () => {
-    expect(companyVisibleTo({ client_id: "recABC", client_name: "Ski Solutions", can_see_all_tickets: true })).toEqual({
-      id: "recABC",
-      name: "Ski Solutions",
-    });
+const acme = { id: "recACME", name: "Acme Travel" };
+const granted = { client_id: "recACME", can_see_all_tickets: true };
+const notGranted = { client_id: "recACME", can_see_all_tickets: false };
+
+describe("companyVisibleTo — company switch off (the default)", () => {
+  it("lets anyone at the company see its tickets, as before", () => {
+    expect(companyVisibleTo({ company: acme, restricted: false, member: null })).toEqual(acme);
+    expect(companyVisibleTo({ company: acme, restricted: false, member: notGranted })).toEqual(acme);
   });
 
-  it("defaults to own-tickets-only for a linked member without the grant", () => {
-    expect(companyVisibleTo({ client_id: "recABC", can_see_all_tickets: false })).toBeNull();
+  it("still gives nothing to someone with no company at all", () => {
+    expect(companyVisibleTo({ company: null, restricted: false, member: granted })).toBeNull();
+  });
+});
+
+describe("companyVisibleTo — company switch on", () => {
+  it("restricts to own tickets without an explicit grant", () => {
+    expect(companyVisibleTo({ company: acme, restricted: true, member: null })).toBeNull();
+    expect(companyVisibleTo({ company: acme, restricted: true, member: notGranted })).toBeNull();
   });
 
-  it("gives nothing to someone with no explicit link (domain/Airtable matches don't count)", () => {
-    expect(companyVisibleTo(null)).toBeNull();
+  it("opens the company view for a granted person", () => {
+    expect(companyVisibleTo({ company: acme, restricted: true, member: granted })).toEqual(acme);
   });
 
-  it("gives nothing when the grant is set but no company is linked", () => {
-    // A "no company" row (the ex-employee case) must never widen access.
-    expect(companyVisibleTo({ client_id: null, can_see_all_tickets: true })).toBeNull();
+  it("never lets a grant for one company unlock another", () => {
+    expect(
+      companyVisibleTo({ company: { id: "recOTHER", name: "Other Ltd" }, restricted: true, member: granted }),
+    ).toBeNull();
+  });
+
+  it("ignores a grant on a 'no company' link", () => {
+    // The ex-employee row: explicitly no company, so nothing to widen to.
+    expect(
+      companyVisibleTo({ company: acme, restricted: true, member: { client_id: null, can_see_all_tickets: true } }),
+    ).toBeNull();
   });
 });

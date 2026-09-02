@@ -19,6 +19,7 @@ import {
   removeAllowedSender,
   removeBlockedSender,
   setCompanyMemberVisibility,
+  setCompanyRestriction,
   stampTicketsForEmail,
   updateCannedResponse,
   upsertCompanyMember,
@@ -309,6 +310,34 @@ export async function unlinkCompanyDomainAction(formData: FormData): Promise<voi
       client_id: removed.client_id,
     });
   }
+  revalidatePath("/staff/settings");
+}
+
+const companyRestrictionSchema = z.object({
+  clientId: z.string().trim().regex(/^rec[A-Za-z0-9]{14}$/, "invalid company id"),
+  restrict: z.enum(["on", "off"]),
+});
+
+/**
+ * Turn per-person ticket visibility on or off for a whole company. Off (the
+ * default, and how every company starts) means everyone there sees all of that
+ * company's tickets, as it always has. On means own-tickets-only unless a
+ * person is marked "Sees all" in Company links.
+ */
+export async function setCompanyRestrictionAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const { clientId, restrict } = companyRestrictionSchema.parse(Object.fromEntries(formData));
+  const record = await getClientById(clientId).catch(() => null);
+  await setCompanyRestriction({
+    clientId,
+    clientName: record ? companyNameFrom(record) : null,
+    restrict: restrict === "on",
+    updatedBy: session.email,
+  });
+  await audit("human", session.email, "company.visibility_restriction_set", undefined, {
+    client_id: clientId,
+    restricted: restrict === "on",
+  });
   revalidatePath("/staff/settings");
 }
 

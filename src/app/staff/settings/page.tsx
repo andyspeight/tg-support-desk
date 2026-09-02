@@ -7,6 +7,7 @@ import {
   listCannedResponses,
   listCompanyDomains,
   listCompanyMembers,
+  listRestrictedCompanies,
   listSlaPolicies,
   listTags,
 } from "@/lib/db/queries";
@@ -26,6 +27,7 @@ import {
   recoverBlockedAttachmentsAction,
   importAllowedAction,
   linkCompanyMemberAction,
+  setCompanyRestrictionAction,
   setTicketVisibilityAction,
   removeAllowedAction,
   removeBlockedAction,
@@ -39,7 +41,8 @@ function show(value: string | undefined): string {
 }
 
 export default async function SettingsPage() {
-  const [slaPolicies, canned, tags, blocked, allowed, companyLinks, companyDomains, companies] = await Promise.all([
+  const [slaPolicies, canned, tags, blocked, allowed, companyLinks, companyDomains, companies, restrictedCompanies] =
+    await Promise.all([
     listSlaPolicies().catch(() => []),
     listCannedResponses().catch(() => []),
     listTags().catch(() => []),
@@ -48,7 +51,8 @@ export default async function SettingsPage() {
     listCompanyMembers().catch(() => []),
     listCompanyDomains().catch(() => []),
     listAllClientCompanies().catch(() => []), // Airtable — empty on a wobble, the panel says so
-  ]);
+    listRestrictedCompanies().catch(() => []),
+    ]);
   const agents = (process.env.AGENT_EMAILS ?? "")
     .split(",")
     .map((e) => e.trim())
@@ -225,6 +229,70 @@ export default async function SettingsPage() {
 
       <section className="mt-4 rounded-lg border border-line bg-surface p-4">
         <h2 className="text-sm font-semibold">
+          Ticket visibility by company{" "}
+          {restrictedCompanies.length > 0 && (
+            <span className="font-normal text-ink-3">({restrictedCompanies.length} restricted)</span>
+          )}
+        </h2>
+        <p className="mt-1 text-xs leading-relaxed text-ink-3">
+          By default everyone at a client company sees <span className="font-medium text-ink-2">all</span> of that
+          company’s tickets in the portal — nothing changes unless you add the company here. Restrict a company and its
+          people see only their own tickets, except anyone you mark{" "}
+          <span className="font-medium text-ink-2">Sees all</span> in Company links below.
+        </p>
+        <div className="mt-2 space-y-1.5">
+          {restrictedCompanies.length === 0 && (
+            <p className="text-sm text-ink-3">No companies restricted — everyone sees their company’s tickets.</p>
+          )}
+          {restrictedCompanies.map((c) => (
+            <div
+              key={c.client_id}
+              className="flex items-center gap-2 rounded-md border border-line-soft px-2.5 py-1.5 text-sm"
+            >
+              <span className="min-w-0 flex-1 truncate text-ink">{c.client_name ?? c.client_id}</span>
+              <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-inset ring-amber-300 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/40">
+                Own tickets only
+              </span>
+              <form action={setCompanyRestrictionAction} className="inline shrink-0">
+                <input type="hidden" name="clientId" value={c.client_id} />
+                <input type="hidden" name="restrict" value="off" />
+                <button
+                  className="text-ink-3 hover:text-red-600 dark:hover:text-red-400"
+                  aria-label={`Stop restricting ${c.client_name ?? c.client_id}`}
+                  title="Remove the restriction — everyone here goes back to seeing all the company's tickets"
+                >
+                  <X className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </form>
+            </div>
+          ))}
+        </div>
+        <form action={setCompanyRestrictionAction} className="mt-3 flex flex-col gap-2 border-t border-line-soft pt-3 sm:flex-row">
+          <input type="hidden" name="restrict" value="on" />
+          <select
+            name="clientId"
+            required
+            defaultValue=""
+            aria-label="Company to restrict"
+            className="min-w-0 flex-1 rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink-2 focus:border-ink-3 focus:outline-none"
+          >
+            <option value="" disabled>
+              {companies.length === 0 ? "Company list unavailable" : "Choose a company to restrict…"}
+            </option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <button className="shrink-0 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-surface-2 dark:text-ink dark:hover:bg-line">
+            Restrict
+          </button>
+        </form>
+      </section>
+
+      <section className="mt-4 rounded-lg border border-line bg-surface p-4">
+        <h2 className="text-sm font-semibold">
           Company links {companyLinks.length > 0 && <span className="font-normal text-ink-3">({companyLinks.length})</span>}
         </h2>
         <p className="mt-1 text-xs text-ink-3">
@@ -235,9 +303,10 @@ export default async function SettingsPage() {
           (e.g. someone who’s left). Linking a person also joins their past tickets to the company’s history.
         </p>
         <p className="mt-1.5 text-xs text-ink-3">
-          <span className="font-medium text-ink-2">Ticket visibility.</span> Everyone sees their own tickets. Tick{" "}
-          <span className="font-medium">Sees all</span> to let someone read every ticket their company has raised —
-          useful for an owner or office manager, but it exposes colleagues’ conversations, so it’s off by default.
+          <span className="font-medium text-ink-2">Ticket visibility.</span> Only applies to companies you’ve restricted
+          above — everywhere else people already see all their company’s tickets. For a restricted company, mark{" "}
+          <span className="font-medium">Sees all</span> to let someone (an owner or office manager, say) read every
+          ticket the company has raised; everyone else there sees only their own.
         </p>
         <div className="mt-2 space-y-1.5">
           {companyLinks.length === 0 && <p className="text-sm text-ink-3">None yet — everything is matching automatically.</p>}

@@ -3,6 +3,7 @@ import { matchClientByEmail, companyNameFrom, type ClientRecord } from "@/lib/in
 import {
   getCompanyMember,
   getCompanyDomain,
+  isCompanyRestricted,
   upsertCompanyDomainIfAbsent,
   stampTicketsForDomain,
 } from "@/lib/db/queries";
@@ -38,8 +39,17 @@ export type PortalCompany = { id: string; name: string };
  */
 export async function visibleCompanyFor(email: string): Promise<VisibleCompany | null> {
   try {
-    return companyVisibleTo(await getCompanyMember(email));
+    const company = await companyForEmail(email);
+    if (!company) return null;
+    // Unrestricted is the default, so the common path costs one indexed read
+    // and behaves exactly as it always has.
+    const restricted = await isCompanyRestricted(company.id);
+    if (!restricted) return company;
+    // Restricted: the per-person grant decides. Read straight from the row (not
+    // the company cache above) so revoking someone takes effect immediately.
+    return companyVisibleTo({ company, restricted, member: await getCompanyMember(email) });
   } catch (error) {
+    // Fail closed — a lookup wobble narrows what's visible, never widens it.
     console.error("visibleCompanyFor:", error);
     return null;
   }
