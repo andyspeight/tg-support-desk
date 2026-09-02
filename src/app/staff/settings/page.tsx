@@ -26,6 +26,7 @@ import {
   recoverBlockedAttachmentsAction,
   importAllowedAction,
   linkCompanyMemberAction,
+  setTicketVisibilityAction,
   removeAllowedAction,
   removeBlockedAction,
   unlinkCompanyDomainAction,
@@ -231,8 +232,12 @@ export default async function SettingsPage() {
           <code className="rounded bg-surface-2 px-1">@domain</code> is on the Airtable client record) — add a link here
           when someone doesn’t (a gmail address, a consultant), or pick{" "}
           <span className="font-medium">No company</span> to cut an address off from a company it would otherwise match
-          (e.g. someone who’s left). Linked users see all their company’s tickets in the portal, and their past tickets
-          join the company’s history.
+          (e.g. someone who’s left). Linking a person also joins their past tickets to the company’s history.
+        </p>
+        <p className="mt-1.5 text-xs text-ink-3">
+          <span className="font-medium text-ink-2">Ticket visibility.</span> Everyone sees their own tickets. Tick{" "}
+          <span className="font-medium">Sees all</span> to let someone read every ticket their company has raised —
+          useful for an owner or office manager, but it exposes colleagues’ conversations, so it’s off by default.
         </p>
         <div className="mt-2 space-y-1.5">
           {companyLinks.length === 0 && <p className="text-sm text-ink-3">None yet — everything is matching automatically.</p>}
@@ -242,6 +247,27 @@ export default async function SettingsPage() {
               <span className={`shrink-0 truncate text-xs ${m.client_id ? "text-ink-2" : "font-medium text-amber-700 dark:text-amber-400"}`}>
                 {m.client_id ? (m.client_name ?? m.client_id) : "No company"}
               </span>
+              {/* Only meaningful when they're actually linked to a company. */}
+              {m.client_id && (
+                <form action={setTicketVisibilityAction} className="shrink-0">
+                  <input type="hidden" name="id" value={m.id} />
+                  <input type="hidden" name="seeAll" value={m.can_see_all_tickets ? "off" : "on"} />
+                  <button
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset transition ${
+                      m.can_see_all_tickets
+                        ? "bg-emerald-50 text-emerald-700 ring-emerald-300 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/40"
+                        : "bg-surface-2 text-ink-3 ring-line hover:text-ink"
+                    }`}
+                    title={
+                      m.can_see_all_tickets
+                        ? `${m.email} sees every ticket for this company — click to restrict to their own`
+                        : `${m.email} sees only their own tickets — click to let them see all the company's`
+                    }
+                  >
+                    {m.can_see_all_tickets ? "Sees all" : "Own only"}
+                  </button>
+                </form>
+              )}
               <form action={unlinkCompanyMemberAction} className="inline">
                 <input type="hidden" name="id" value={m.id} />
                 <button className="text-ink-3 hover:text-red-600 dark:hover:text-red-400" aria-label={`Remove link for ${m.email}`}>

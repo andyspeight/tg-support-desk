@@ -18,6 +18,7 @@ import {
   deleteTag,
   removeAllowedSender,
   removeBlockedSender,
+  setCompanyMemberVisibility,
   stampTicketsForEmail,
   updateCannedResponse,
   upsertCompanyMember,
@@ -306,6 +307,33 @@ export async function unlinkCompanyDomainAction(formData: FormData): Promise<voi
     await audit("human", session.email, "company_domain.unlinked", undefined, {
       domain: removed.domain,
       client_id: removed.client_id,
+    });
+  }
+  revalidatePath("/staff/settings");
+}
+
+const visibilitySchema = z.object({
+  id: z.string().uuid(),
+  // The checkbox only appears in the form when ticked, so absence means "off".
+  seeAll: z.enum(["on", "off"]),
+});
+
+/**
+ * Choose what this person sees in the portal: their own tickets (default) or
+ * every ticket their company has raised. Company-wide sight is a deliberate
+ * grant — it exposes colleagues' conversations — so it's set per person here
+ * rather than inherited from an email domain matching a client record.
+ */
+export async function setTicketVisibilityAction(formData: FormData): Promise<void> {
+  const session = await requireAgent();
+  const { id, seeAll } = visibilitySchema.parse(Object.fromEntries(formData));
+  const updated = await setCompanyMemberVisibility(id, seeAll === "on");
+  if (updated) {
+    invalidateCompanyFor(updated.email);
+    await audit("human", session.email, "company_member.visibility_set", undefined, {
+      email: updated.email,
+      client_id: updated.client_id,
+      can_see_all_tickets: seeAll === "on",
     });
   }
   revalidatePath("/staff/settings");

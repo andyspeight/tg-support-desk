@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getMessageById, getTicket } from "@/lib/db/queries";
-import { companyForEmail } from "@/lib/portal-company";
+import { visibleCompanyFor } from "@/lib/portal-company";
 import { signedAttachmentUrl } from "@/lib/channels/attachments";
 import { canRenderInline, type StoredAttachment } from "@/lib/channels/attachment-rules";
 
@@ -31,7 +31,7 @@ export async function GET(
     const mine = ticket.requester_email.toLowerCase() === session.email.toLowerCase();
     let allowed = mine;
     if (!allowed && ticket.client_id && ticket.status !== "awaiting_approval" && !ticket.tags.includes("spam")) {
-      const company = await companyForEmail(session.email);
+      const company = await visibleCompanyFor(session.email);
       allowed = Boolean(company && ticket.client_id === company.id);
     }
     if (!allowed) return new NextResponse("Forbidden", { status: 403 });

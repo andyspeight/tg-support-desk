@@ -4,7 +4,7 @@ import { getSession, portalViewFor } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { bestDisplayName, firstNameFrom, isEmailish } from "@/lib/names";
 import { listPortalTickets } from "@/lib/db/queries";
-import { companyForEmail } from "@/lib/portal-company";
+import { visibleCompanyFor } from "@/lib/portal-company";
 import { AskBox } from "@/components/portal/ask-box";
 import { clientStatus } from "@/lib/portal-status";
 
@@ -125,10 +125,10 @@ export default async function PortalHome({
     );
   }
 
-  // Company view: colleagues at the same client see all the company's tickets,
-  // not just their own (matched via Airtable — exact contact email or company
-  // domain). Falls back cleanly to own-tickets-only when there's no match.
-  const company = await companyForEmail(view.email);
+  // Own tickets only, unless this person has been explicitly granted the
+  // company-wide view in Settings. Belonging to a company is not the same as
+  // being allowed to read everything it has ever raised.
+  const company = await visibleCompanyFor(view.email);
   const tickets = await listPortalTickets(view.email, company?.id ?? null);
   // Greet by a name only when we honestly have one: the session's real name,
   // else the name on their own past tickets, else a clean recovery from the
@@ -188,10 +188,10 @@ export default async function PortalHome({
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold">
-              {view.previewing ? "Their tickets" : company ? `Tickets at ${company.name}` : "Your tickets"}
+              {view.previewing ? "Their tickets" : company ? (company.name ? `Tickets at ${company.name}` : "Company tickets") : "Your tickets"}
             </h2>
             {company && !view.previewing && (
-              <p className="mt-0.5 text-xs text-ink-3">Yours and your colleagues’ — everyone at {company.name} sees these.</p>
+              <p className="mt-0.5 text-xs text-ink-3">Yours and your colleagues’ — you have the company-wide view.</p>
             )}
           </div>
           {!view.previewing && (

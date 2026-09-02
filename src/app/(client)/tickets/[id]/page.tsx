@@ -5,7 +5,7 @@ import { getSession, portalViewFor } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { bestDisplayName, isEmailish } from "@/lib/names";
 import { getPortalTicket } from "@/lib/db/queries";
-import { companyForEmail } from "@/lib/portal-company";
+import { visibleCompanyFor } from "@/lib/portal-company";
 import { replyAction, rateAction } from "@/app/(client)/actions";
 import { PortalReplyForm } from "@/components/portal/portal-reply-form";
 import { AutoRefresh } from "@/components/portal/auto-refresh";
@@ -72,8 +72,9 @@ export default async function PortalTicketPage({
   }
 
   const view = portalViewFor(session, as);
-  // Colleagues at the same client company can open the company's tickets too.
-  const company = await companyForEmail(view.email);
+  // Their own ticket always; a colleague's only if they hold the company-wide
+  // grant (Settings > Company members).
+  const company = await visibleCompanyFor(view.email);
   const data = await getPortalTicket(id, view.email, company?.id ?? null);
   if (!data) notFound();
 

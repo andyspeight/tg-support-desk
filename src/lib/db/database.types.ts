@@ -156,6 +156,7 @@ export type Database = {
       }
       company_members: {
         Row: {
+          can_see_all_tickets: boolean
           client_id: string | null
           client_name: string | null
           created_at: string
@@ -165,6 +166,7 @@ export type Database = {
           tenant_id: string
         }
         Insert: {
+          can_see_all_tickets?: boolean
           client_id?: string | null
           client_name?: string | null
           created_at?: string
@@ -174,6 +176,7 @@ export type Database = {
           tenant_id?: string
         }
         Update: {
+          can_see_all_tickets?: boolean
           client_id?: string | null
           client_name?: string | null
           created_at?: string

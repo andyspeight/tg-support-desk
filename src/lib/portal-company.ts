@@ -7,6 +7,7 @@ import {
   stampTicketsForDomain,
 } from "@/lib/db/queries";
 import { emailDomain, isCorporateDomain } from "@/lib/channels/email-parse";
+import { companyVisibleTo, type VisibleCompany } from "@/lib/portal-visibility";
 
 // Which company does a viewer/requester belong to? Resolution order (first hit
 // wins; a later step never overrides an earlier one):
@@ -22,6 +23,29 @@ import { emailDomain, isCorporateDomain } from "@/lib/channels/email-parse";
 // Airtable wobble never locks a client out.
 
 export type PortalCompany = { id: string; name: string };
+
+/**
+ * The company whose tickets this person may READ — not merely the company they
+ * belong to. Seeing colleagues' tickets is an explicit grant a human at
+ * Travelgenix sets per person (company_members.can_see_all_tickets); everyone
+ * else sees only their own, however their company was resolved. That matters
+ * because a company can also be inferred from an email domain, which is not
+ * consent to read the whole company's support history.
+ *
+ * Returns null for "own tickets only". Deliberately uncached and read straight
+ * from the row, so revoking access takes effect on the very next request rather
+ * than whenever a cache expires. Fails closed: any error narrows the view.
+ */
+export async function visibleCompanyFor(email: string): Promise<VisibleCompany | null> {
+  try {
+    return companyVisibleTo(await getCompanyMember(email));
+  } catch (error) {
+    console.error("visibleCompanyFor:", error);
+    return null;
+  }
+}
+
+export type { VisibleCompany } from "@/lib/portal-visibility";
 
 const TTL_MS = 10 * 60 * 1000;
 const cache = new Map<string, { at: number; value: PortalCompany | null }>();

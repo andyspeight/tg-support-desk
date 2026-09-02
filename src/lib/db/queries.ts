@@ -211,6 +211,20 @@ export async function stampTicketsForEmail(email: string, clientId: string): Pro
   return data?.length ?? 0;
 }
 
+/** Grant or revoke the company-wide portal view for one person. Returns the
+ *  updated row so the caller can audit who it applied to. */
+export async function setCompanyMemberVisibility(id: string, canSeeAll: boolean): Promise<CompanyMember | null> {
+  const { data, error } = await db()
+    .from("company_members")
+    .update({ can_see_all_tickets: canSeeAll })
+    .eq("id", id)
+    .eq("tenant_id", env.tenantId)
+    .select()
+    .maybeSingle();
+  if (error) throw new Error(`setCompanyMemberVisibility: ${error.message}`);
+  return data;
+}
+
 export async function deleteCompanyMember(id: string): Promise<CompanyMember | null> {
   const { data, error } = await db()
     .from("company_members")
