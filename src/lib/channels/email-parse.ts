@@ -42,6 +42,12 @@ export type ParsedEmail = {
   inReplyTo: string | null;
   references: string[];
   text: string;
+  /**
+   * The sender's ORIGINAL html body, stored verbatim (see `storableHtml`).
+   * Unsafe by definition — it is sanitised at render, never before. Anything
+   * that puts this in front of a person must run it through
+   * `sanitizeEmailHtml` first.
+   */
   html: string | null;
   to: string[];
   cc: string[];
@@ -151,8 +157,127 @@ export type EmailImageCtx = {
   attachments: Array<{ contentId?: string; mimeType?: string; stored?: boolean }>;
 };
 
+// ---------------------------------------------------------------------------
+// What a customer's email is allowed to keep.
+//
+// Agents must see a ticket as the customer actually sent it — the red "URGENT",
+// the highlighted booking reference, the table of failed departures. Flattening
+// that to plain text loses meaning, not just decoration: a stripped table reads
+// as one unbroken run of words.
+//
+// So the allowlist is presentational-generous and behaviourally strict. Nothing
+// here executes, navigates, loads a remote resource, or hides content from the
+// person reading the ticket.
+// ---------------------------------------------------------------------------
+
+/** Layout + text tags. No script/style/iframe/object/embed/form/svg/link/meta —
+ *  and no <style>, whose CSS would escape the message and restyle the desk. */
+const ALLOWED_TAGS = [
+  "p", "br", "hr", "div", "span", "a", "img",
+  "strong", "b", "em", "i", "u", "s", "strike", "del", "ins", "sub", "sup", "small", "big", "tt", "mark", "font", "center",
+  "h1", "h2", "h3", "h4", "h5", "h6",
+  "ul", "ol", "li", "dl", "dt", "dd", "blockquote", "pre", "code",
+  "table", "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "colgroup", "col",
+  "abbr", "cite", "q", "figure", "figcaption", "wbr",
+];
+
+// Style-value shapes. A declaration survives only if one of its property's
+// regexes matches the whole value, so anything unrecognised is dropped.
+const COLOUR = /^\s*(#[0-9a-f]{3,8}|rgba?\([\d\s.,%/]+\)|hsla?\([\d\s.,%/a-z]+\)|[a-z]{3,24})\s*$/i;
+// Word writes lengths as ".5in" and "5.4pt", so both the leading-dot form and
+// the full unit set have to be understood or a pasted table loses its spacing.
+const NUM = String.raw`-?(?:\d+(?:\.\d+)?|\.\d+)`;
+const UNIT = String.raw`(?:px|pt|em|rem|ex|ch|%|vw|vh|cm|mm|in|pc)`;
+const LENGTH = new RegExp(`^\\s*${NUM}${UNIT}?\\s*$`, "i");
+const NUMBER = /^\s*\d+(\.\d+)?\s*$/;
+const KEYWORD = /^\s*[a-z][a-z-]{0,24}\s*$/i;
+/** Up to four lengths/`auto` — the margin/padding/border-radius shorthand. */
+const SPACING = new RegExp(`^\\s*(?:${NUM}${UNIT}?|auto)(?:\\s+(?:${NUM}${UNIT}?|auto)){0,3}\\s*$`, "i");
+const FONT_FAMILY = /^[\w\s,'"&.-]{1,200}$/;
 /**
- * Ticket bodies are hostile input — strip everything but basic formatting.
+ * Free-form values (borders, text-decoration) may hold several tokens and
+ * functions like rgb(). They may never hold url()/image-set()/element(), which
+ * is how CSS reaches the network — a tracking pixel by another name — nor
+ * expression()/attr()/var(), which read the page back.
+ */
+const SAFE_VALUE = /^(?!.*\b(?:url|expression|image-set|element|attr|var)\s*\()[^;{}<>\\]{1,200}$/i;
+
+const BOX = ["", "-top", "-right", "-bottom", "-left"];
+const boxRules = (base: string, patterns: RegExp[]) =>
+  Object.fromEntries(BOX.map((side) => [`${base}${side}`, patterns]));
+
+/**
+ * Presentational CSS only. Deliberately absent: `display`, `visibility` and
+ * `opacity` (a support desk must never let a sender hide text from the agent
+ * reading it), `position`/`z-index`/`transform` (which would let a message
+ * escape its card and cover the desk), and the `background` shorthand — only
+ * `background-color` is allowed, because the shorthand can carry a url().
+ */
+const ALLOWED_STYLES: Record<string, Record<string, RegExp[]>> = {
+  "*": {
+    color: [COLOUR],
+    "background-color": [COLOUR],
+    // Word writes a highlight as the `background` shorthand. Colour only — the
+    // shorthand's other halves are where a url() would hide.
+    background: [COLOUR],
+    "font-weight": [KEYWORD, /^\s*[1-9]00\s*$/],
+    "font-style": [KEYWORD],
+    "font-size": [LENGTH, KEYWORD],
+    "font-family": [FONT_FAMILY],
+    "font-variant": [KEYWORD],
+    "text-align": [KEYWORD],
+    "text-decoration": [SAFE_VALUE],
+    "text-decoration-line": [KEYWORD],
+    "text-decoration-color": [COLOUR],
+    "text-transform": [KEYWORD],
+    "text-indent": [LENGTH],
+    "line-height": [LENGTH, NUMBER, KEYWORD],
+    "letter-spacing": [LENGTH, KEYWORD],
+    "white-space": [KEYWORD],
+    "vertical-align": [KEYWORD, LENGTH],
+    "list-style-type": [KEYWORD],
+    "list-style-position": [KEYWORD],
+    float: [/^\s*(left|right|none)\s*$/i],
+    clear: [KEYWORD],
+    width: [LENGTH, KEYWORD],
+    "max-width": [LENGTH, KEYWORD],
+    height: [LENGTH, KEYWORD],
+    "min-height": [LENGTH],
+    ...boxRules("margin", [SPACING]),
+    ...boxRules("padding", [SPACING]),
+    ...boxRules("border", [SAFE_VALUE]),
+    "border-color": [SAFE_VALUE],
+    "border-style": [SAFE_VALUE],
+    "border-width": [SPACING],
+    "border-collapse": [KEYWORD],
+    "border-spacing": [SPACING],
+    "border-radius": [SPACING],
+  },
+};
+
+/** Legacy presentational attributes — how most mail clients still express
+ *  colour and table layout. Never `class` or `id`: they would collide with the
+ *  desk's own stylesheet and anchor targets. */
+const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
+  "*": ["style", "align", "valign", "dir", "lang", "title"],
+  a: ["href"],
+  img: ["src", "alt", "width", "height"],
+  font: ["color", "face", "size"],
+  table: ["width", "height", "border", "cellpadding", "cellspacing", "bgcolor", "summary"],
+  col: ["span", "width"],
+  colgroup: ["span", "width"],
+  tr: ["bgcolor", "height"],
+  td: ["colspan", "rowspan", "width", "height", "bgcolor", "nowrap"],
+  th: ["colspan", "rowspan", "width", "height", "bgcolor", "nowrap", "scope"],
+  ol: ["start", "type"],
+  ul: ["type"],
+  li: ["value"],
+  hr: ["width", "size", "noshade"],
+};
+
+/**
+ * Ticket bodies are hostile input. Keep the sender's formatting; drop anything
+ * that could act.
  *
  * Sender-embedded images (referenced by `cid:` in the HTML) are handled without
  * ever allowing a remote fetch:
@@ -173,21 +298,27 @@ export function sanitizeEmailHtml(html: string, ctx?: EmailImageCtx): string {
     });
   }
   return sanitizeHtmlLib(html, {
-    allowedTags: ["p", "br", "a", "strong", "b", "em", "i", "u", "ul", "ol", "li", "blockquote", "pre", "code", "div", "span", "img"],
-    allowedAttributes: { a: ["href"], img: ["src", "alt"] },
-    allowedSchemes: ["http", "https", "mailto"],
+    allowedTags: ALLOWED_TAGS,
+    allowedAttributes: ALLOWED_ATTRIBUTES,
+    allowedStyles: ALLOWED_STYLES,
+    allowedSchemes: ["http", "https", "mailto", "tel"],
     // Images may only carry a cid: source (ingest) or a root-relative URL our own
     // transform produces (render). Remote image schemes are never allowed.
     allowedSchemesByTag: { img: ["cid"] },
+    // Drop the CSS/scripts inside these outright rather than spilling their text
+    // into the body (sanitize-html's default keeps the text of unknown tags).
+    nonTextTags: ["script", "style", "textarea", "option", "noscript", "head", "title"],
     transformTags: {
       a: sanitizeHtmlLib.simpleTransform("a", { rel: "noopener noreferrer", target: "_blank" }),
       img: (_tag, attribs) => {
         const src = (attribs.src ?? "").trim();
-        const alt = attribs.alt ?? "";
-        const keep = (newSrc: string): { tagName: string; attribs: Record<string, string> } => ({
-          tagName: "img",
-          attribs: { src: newSrc, alt },
-        });
+        // The sender's own sizing/alignment is part of how the message reads, so
+        // carry it across the rewrite; the src is the only thing being replaced.
+        const kept: Record<string, string> = {};
+        for (const name of ["alt", "width", "height", "style", "align", "title"]) {
+          if (attribs[name]) kept[name] = attribs[name];
+        }
+        const keep = (newSrc: string) => ({ tagName: "img", attribs: { ...kept, src: newSrc } });
         if (/^cid:/i.test(src)) {
           if (!ctx) return keep(src); // ingest: keep the cid ref for later
           const idx = cidToIndex.get(normaliseCid(src));
@@ -198,6 +329,43 @@ export function sanitizeEmailHtml(html: string, ctx?: EmailImageCtx): string {
     },
     exclusiveFilter: (frame) => frame.tag === "img" && !frame.attribs.src,
   });
+}
+
+/**
+ * A body is kept verbatim up to this size. Beyond it (a mail client that
+ * inlined a photo as base64, say) the sanitised form is stored instead — always
+ * a complete document, never a body truncated mid-tag.
+ */
+const MAX_STORED_HTML = 500_000;
+
+/**
+ * The html body to persist for a Gmail message: the sender's original markup,
+ * NOT a sanitised copy.
+ *
+ * Sanitising on the way in is lossy and irreversible — it was why every ticket
+ * arrived as flat grey text — and it buys nothing, because the only thing that
+ * renders a body runs it through `sanitizeEmailHtml` at that moment anyway.
+ * Keeping the original means the desk can show more of the customer's message
+ * later without needing the mailbox to still hold it.
+ *
+ * The corollary is a hard rule: **nothing may put this string in front of a
+ * person without sanitising it first.**
+ */
+export function storableHtml(message: GmailMessage): string | null {
+  const part = findPart(message.payload, "text/html");
+  const raw = part?.body?.data ? decodeBase64Url(part.body.data) : null;
+  if (!raw) return null;
+  return raw.length <= MAX_STORED_HTML ? raw : sanitizeEmailHtml(raw).slice(0, MAX_STORED_HTML);
+}
+
+/**
+ * Does this (already sanitised) body bring its own colours? Such a message was
+ * written for a white background, so the desk renders it on one — otherwise the
+ * sender's black text lands on a dark card in dark mode and disappears. Plain
+ * messages keep the desk's own ink and need no special treatment.
+ */
+export function hasAuthorColour(html: string): boolean {
+  return /\b(?:color|background|background-color)\s*[:=]/i.test(html) || /\bbgcolor\s*=/i.test(html);
 }
 
 export function htmlToText(html: string): string {
@@ -472,7 +640,8 @@ export function parseGmailMessage(message: GmailMessage): ParsedEmail {
     inReplyTo: header(headers, "In-Reply-To"),
     references: referencesRaw.split(/\s+/).filter(Boolean),
     text: stripQuotedReply(text),
-    html: rawHtml ? sanitizeEmailHtml(rawHtml) : null,
+    // Stored as sent (see storableHtml) — sanitised at render, not here.
+    html: storableHtml(message),
     to: parseAddressList(header(headers, "To")).filter((e) => e !== from.email),
     cc: parseAddressList(header(headers, "Cc")).filter((e) => e !== from.email),
     attachments,

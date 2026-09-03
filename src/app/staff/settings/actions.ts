@@ -25,6 +25,7 @@ import {
   upsertCompanyMember,
 } from "@/lib/db/queries";
 import { backfillRejectedAttachments } from "@/lib/channels/attachment-backfill";
+import { backfillMessageBodies } from "@/lib/channels/body-backfill";
 import { companyNameFrom, createClientCompany, getClientById, matchClientByEmail } from "@/lib/integrations/airtable-clients";
 import { invalidateCompanyFor, invalidateCompanyForDomain } from "@/lib/portal-company";
 import { linkCorporateDomain } from "@/lib/company-linking";
@@ -64,6 +65,39 @@ export async function recoverBlockedAttachmentsAction(): Promise<EraseResult> {
   } catch (error) {
     console.error("recoverBlockedAttachmentsAction failed:", error);
     return { ok: false, message: "The recovery run failed — nothing was changed. Check the logs and try again." };
+  }
+}
+
+/**
+ * Restore message bodies the desk flattened on the way in, back to the html the
+ * customer actually sent. Owner-only, and safe to run more than once — a body
+ * is only ever replaced by the original of the same Gmail message.
+ */
+export async function restoreMessageFormattingAction(): Promise<EraseResult> {
+  const session = await requireAgent();
+  if (!env.ownerEmails.includes(session.email)) {
+    return { ok: false, message: "Only an owner can restore message formatting." };
+  }
+  if (!env.gmailConfigured) {
+    return { ok: false, message: "The support mailbox isn't connected, so there's nothing to fetch from." };
+  }
+  try {
+    const res = await backfillMessageBodies();
+    await audit("human", session.email, "messages.formatting_restored", undefined, {
+      scanned: res.messagesScanned,
+      restored: res.restored,
+      failed: res.failed,
+    });
+    revalidatePath("/staff/settings");
+    if (res.restored === 0 && res.failed === 0) {
+      return { ok: true, message: `Nothing to restore — all ${res.messagesScanned} message(s) already hold the sender's original.` };
+    }
+    const bits = [`Restored ${res.restored} of ${res.messagesScanned} message(s)`];
+    if (res.failed) bits.push(`${res.failed} failed${res.errors.length ? `: ${res.errors[0]}` : ""}`);
+    return { ok: res.failed === 0, message: `${bits.join(" · ")}.` };
+  } catch (error) {
+    console.error("restoreMessageFormattingAction failed:", error);
+    return { ok: false, message: "The restore run failed — nothing was changed. Check the logs and try again." };
   }
 }
 

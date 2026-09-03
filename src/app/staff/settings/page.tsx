@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { ImageDown, Palette, X } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { env } from "@/lib/env";
 import {
@@ -13,7 +13,7 @@ import {
   listTags,
 } from "@/lib/db/queries";
 import { listAllClientCompanies } from "@/lib/integrations/airtable-clients";
-import { AttachmentRecoveryPanel } from "@/components/attachment-recovery-panel";
+import { MaintenancePanel } from "@/components/maintenance-panel";
 import { GdprPanel } from "@/components/gdpr-panel";
 import { AddCompanyForm } from "@/components/add-company-form";
 import {
@@ -26,6 +26,7 @@ import {
   deleteTagAction,
   eraseCustomerDataAction,
   recoverBlockedAttachmentsAction,
+  restoreMessageFormattingAction,
   importAllowedAction,
   linkCompanyMemberAction,
   setCompanyRestrictionAction,
@@ -584,7 +585,28 @@ export default async function SettingsPage({
         </p>
       </section>
 
-      {isOwner && <AttachmentRecoveryPanel recover={recoverBlockedAttachmentsAction} />}
+      {isOwner && (
+        <MaintenancePanel
+          title="Recover blocked attachments"
+          description="Screenshots sent from Outlook were refused because it labels them as generic files rather than images. That's fixed for new tickets — this fetches the earlier ones back from the support mailbox and attaches them to their tickets. Anything genuinely not an allowed file type stays blocked."
+          action="Recover blocked attachments"
+          idleLabel="Recover attachments"
+          busyLabel="Recovering…"
+          Icon={ImageDown}
+          run={recoverBlockedAttachmentsAction}
+        />
+      )}
+      {isOwner && (
+        <MaintenancePanel
+          title="Restore message formatting"
+          description="Older tickets were stored with the sender's colours, tables and emphasis stripped out. New mail now keeps them — this fetches the earlier messages back from the support mailbox so they read the way the customer wrote them. Messages we can't fetch are left untouched."
+          action="Restore message formatting"
+          idleLabel="Restore formatting"
+          busyLabel="Restoring…"
+          Icon={Palette}
+          run={restoreMessageFormattingAction}
+        />
+      )}
       {isOwner && <GdprPanel erase={eraseCustomerDataAction} />}
     </div>
   );

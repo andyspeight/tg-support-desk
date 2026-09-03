@@ -4,6 +4,7 @@ import {
   detectAutoReply,
   emailDomain,
   FREE_MAIL_DOMAINS,
+  hasAuthorColour,
   isCorporateDomain,
   matchesBlocklist,
   normaliseCid,
@@ -252,10 +253,13 @@ describe("parseGmailMessage", () => {
     expect(parsed.senderVerified).toBe("pass");
   });
 
-  it("sanitises stored html (hostile input)", () => {
+  it("stores the sender's html as sent — sanitising happens at render", () => {
+    // Storing a sanitised copy was lossy and irreversible (it cost every ticket
+    // its formatting). The original is kept; the guarantee below is that
+    // nothing reaches a person without going through the sanitiser.
     const parsed = parseGmailMessage(message);
-    expect(parsed.html).toContain("<p>");
-    expect(parsed.html).not.toContain("<script>");
+    expect(parsed.html).toBe("<p>How do we add the widget?</p><script>alert(1)</script>");
+    expect(sanitizeEmailHtml(parsed.html ?? "")).toBe("<p>How do we add the widget?</p>");
   });
 
   it("marks a body-embedded image inline and leaves a plain attachment alone", () => {
@@ -294,6 +298,120 @@ describe("normaliseCid", () => {
     expect(normaliseCid("<ABC@Mail>")).toBe("abc@mail");
     expect(normaliseCid("cid:ABC@Mail")).toBe("abc@mail");
     expect(normaliseCid("  cid:<abc>  ")).toBe("abc");
+  });
+});
+
+describe("sanitizeEmailHtml — the sender's formatting survives", () => {
+  it("keeps inline colour, weight and highlight", () => {
+    const out = sanitizeEmailHtml(
+      '<p style="color:#cc0000;font-weight:bold">URGENT</p><span style="background-color:yellow">ref ABC123</span>',
+    );
+    expect(out).toContain("color:#cc0000");
+    expect(out).toContain("font-weight:bold");
+    expect(out).toContain("background-color:yellow");
+  });
+
+  it("keeps a table as a table — not a run of words", () => {
+    const out = sanitizeEmailHtml(
+      '<table border="1" cellpadding="4"><tr bgcolor="#eeeeee"><th align="left">Ref</th></tr><tr><td>ABC123</td></tr></table>',
+    );
+    expect(out).toContain("<table");
+    expect(out).toContain("<td>ABC123</td>");
+    expect(out).toContain('border="1"');
+    expect(out).toContain('bgcolor="#eeeeee"');
+    expect(out).toContain('align="left"');
+  });
+
+  it("keeps legacy <font> colour, headings, rules and strike-through", () => {
+    const out = sanitizeEmailHtml('<h2>Steps</h2><hr><font color="#0000ff" size="3">note</font><s>was £50</s>');
+    expect(out).toContain("<h2>Steps</h2>");
+    expect(out).toContain("<hr />");
+    expect(out).toContain('color="#0000ff"');
+    expect(out).toContain("<s>was £50</s>");
+  });
+
+  it("understands how Word writes highlights and measurements", () => {
+    // Outlook is the desk's most common sender: it writes a highlight as the
+    // `background` shorthand, and lengths as "5.4pt" / ".5in".
+    const out = sanitizeEmailHtml(
+      `<td style="background:#D9D9D9;padding:0cm 5.4pt"><span style="background:yellow">look today</span>` +
+        `<img src="cid:a@b" style="width:1.875in;height:.5in"></td>`,
+    );
+    expect(out).toContain("background:#D9D9D9");
+    expect(out).toContain("padding:0cm 5.4pt");
+    expect(out).toContain("background:yellow");
+    expect(out).toContain("height:.5in");
+  });
+
+  it("keeps an inline image's own sizing when rewriting its source", () => {
+    const out = sanitizeEmailHtml('<img src="cid:logo@x" width="120" style="float:right">', {
+      messageId: "m1",
+      attachments: [{ contentId: "logo@x", mimeType: "image/png", stored: true }],
+    });
+    expect(out).toContain('width="120"');
+    expect(out).toContain("float:right");
+    expect(out).toContain('src="/api/attachments/m1/0"');
+  });
+});
+
+describe("sanitizeEmailHtml — formatting may not become behaviour", () => {
+  it("drops event handlers, javascript: links and dangerous elements", () => {
+    const out = sanitizeEmailHtml(
+      '<p onclick="steal()" onmouseover="x()">hi</p><a href="javascript:alert(1)">go</a>' +
+        '<iframe src="https://evil.example.com"></iframe><form><input name="pw"></form><object data="x.swf"></object>',
+    );
+    expect(out).not.toMatch(/onclick|onmouseover|javascript:/i);
+    expect(out).not.toMatch(/<iframe|<form|<input|<object/i);
+    expect(out).toContain("<p>hi</p>");
+  });
+
+  it("drops a <style> block rather than leaking its CSS into the desk", () => {
+    const out = sanitizeEmailHtml("<html><head><style>body{display:none}</style></head><body><p>hi</p></body></html>");
+    expect(out).not.toContain("display:none");
+    expect(out).not.toContain("body{");
+    expect(out).toContain("<p>hi</p>");
+  });
+
+  it("drops url() in styles — a background image is a tracking pixel by another name", () => {
+    const out = sanitizeEmailHtml(
+      '<div style="background:url(https://evil.example.com/p.gif) no-repeat;background-color:url(https://evil.example.com/p.gif)">x</div>' +
+        '<p style="border:1px solid url(https://evil.example.com/b.gif)">y</p>' +
+        '<span style="background-image:url(https://evil.example.com/c.gif)">z</span>',
+    );
+    expect(out).not.toContain("evil.example.com");
+    expect(out).not.toContain("url(");
+  });
+
+  it("refuses styles that would hide content from the agent reading the ticket", () => {
+    const out = sanitizeEmailHtml(
+      '<p style="display:none">hidden</p><p style="visibility:hidden">gone</p><p style="opacity:0">faded</p>',
+    );
+    expect(out).not.toMatch(/display:\s*none|visibility:\s*hidden|opacity:\s*0/);
+    expect(out).toContain("hidden");
+  });
+
+  it("refuses styles that would let a message escape its card", () => {
+    const out = sanitizeEmailHtml('<div style="position:fixed;top:0;left:0;z-index:9999;color:red">overlay</div>');
+    expect(out).not.toMatch(/position|z-index/);
+    expect(out).toContain("color:red");
+  });
+
+  it("never keeps class or id, which would collide with the desk's own styles", () => {
+    const out = sanitizeEmailHtml('<p class="fixed inset-0 bg-black" id="main">x</p>');
+    expect(out).toBe("<p>x</p>");
+  });
+});
+
+describe("hasAuthorColour", () => {
+  it("spots a body that brings its own colours", () => {
+    expect(hasAuthorColour('<p style="color:#c00">x</p>')).toBe(true);
+    expect(hasAuthorColour('<td bgcolor="#eee">x</td>')).toBe(true);
+    expect(hasAuthorColour('<font color="red">x</font>')).toBe(true);
+  });
+
+  it("leaves a plain message to the desk's own ink", () => {
+    expect(hasAuthorColour("<p>hello, my booking failed</p>")).toBe(false);
+    expect(hasAuthorColour('<p style="font-weight:bold">hello</p>')).toBe(false);
   });
 });
 

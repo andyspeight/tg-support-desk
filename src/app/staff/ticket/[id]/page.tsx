@@ -7,7 +7,7 @@ import type { ClockState } from "@/lib/sla";
 import { companyNameFrom, getClientById, listAllClientCompanies } from "@/lib/integrations/airtable-clients";
 import { getCareSignal } from "@/lib/integrations/crm-seam";
 import { env } from "@/lib/env";
-import { allowPatternFor, sanitizeEmailHtml } from "@/lib/channels/email-parse";
+import { allowPatternFor, hasAuthorColour, sanitizeEmailHtml } from "@/lib/channels/email-parse";
 import type { Message } from "@/lib/db/types";
 import { AlertTriangle, ArrowLeft, Bot, ChevronRight, Download, Eye, EyeOff, GitMerge, Info, LayoutDashboard, Lightbulb, Loader2, Mail, Paperclip, StickyNote, User, UserCheck, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -536,6 +536,19 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               !collapseHistory || message.id === latestExchangeId || message.id === latestWithAttachmentsId;
             const preview = truncate(message.body_text.replace(/\s+/g, " ").trim(), 90);
             const atts = attachmentSummary(message.attachments);
+            // Render the message as the sender formatted it. Sanitising happens
+            // here, at the point it meets the DOM — the stored body is the
+            // original, so the customer's colours, tables and emphasis survive.
+            const bodyHtml = message.body_html
+              ? sanitizeEmailHtml(message.body_html, {
+                  messageId: message.id,
+                  attachments: (Array.isArray(message.attachments) ? message.attachments : []) as {
+                    contentId?: string;
+                    mimeType?: string;
+                    stored?: boolean;
+                  }[],
+                })
+              : null;
             return (
               <details
                 key={message.id}
@@ -579,17 +592,12 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   </span>
                 </summary>
                 <div className="border-t border-black/5 px-3 pb-3 pt-2 dark:border-white/10">
-                  {message.body_html ? (
+                  {bodyHtml !== null ? (
                     <EmailBody
-                      className="tg-prose text-sm text-ink"
-                      html={sanitizeEmailHtml(message.body_html, {
-                        messageId: message.id,
-                        attachments: (Array.isArray(message.attachments) ? message.attachments : []) as {
-                          contentId?: string;
-                          mimeType?: string;
-                          stored?: boolean;
-                        }[],
-                      })}
+                      className={`tg-prose text-sm ${
+                        hasAuthorColour(bodyHtml) ? "tg-email-paper" : "text-ink"
+                      }`}
+                      html={bodyHtml}
                     />
                   ) : (
                     <pre className="whitespace-pre-wrap font-sans text-sm text-ink">{message.body_text}</pre>

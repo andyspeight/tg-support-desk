@@ -85,8 +85,34 @@ body {
 .tg-prose h2 { font-size: 1.05rem; font-weight: 600; margin: 0.5rem 0 0.25rem; }
 .tg-prose h3 { font-size: 0.95rem; font-weight: 600; margin: 0.5rem 0 0.25rem; }
 .tg-prose blockquote { border-left: 3px solid var(--line); padding-left: 0.75rem; color: var(--ink-2); margin: 0 0 0.5rem; }
+.tg-prose h1 { font-size: 1.15rem; font-weight: 600; margin: 0.5rem 0 0.25rem; }
+.tg-prose h4, .tg-prose h5, .tg-prose h6 { font-size: 0.9rem; font-weight: 600; margin: 0.5rem 0 0.25rem; }
+.tg-prose hr { border: 0; border-top: 1px solid var(--line); margin: 0.75rem 0; }
 /* Sender-embedded images render inline; cap size and hint they're clickable (lightbox). */
 .tg-prose img { max-width: 100%; height: auto; margin: 0.375rem 0; border-radius: 0.375rem; border: 1px solid var(--line); cursor: zoom-in; }
+
+/* Customers send tables — failed departures, booking references, price
+   breakdowns. Keep the sender's own borders and shading (inline styles win over
+   these rules) and let a wide one scroll inside the message rather than
+   stretching the thread. */
+.tg-prose { overflow-x: auto; }
+.tg-prose table { border-collapse: collapse; max-width: 100%; }
+.tg-prose td, .tg-prose th { padding: 0.125rem 0.375rem; vertical-align: top; }
+.tg-prose th { text-align: left; }
+
+/* A message that carries its own colours was written for a white page, so it
+   gets one — in both themes, so what the agent sees is what the customer sent.
+   Without this, dark mode would paint the desk's dark card behind the sender's
+   black text and swallow the message. */
+.tg-email-paper {
+  color-scheme: light;
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.625rem;
+}
+.tg-email-paper img { border-color: rgba(0, 0, 0, 0.1); }
 
 .tiptap:focus { outline: none; }
 .tiptap p.is-editor-empty:first-child::before {
@@ -101,6 +127,11 @@ body {
 [data-theme="dark"] .tg-prose { color: var(--ink); }
 [data-theme="dark"] .tg-prose blockquote { color: var(--ink-2); }
 [data-theme="dark"] .tg-prose a { color: #34c2de; }
+/* …but a message on paper keeps its own light-background colours, so the dark
+   overrides above must not reach inside it. */
+[data-theme="dark"] .tg-prose.tg-email-paper,
+[data-theme="dark"] .tg-prose.tg-email-paper blockquote { color: #111827; }
+[data-theme="dark"] .tg-prose.tg-email-paper a { color: #007a96; }
 
 /* Portal micro-motion (travelgenix-taste: motion 4 — CSS only, no framer-motion).
    Staggered list reveal + a teal shimmer for the assistant's thinking state. */
