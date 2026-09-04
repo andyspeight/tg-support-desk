@@ -1,12 +1,16 @@
 "use client";
 
-import { useState, useTransition, type ComponentType } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import type { EraseResult } from "@/app/staff/settings/actions";
 
 /**
  * Owner-only maintenance: one button that runs a repair over past tickets and
  * reports what it did. Every job behind it is safe to run more than once.
+ *
+ * `icon` is a rendered element, not a component: the settings page renders on
+ * the server, and a component reference cannot cross that boundary — only the
+ * element it produces can.
  */
 export function MaintenancePanel({
   title,
@@ -14,7 +18,7 @@ export function MaintenancePanel({
   action,
   idleLabel,
   busyLabel,
-  Icon,
+  icon,
   run,
 }: {
   title: string;
@@ -22,7 +26,7 @@ export function MaintenancePanel({
   action: string;
   idleLabel: string;
   busyLabel: string;
-  Icon: ComponentType<{ className?: string; strokeWidth?: number }>;
+  icon: ReactNode;
   run: () => Promise<EraseResult>;
 }) {
   const [result, setResult] = useState<EraseResult | null>(null);
@@ -39,11 +43,7 @@ export function MaintenancePanel({
         aria-label={action}
         className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-2 disabled:opacity-60"
       >
-        {pending ? (
-          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" strokeWidth={1.75} />
-        ) : (
-          <Icon className="h-4 w-4" strokeWidth={1.75} />
-        )}
+        {pending ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" strokeWidth={1.75} /> : icon}
         {pending ? busyLabel : idleLabel}
       </button>
 

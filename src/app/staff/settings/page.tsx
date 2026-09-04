@@ -592,7 +592,7 @@ export default async function SettingsPage({
           action="Recover blocked attachments"
           idleLabel="Recover attachments"
           busyLabel="Recovering…"
-          Icon={ImageDown}
+          icon={<ImageDown className="h-4 w-4" strokeWidth={1.75} />}
           run={recoverBlockedAttachmentsAction}
         />
       )}
@@ -603,7 +603,7 @@ export default async function SettingsPage({
           action="Restore message formatting"
           idleLabel="Restore formatting"
           busyLabel="Restoring…"
-          Icon={Palette}
+          icon={<Palette className="h-4 w-4" strokeWidth={1.75} />}
           run={restoreMessageFormattingAction}
         />
       )}
