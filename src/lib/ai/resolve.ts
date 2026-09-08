@@ -2,6 +2,7 @@ import "server-only";
 import { runResolutionAgent } from "./agent";
 import { canAutoSend } from "./autosend";
 import { findCommitments } from "./commitment-guard";
+import { findDeferrals } from "./handover-guard";
 import { mandatoryEscalation } from "./guardrails";
 import { classifyTicket } from "./triage";
 import { searchKb } from "./kb-search";
@@ -243,6 +244,9 @@ async function applyOutcome(
 ): Promise<void> {
   const retrievedLinks = new Set(retrieved.map((r) => r.sourceUrl).filter((u): u is string => Boolean(u)));
   let sentBody: string | null = null;
+  // Answered in part only — recorded as an escalation, because it is one: the
+  // AI did not resolve the ticket on its own.
+  let partial = false;
 
   if (outcome.kind === "answered" || outcome.kind === "clarified") {
     // Strip any "Want to know more?" link the agent didn't actually retrieve
@@ -255,6 +259,10 @@ async function applyOutcome(
     // guarantee? The prompt forbids it; this catches anything that slips through,
     // so a human decides what we commit to.
     const commitments = findCommitments(body);
+    // Does the reply tell the customer that a colleague now has part of this?
+    // The AI has no tool that can do that, so saying it makes the ticket
+    // partly-answered: the desk has to perform the handover it just described.
+    const deferrals = outcome.kind === "answered" ? findDeferrals(body) : [];
 
     if (
       canAutoSend(outcome, {
@@ -270,18 +278,46 @@ async function applyOutcome(
       // customer itself.
       await sendTicketReply(ticket, body, { role: "ai", author: AI_ACTOR });
       sentBody = body;
-      await updateTicket(ticket.id, {
-        ...langPatch,
-        // A definitive answer closes the ticket (a customer reply reopens it and
-        // re-runs the AI); a clarifying question waits on the customer.
-        ...(outcome.kind === "answered"
-          ? { status: "closed", ai_resolved: true, resolved_at: new Date().toISOString() }
-          : { status: "waiting_on_customer" }),
-      });
-      await audit("ai", AI_ACTOR, `ai.${outcome.kind}`, { type: "ticket", id: ticket.id }, {
-        confidence: outcome.confidence,
-        auto_sent: true,
-      });
+
+      partial = outcome.kind === "answered" && deferrals.length > 0;
+      if (partial) {
+        // A partly-answered ticket. The reply has gone (the answered part is
+        // useful now, and speed is the point) but it told the customer someone
+        // else has the rest — which only the desk can make true. So a human
+        // takes the ticket rather than it closing with nobody holding it.
+        await addMessage({
+          ticket_id: ticket.id,
+          role: "internal_note",
+          author: AI_ACTOR,
+          body_text: formatPartialNote(deferrals.map((d) => d.sentence)),
+          channel_meta: { kind: "partial_answer", deferrals },
+        });
+        await updateTicket(ticket.id, {
+          ...langPatch,
+          status: "escalated",
+          ai_resolved: false,
+          escalation_reason: "partial_answer: the reply told the customer this was passed on",
+        });
+        await audit("ai", AI_ACTOR, "ai.partial", { type: "ticket", id: ticket.id }, {
+          confidence: outcome.confidence,
+          auto_sent: true,
+          deferrals: deferrals.map((d) => d.label),
+        });
+        await notifyEscalation(ticket, "Answered in part — the rest was passed to us");
+      } else {
+        await updateTicket(ticket.id, {
+          ...langPatch,
+          // A definitive answer closes the ticket (a customer reply reopens it and
+          // re-runs the AI); a clarifying question waits on the customer.
+          ...(outcome.kind === "answered"
+            ? { status: "closed", ai_resolved: true, resolved_at: new Date().toISOString() }
+            : { status: "waiting_on_customer" }),
+        });
+        await audit("ai", AI_ACTOR, `ai.${outcome.kind}`, { type: "ticket", id: ticket.id }, {
+          confidence: outcome.confidence,
+          auto_sent: true,
+        });
+      }
     } else {
       // Not cleared to send — hold the drafted answer for a human to approve,
       // edit and send (loadable via "Use AI draft"). The team sign-off stays out;
@@ -368,7 +404,14 @@ async function applyOutcome(
       // Tool names + status only — no inputs, keeping PII out of ai_events.
       tools_called: result.toolsCalled.map((t) => ({ ...t })),
       confidence: outcome.kind === "escalated" ? null : outcome.confidence,
-      outcome: outcome.kind === "clarified" ? "clarified" : outcome.kind === "answered" ? "answered" : "escalated",
+      // A partial answer counts as an escalation, not a resolution — otherwise
+      // the AI-resolution rate counts tickets a human still has to finish.
+      outcome:
+        outcome.kind === "clarified"
+          ? "clarified"
+          : outcome.kind === "answered" && !partial
+            ? "answered"
+            : "escalated",
       latency_ms: result.latencyMs,
       input_tokens: result.inputTokens,
       output_tokens: result.outputTokens,
@@ -400,6 +443,26 @@ async function recordKbUsageSafe(
   } catch (error) {
     console.error("recordKbUsage failed:", error);
   }
+}
+
+/**
+ * The note on a partly-answered ticket. The customer has already had the part
+ * the AI could answer; this says what it told them was being passed on, so the
+ * agent knows exactly what they have inherited and what was promised.
+ */
+function formatPartialNote(claims: string[]): string {
+  return [
+    "ANSWERED IN PART — the rest is yours",
+    "",
+    "The AI answered what it could and has replied to the customer. It also told",
+    "them the following had been passed to us — it has no way to do that itself,",
+    "so this ticket is now with you rather than closed:",
+    "",
+    ...claims.map((c) => `- "${c}"`),
+    "",
+    "Deal with those points (log the feature request, get the roadmap answer, or",
+    "whatever they need), reply, and close the ticket when it's genuinely done.",
+  ].join("\n");
 }
 
 function formatHandoverNote(outcome: Extract<AgentOutcome, { kind: "escalated" }>): string {
