@@ -91,6 +91,42 @@ export function wasInferred(filename: string, declaredMime: string): boolean {
   return (!declared || GENERIC_MIME.has(declared)) && effectiveMimeType(filename, declaredMime) !== declared;
 }
 
+export function isAllowedMime(mime: string): boolean {
+  return ALLOWED_MIME.has((mime || "").trim().toLowerCase());
+}
+
+/**
+ * Neither the declared type nor the filename told us anything.
+ *
+ * Some mail clients send an inline screenshot as "application/octet-stream"
+ * with a bare id for a name — "img-be2033d7-8a86-40b8-a203-d106b034e486", no
+ * extension at all (real example: ticket #8559). The extension fallback has
+ * nothing to work with, so the file used to be refused on its label alone,
+ * without anyone ever looking at it.
+ *
+ * These are the only attachments where the bytes are the remaining evidence.
+ */
+export function typeIsUndetermined(filename: string, declaredMime: string): boolean {
+  const declared = (declaredMime || "").trim().toLowerCase();
+  // A client that named a real type is taken at its word, as before.
+  if (declared && !GENERIC_MIME.has(declared)) return false;
+  return !isAllowedMime(effectiveMimeType(filename, declaredMime));
+}
+
+/**
+ * The type an undetermined file's own bytes prove it to be, or null if they
+ * prove nothing we accept.
+ *
+ * This widens the allowlist by nothing: only the formats `sniffMime` can
+ * positively identify from their leading bytes get in, and they have to really
+ * be that format. A signature is harder to fake than a filename — the path this
+ * replaces trusted a name.
+ */
+export function allowedTypeFromBytes(bytes: Uint8Array): string | null {
+  const sniffed = sniffMime(bytes);
+  return sniffed && isAllowedMime(sniffed) ? sniffed : null;
+}
+
 /**
  * Detect a file's real type from its leading bytes, for the formats where that
  * is reliable. Returns null when it isn't one of them (which is not by itself a
@@ -175,17 +211,28 @@ export function isImageMime(mime: string): boolean {
   return /^image\/(png|jpe?g|gif|webp)$/i.test((mime || "").trim());
 }
 
+export type AttachmentCheck =
+  | { ok: true }
+  /** `undetermined` means "not refused on the evidence so far" — the label and
+   *  the filename were both uninformative. A caller that can read the bytes
+   *  should do so (see allowedTypeFromBytes); one that can't still refuses. */
+  | { ok: false; reason: string; undetermined?: boolean };
+
 /** Allowlist + cap check. Tickets are hostile input — deny by default. The
  *  filename is optional and used only to resolve a generic declared type. */
-export function checkAttachment(
-  meta: { mimeType: string; size: number; filename?: string },
-): { ok: true } | { ok: false; reason: string } {
-  const mime = effectiveMimeType(meta.filename ?? "", meta.mimeType);
-  if (!ALLOWED_MIME.has(mime)) {
-    return { ok: false, reason: `type not allowed (${meta.mimeType || "unknown"})` };
-  }
+export function checkAttachment(meta: { mimeType: string; size: number; filename?: string }): AttachmentCheck {
+  // Size first: an oversized file is refused on its declared size, so nothing
+  // downloads bytes just to find out it was never going to fit.
   if (meta.size > MAX_ATTACHMENT_BYTES) {
     return { ok: false, reason: `too large (${Math.round(meta.size / 1048576)}MB > 25MB)` };
+  }
+  const mime = effectiveMimeType(meta.filename ?? "", meta.mimeType);
+  if (!isAllowedMime(mime)) {
+    return {
+      ok: false,
+      reason: `type not allowed (${meta.mimeType || "unknown"})`,
+      ...(typeIsUndetermined(meta.filename ?? "", meta.mimeType) ? { undetermined: true } : {}),
+    };
   }
   return { ok: true };
 }

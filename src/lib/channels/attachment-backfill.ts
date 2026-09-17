@@ -5,6 +5,7 @@ import { getAttachmentBytes } from "./gmail";
 import {
   ATTACHMENTS_BUCKET,
   MAX_ATTACHMENT_BYTES,
+  allowedTypeFromBytes,
   checkAttachment,
   contentMatches,
   effectiveMimeType,
@@ -67,9 +68,11 @@ export async function backfillRejectedAttachments(limit = 500): Promise<Backfill
       if (!a || a.stored || !a.attachmentId) continue;
 
       // Re-apply today's policy. A file that is still not allowed stays blocked.
-      const mimeType = effectiveMimeType(a.filename, a.mimeType);
+      let mimeType = effectiveMimeType(a.filename, a.mimeType);
       const check = checkAttachment({ mimeType: a.mimeType, size: a.size, filename: a.filename });
-      if (!check.ok) {
+      // Undetermined (a generic label and no extension) is not a refusal — the
+      // bytes are still to be read. Anything refused outright stays blocked.
+      if (!check.ok && !check.undetermined) {
         result.stillBlocked += 1;
         continue;
       }
@@ -80,7 +83,14 @@ export async function backfillRejectedAttachments(limit = 500): Promise<Backfill
           result.stillBlocked += 1;
           continue;
         }
-        if (wasInferred(a.filename, a.mimeType) && !contentMatches(mimeType, bytes)) {
+        if (!check.ok) {
+          const proven = allowedTypeFromBytes(bytes);
+          if (!proven) {
+            result.stillBlocked += 1;
+            continue;
+          }
+          mimeType = proven;
+        } else if (wasInferred(a.filename, a.mimeType) && !contentMatches(mimeType, bytes)) {
           result.stillBlocked += 1;
           continue;
         }

@@ -5,6 +5,7 @@ import type { AttachmentMeta } from "./email-parse";
 import {
   ATTACHMENTS_BUCKET,
   MAX_ATTACHMENT_BYTES,
+  allowedTypeFromBytes,
   checkAttachment,
   contentMatches,
   effectiveMimeType,
@@ -37,7 +38,7 @@ export async function storeAttachments(
     // Outlook labels ordinary screenshots "application/octet-stream"; resolve the
     // real type from the filename so they aren't blocked, and store THAT so the
     // ticket renders them as images rather than anonymous downloads.
-    const mimeType = effectiveMimeType(meta.filename, meta.mimeType);
+    let mimeType = effectiveMimeType(meta.filename, meta.mimeType);
     const inferred = wasInferred(meta.filename, meta.mimeType);
     const base: StoredAttachment = {
       filename: meta.filename,
@@ -52,7 +53,10 @@ export async function storeAttachments(
     };
 
     const check = checkAttachment({ ...meta, filename: meta.filename });
-    if (!check.ok) {
+    // Undetermined: a generic label and a name with no extension (some clients
+    // send inline screenshots that way). Not a refusal yet — read the bytes and
+    // let the file's own signature answer.
+    if (!check.ok && !check.undetermined) {
       out.push({ ...base, rejected: check.reason });
       continue;
     }
@@ -67,9 +71,17 @@ export async function storeAttachments(
         out.push({ ...base, rejected: "too large" });
         continue;
       }
-      // Only when we trusted the filename: make sure the bytes really are that
-      // format, so nothing rides in as a renamed "screenshot.png".
-      if (inferred && !contentMatches(mimeType, bytes)) {
+      if (!check.ok) {
+        const proven = allowedTypeFromBytes(bytes);
+        if (!proven) {
+          out.push({ ...base, rejected: `unrecognised file (${meta.mimeType || "no type"}, no extension)` });
+          continue;
+        }
+        mimeType = proven;
+        base.mimeType = proven;
+      } else if (inferred && !contentMatches(mimeType, bytes)) {
+        // Only when we trusted the filename: make sure the bytes really are that
+        // format, so nothing rides in as a renamed "screenshot.png".
         out.push({ ...base, rejected: `content does not match ${meta.filename}` });
         continue;
       }
@@ -115,7 +127,7 @@ export async function storeOutboundAttachments(
     const f = files[i];
     // Same resolution as inbound: a browser/mail client that gives us a generic
     // type shouldn't cost the customer their screenshot.
-    const mimeType = effectiveMimeType(f.filename, f.mimeType);
+    let mimeType = effectiveMimeType(f.filename, f.mimeType);
     const inferred = wasInferred(f.filename, f.mimeType);
     const base: StoredAttachment = {
       filename: f.filename,
@@ -129,7 +141,7 @@ export async function storeOutboundAttachments(
     };
 
     const check = checkAttachment({ mimeType: f.mimeType, size: f.size, filename: f.filename });
-    if (!check.ok) {
+    if (!check.ok && !check.undetermined) {
       out.push({ ...base, rejected: check.reason });
       continue;
     }
@@ -137,7 +149,16 @@ export async function storeOutboundAttachments(
       out.push({ ...base, rejected: "too large" });
       continue;
     }
-    if (inferred && !contentMatches(mimeType, f.content)) {
+    if (!check.ok) {
+      // Nothing in the label or the name to go on — the bytes decide.
+      const proven = allowedTypeFromBytes(f.content);
+      if (!proven) {
+        out.push({ ...base, rejected: `unrecognised file (${f.mimeType || "no type"}, no extension)` });
+        continue;
+      }
+      mimeType = proven;
+      base.mimeType = proven;
+    } else if (inferred && !contentMatches(mimeType, f.content)) {
       out.push({ ...base, rejected: `content does not match ${f.filename}` });
       continue;
     }

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  allowedTypeFromBytes,
   canRenderInline,
   checkAttachment,
+  typeIsUndetermined,
   contentMatches,
   effectiveMimeType,
   safeFilename,
@@ -166,6 +168,59 @@ describe("checkAttachment", () => {
     const r = checkAttachment({ mimeType: "application/pdf", size: MAX_ATTACHMENT_BYTES + 1 });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toMatch(/too large/);
+  });
+});
+
+describe("no type, no extension — the bytes decide (#8559)", () => {
+  // Two inline screenshots on #8559 arrived as application/octet-stream named
+  // "img-<uuid>", with no extension for the fallback to work on. They were
+  // refused on the label alone; their five siblings (image001.png …) went
+  // through. The customer's screenshots simply vanished from the body.
+  const NAMELESS = "img-be2033d7-8a86-40b8-a203-d106b034e486";
+
+  it("does not refuse outright — it asks for the bytes", () => {
+    const r = checkAttachment({ mimeType: "application/octet-stream", size: 14858, filename: NAMELESS });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.undetermined).toBe(true);
+  });
+
+  it("accepts it once the bytes prove it is a screenshot", () => {
+    expect(typeIsUndetermined(NAMELESS, "application/octet-stream")).toBe(true);
+    expect(allowedTypeFromBytes(png)).toBe("image/png");
+    expect(allowedTypeFromBytes(jpeg)).toBe("image/jpeg");
+  });
+
+  it("still refuses a file whose bytes prove nothing we accept", () => {
+    expect(allowedTypeFromBytes(exe)).toBeNull();
+    // Plain text has no signature — it cannot buy its way in this route either.
+    expect(allowedTypeFromBytes(new Uint8Array([0x61, 0x2c, 0x62]))).toBeNull();
+  });
+
+  it("never reopens a type that was refused on its own declaration", () => {
+    // A real declared type is taken at its word — a .zip stays a .zip, and an
+    // executable cannot become "undetermined" by dropping its extension.
+    expect(typeIsUndetermined("payload", "application/zip")).toBe(false);
+    expect(typeIsUndetermined("invoice.exe", "application/x-msdownload")).toBe(false);
+    const r = checkAttachment({ mimeType: "application/zip", size: 10, filename: "archive" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.undetermined).toBeUndefined();
+  });
+
+  it("leaves a name that did resolve on the existing path", () => {
+    expect(typeIsUndetermined("image001.png", "application/octet-stream")).toBe(false);
+  });
+
+  it("refuses an oversized undetermined file without asking for its bytes", () => {
+    const r = checkAttachment({
+      mimeType: "application/octet-stream",
+      size: MAX_ATTACHMENT_BYTES + 1,
+      filename: NAMELESS,
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toMatch(/too large/);
+      expect(r.undetermined).toBeUndefined();
+    }
   });
 });
 
