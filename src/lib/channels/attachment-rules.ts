@@ -31,6 +31,14 @@ const ALLOWED_MIME = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  // Apple's equivalents of the three above. A client on a Mac sends a Numbers
+  // spreadsheet exactly as a Windows one sends .xlsx — ticket #8615 was a list
+  // of missing destinations, i.e. the whole point of the ticket. Same container
+  // as the Office XML formats (a zip), and treated the same way: never parsed or
+  // rendered, always a download that opens in the agent's own app.
+  "application/vnd.apple.numbers",
+  "application/vnd.apple.pages",
+  "application/vnd.apple.keynote",
 ]);
 
 // Mail clients routinely mislabel perfectly ordinary attachments. Outlook sends
@@ -70,7 +78,27 @@ const EXT_MIME: Record<string, string> = {
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ppt: "application/vnd.ms-powerpoint",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  numbers: "application/vnd.apple.numbers",
+  pages: "application/vnd.apple.pages",
+  // Deliberately no "key" → Keynote. A Keynote deck that declares its own type
+  // is accepted; but ".key" is just as often a private key, and guessing
+  // "presentation" from that extension is a guess worth not making.
 };
+
+/** The lower-cased extension, or "" when the name carries none. */
+export function fileExtension(filename: string): string {
+  const name = (filename || "").trim().toLowerCase();
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(dot + 1) : "";
+}
+
+/** Why an undetermined attachment was refused, in terms an agent can act on —
+ *  naming the extension we didn't recognise, or saying there wasn't one. */
+export function unrecognisedReason(filename: string, declaredMime: string): string {
+  const ext = fileExtension(filename);
+  const declared = declaredMime || "no type";
+  return ext ? `unrecognised file type (.${ext}, sent as ${declared})` : `unrecognised file (${declared}, no extension)`;
+}
 
 /**
  * The type we treat an attachment as. A specific declared type is honoured as
@@ -81,7 +109,7 @@ const EXT_MIME: Record<string, string> = {
 export function effectiveMimeType(filename: string, declaredMime: string): string {
   const declared = (declaredMime || "").trim().toLowerCase();
   if (declared && !GENERIC_MIME.has(declared)) return declared;
-  const ext = (filename || "").trim().toLowerCase().split(".").pop() ?? "";
+  const ext = fileExtension(filename);
   return EXT_MIME[ext] ?? declared;
 }
 

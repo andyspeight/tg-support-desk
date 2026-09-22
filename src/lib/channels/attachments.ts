@@ -11,6 +11,7 @@ import {
   effectiveMimeType,
   safeFilename,
   storageKeyFor,
+  unrecognisedReason,
   wasInferred,
   type StoredAttachment,
 } from "./attachment-rules";
@@ -53,9 +54,9 @@ export async function storeAttachments(
     };
 
     const check = checkAttachment({ ...meta, filename: meta.filename });
-    // Undetermined: a generic label and a name with no extension (some clients
-    // send inline screenshots that way). Not a refusal yet — read the bytes and
-    // let the file's own signature answer.
+    // Undetermined: a generic label, and a name whose extension we don't know
+    // (or that has none at all). Not a refusal yet — read the bytes and let the
+    // file's own signature answer.
     if (!check.ok && !check.undetermined) {
       out.push({ ...base, rejected: check.reason });
       continue;
@@ -74,7 +75,7 @@ export async function storeAttachments(
       if (!check.ok) {
         const proven = allowedTypeFromBytes(bytes);
         if (!proven) {
-          out.push({ ...base, rejected: `unrecognised file (${meta.mimeType || "no type"}, no extension)` });
+          out.push({ ...base, rejected: unrecognisedReason(meta.filename, meta.mimeType) });
           continue;
         }
         mimeType = proven;
@@ -153,7 +154,7 @@ export async function storeOutboundAttachments(
       // Nothing in the label or the name to go on — the bytes decide.
       const proven = allowedTypeFromBytes(f.content);
       if (!proven) {
-        out.push({ ...base, rejected: `unrecognised file (${f.mimeType || "no type"}, no extension)` });
+        out.push({ ...base, rejected: unrecognisedReason(f.filename, f.mimeType) });
         continue;
       }
       mimeType = proven;

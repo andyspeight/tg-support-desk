@@ -6,9 +6,11 @@ import {
   typeIsUndetermined,
   contentMatches,
   effectiveMimeType,
+  fileExtension,
   safeFilename,
   sniffMime,
   storageKeyFor,
+  unrecognisedReason,
   wasInferred,
   MAX_ATTACHMENT_BYTES,
 } from "./attachment-rules";
@@ -221,6 +223,68 @@ describe("no type, no extension — the bytes decide (#8559)", () => {
       expect(r.reason).toMatch(/too large/);
       expect(r.undetermined).toBeUndefined();
     }
+  });
+});
+
+describe("Apple's document formats (#8615 — a Numbers spreadsheet)", () => {
+  // A client on a Mac attached "Missing destination Spot lights.numbers" — the
+  // list of missing destinations was the whole ticket. It arrived as
+  // application/octet-stream, .numbers wasn't known, and a Numbers file is a zip
+  // underneath so the byte check couldn't rescue it either.
+  it("accepts a Numbers file sent with a generic type", () => {
+    expect(effectiveMimeType("Missing destination Spot lights.numbers", "application/octet-stream")).toBe(
+      "application/vnd.apple.numbers",
+    );
+    expect(
+      checkAttachment({
+        mimeType: "application/octet-stream",
+        size: 245793,
+        filename: "Missing destination Spot lights.numbers",
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it("accepts Pages and Keynote alongside their Office equivalents", () => {
+    expect(effectiveMimeType("proposal.pages", "application/octet-stream")).toBe("application/vnd.apple.pages");
+    expect(checkAttachment({ mimeType: "application/vnd.apple.keynote", size: 4096 }).ok).toBe(true);
+  });
+
+  it("does not guess that a .key file is a Keynote deck", () => {
+    // ".key" is just as often a private key. A deck that declares its own type
+    // is fine; the extension alone is not enough to assume one.
+    expect(effectiveMimeType("id_rsa.key", "application/octet-stream")).toBe("application/octet-stream");
+    expect(checkAttachment({ mimeType: "application/octet-stream", size: 2048, filename: "id_rsa.key" }).ok).toBe(false);
+  });
+
+  it("never opens one in the browser — always a download", () => {
+    expect(canRenderInline("application/vnd.apple.numbers")).toBe(false);
+    expect(canRenderInline("application/vnd.apple.pages")).toBe(false);
+  });
+
+  it("keeps .zip refused — the container is not the point", () => {
+    expect(checkAttachment({ mimeType: "application/zip", size: 1000, filename: "logo.zip" }).ok).toBe(false);
+  });
+});
+
+describe("why a file was refused, in terms an agent can act on", () => {
+  it("names the extension it did not recognise", () => {
+    expect(unrecognisedReason("accounts.sketch", "application/octet-stream")).toBe(
+      "unrecognised file type (.sketch, sent as application/octet-stream)",
+    );
+  });
+
+  it("says so plainly when there was no extension at all", () => {
+    expect(unrecognisedReason("img-be2033d7-8a86-40b8-a203-d106b034e486", "application/octet-stream")).toBe(
+      "unrecognised file (application/octet-stream, no extension)",
+    );
+    expect(unrecognisedReason("noname", "")).toBe("unrecognised file (no type, no extension)");
+  });
+
+  it("reads an extension off a name with dots in it, and none off a dotfile", () => {
+    expect(fileExtension("Missing destination Spot lights.numbers")).toBe("numbers");
+    expect(fileExtension("report.v2.final.xlsx")).toBe("xlsx");
+    expect(fileExtension(".gitignore")).toBe("");
+    expect(fileExtension("img-be2033d7")).toBe("");
   });
 });
 
